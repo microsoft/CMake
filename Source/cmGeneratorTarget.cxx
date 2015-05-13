@@ -561,12 +561,12 @@ void cmGeneratorTarget::GetSourceFiles(std::vector<cmSourceFile*> &files,
 }
 
 //----------------------------------------------------------------------------
-std::string
+cmSourceFile const*
 cmGeneratorTarget::GetModuleDefinitionFile(const std::string& config) const
 {
-  std::string data;
-  IMPLEMENT_VISIT_IMPL(ModuleDefinitionFile, COMMA std::string)
-  return data;
+  std::vector<cmSourceFile const*> data;
+  IMPLEMENT_VISIT(ModuleDefinitionFile);
+  return data.empty() ? nullptr : data.back();
 }
 
 //----------------------------------------------------------------------------

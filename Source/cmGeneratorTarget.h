@@ -72,7 +72,7 @@ public:
   cmLocalGenerator* LocalGenerator;
   cmGlobalGenerator const* GlobalGenerator;
 
-  std::string GetModuleDefinitionFile(const std::string& config) const;
+  cmSourceFile const* GetModuleDefinitionFile(const std::string& config) const;
 
   /** Full path with trailing slash to the top-level directory
       holding object files for this target.  Includes the build

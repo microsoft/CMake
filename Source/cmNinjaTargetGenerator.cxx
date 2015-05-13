@@ -563,10 +563,10 @@ cmNinjaTargetGenerator
     {
     this->WriteObjectBuildStatement(*si, !orderOnlyDeps.empty());
     }
-  std::string def = this->GeneratorTarget->GetModuleDefinitionFile(config);
-  if(!def.empty())
+  cmSourceFile const* def = this->GeneratorTarget->GetModuleDefinitionFile(config);
+  if(def)
     {
-    this->ModuleDefinitionFile = this->ConvertToNinjaPath(def);
+    this->ModuleDefinitionFile = this->ConvertToNinjaPath(def->GetFullPath());
     }
 
   this->GetBuildFileStream() << "\n";
