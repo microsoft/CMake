@@ -434,6 +434,16 @@ void cmVisualStudio10TargetGenerator::Generate()
     (*this->BuildFileStream) << cmVS10EscapeXML(targetFrameworkVersion)
                              << "</TargetFrameworkVersion>\n";
     }
+  if(const char* targetPlatformVersion = this->Target->GetProperty(
+       "VS_TARGET_PLATFORM_VERSION"))
+    {
+    this->WriteString("<TargetPlatformVersion>", 2);
+    (*this->BuildFileStream) << cmVS10EscapeXML(targetPlatformVersion)
+                             << "</TargetPlatformVersion>\n";
+    this->WriteString("<TargetPlatformMinVersion>", 2);
+    (*this->BuildFileStream) << cmVS10EscapeXML(targetPlatformVersion)
+                             << "</TargetPlatformMinVersion>\n";
+    }
   this->WriteString("</PropertyGroup>\n", 1);
   this->WriteString("<Import Project="
                     "\"$(VCTargetsPath)\\Microsoft.Cpp.Default.props\" />\n",
