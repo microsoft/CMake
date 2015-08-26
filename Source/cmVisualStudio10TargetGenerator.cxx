@@ -1524,6 +1524,12 @@ void cmVisualStudio10TargetGenerator::WriteAllSources()
       }
     }
 
+  cmSourceFile const* def = this->GeneratorTarget->GetModuleDefinitionFile("");
+  if(def)
+    {
+    this->WriteSource("None", def);
+    }
+
   std::vector<cmSourceFile const*> manifestSources;
   this->GeneratorTarget->GetAppManifest(manifestSources, "");
   this->WriteSources("AppxManifest", manifestSources);
@@ -2474,10 +2480,10 @@ cmVisualStudio10TargetGenerator::ComputeLinkOptions(std::string const& config)
 
   if(this->MSTools)
     {
-    std::string def = this->GeneratorTarget->GetModuleDefinitionFile("");
-    if(!def.empty())
+    cmSourceFile const* def = this->GeneratorTarget->GetModuleDefinitionFile("");
+    if(def)
       {
-      linkOptions.AddFlag("ModuleDefinitionFile", def.c_str());
+      linkOptions.AddFlag("ModuleDefinitionFile", def->GetFullPath().c_str());
       }
     linkOptions.AppendFlag("IgnoreSpecificDefaultLibraries",
                            "%(IgnoreSpecificDefaultLibraries)");
