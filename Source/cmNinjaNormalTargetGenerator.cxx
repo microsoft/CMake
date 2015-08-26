@@ -19,6 +19,7 @@
 #include "cmOSXBundleGenerator.h"
 #include "cmGeneratorTarget.h"
 #include "cmCustomCommandGenerator.h"
+#include "cmAlgorithms.h"
 
 #include <assert.h>
 #include <algorithm>
@@ -93,8 +94,6 @@ void cmNinjaNormalTargetGenerator::Generate()
     }
   else
     {
-    this->WriteLinkRule(false); // write rule without rspfile support
-    this->WriteLinkRule(true);  // write rule with rspfile support
     this->WriteLinkStatement();
     }
 }
@@ -159,7 +158,9 @@ cmNinjaNormalTargetGenerator
   return this->TargetLinkLanguage
     + "_"
     + cmTarget::GetTargetTypeName(this->GetTarget()->GetType())
-    + "_LINKER";
+    + "_LINKER__"
+    + cmGlobalNinjaGenerator::EncodeRuleName(this->GetTarget()->GetName())
+    ;
 }
 
 void
@@ -168,8 +169,6 @@ cmNinjaNormalTargetGenerator
 {
   cmTarget::TargetType targetType = this->GetTarget()->GetType();
   std::string ruleName = this->LanguageLinkerRule();
-  if (useResponseFile)
-    ruleName += "_RSP_FILE";
 
   // Select whether to use a response file for objects.
   std::string rspfile;
@@ -201,7 +200,12 @@ cmNinjaNormalTargetGenerator
         responseFlag += rspfile;
 
         // build response file content
-        rspcontent = "$in_newline $LINK_PATH $LINK_LIBRARIES";
+        if (this->GetGlobalGenerator()->IsGCCOnWindows()) {
+          rspcontent = "$in";
+        } else {
+          rspcontent = "$in_newline";
+        }
+        rspcontent += " $LINK_PATH $LINK_LIBRARIES";
         vars.Objects = responseFlag.c_str();
         vars.LinkLibraries = "";
     }
@@ -278,8 +282,7 @@ cmNinjaNormalTargetGenerator
     !this->GetTarget()->IsFrameworkOnApple()) {
     std::string cmakeCommand =
       this->GetLocalGenerator()->ConvertToOutputFormat(
-        this->GetMakefile()->GetRequiredDefinition("CMAKE_COMMAND"),
-        cmLocalGenerator::SHELL);
+        cmSystemTools::GetCMakeCommand(), cmLocalGenerator::SHELL);
     if (targetType == cmTarget::EXECUTABLE)
       this->GetGlobalGenerator()->AddRule("CMAKE_SYMLINK_EXECUTABLE",
                                           cmakeCommand +
@@ -333,8 +336,7 @@ cmNinjaNormalTargetGenerator
       {
       std::string cmakeCommand =
         this->GetLocalGenerator()->ConvertToOutputFormat(
-          mf->GetRequiredDefinition("CMAKE_COMMAND"),
-          cmLocalGenerator::SHELL);
+          cmSystemTools::GetCMakeCommand(), cmLocalGenerator::SHELL);
       linkCmds.push_back(cmakeCommand + " -E remove $TARGET_FILE");
       }
       // TODO: Use ARCHIVE_APPEND for archives over a certain size.
@@ -523,8 +525,7 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
         {
         vars["INSTALLNAME_DIR"] = localGen.Convert(install_dir,
                                                    cmLocalGenerator::NONE,
-                                                   cmLocalGenerator::SHELL,
-                                                   false);
+                                                   cmLocalGenerator::SHELL);
         }
       }
     }
@@ -559,7 +560,7 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
     vars["TARGET_PDB"] = base + suffix + dbg_suffix;
     }
 
-  if (mf->IsOn("CMAKE_COMPILER_IS_MINGW"))
+  if (this->GetGlobalGenerator()->IsGCCOnWindows())
     {
     const std::string objPath = GetTarget()->GetSupportDirectory();
     vars["OBJECT_DIR"] = ConvertToNinjaPath(objPath);
@@ -655,6 +656,7 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
     }
 
   // Write the build statement for this target.
+  bool usedResponseFile = false;
   globalGen.WriteBuild(this->GetBuildFileStream(),
                         comment.str(),
                         this->LanguageLinkerRule(),
@@ -664,7 +666,9 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
                         orderOnlyDeps,
                         vars,
                         rspfile,
-                        commandLineLengthLimit);
+                        commandLineLengthLimit,
+                        &usedResponseFile);
+  this->WriteLinkRule(usedResponseFile);
 
   if (targetOutput != targetOutputReal && !target.IsFrameworkOnApple())
     {

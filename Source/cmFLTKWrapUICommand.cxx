@@ -24,18 +24,15 @@ bool cmFLTKWrapUICommand
     }
 
   // what is the current source dir
-  std::string cdir = this->Makefile->GetCurrentDirectory();
+  std::string cdir = this->Makefile->GetCurrentSourceDirectory();
   const char* fluid_exe =
     this->Makefile->GetRequiredDefinition("FLTK_FLUID_EXECUTABLE");
 
   // get parameter for the command
   this->Target = args[0];  // Target that will use the generated files
 
-  std::vector<std::string> newArgs;
-  this->Makefile->ExpandSourceListArguments(args,newArgs, 1);
-
   // get the list of GUI files from which .cxx and .h will be generated
-  std::string outputDirectory = this->Makefile->GetCurrentOutputDirectory();
+  std::string outputDirectory = this->Makefile->GetCurrentBinaryDirectory();
 
   {
   // Some of the generated files are *.h so the directory "GUI"
@@ -45,8 +42,8 @@ bool cmFLTKWrapUICommand
   this->Makefile->AddIncludeDirectories( outputDirectories );
   }
 
-  for(std::vector<std::string>::iterator i = (newArgs.begin() + 1);
-      i != newArgs.end(); i++)
+  for(std::vector<std::string>::const_iterator i = (args.begin() + 1);
+      i != args.end(); i++)
     {
     cmSourceFile *curr = this->Makefile->GetSource(*i);
     // if we should use the source GUI
@@ -127,7 +124,7 @@ void cmFLTKWrapUICommand::FinalPass()
       "FLTK_WRAP_UI was called with a target that was never created: ";
     msg += this->Target;
     msg +=".  The problem was found while processing the source directory: ";
-    msg += this->Makefile->GetStartDirectory();
+    msg += this->Makefile->GetCurrentSourceDirectory();
     msg += ".  This FLTK_WRAP_UI call will be ignored.";
     cmSystemTools::Message(msg.c_str(),"Warning");
     return;
@@ -159,7 +156,7 @@ void cmFLTKWrapUICommand::FinalPass()
       "for you as was done in CMake 2.0 and earlier. In the future this may "
       "become an error.";
     msg +="The problem was found while processing the source directory: ";
-    msg += this->Makefile->GetStartDirectory();
+    msg += this->Makefile->GetCurrentSourceDirectory();
     cmSystemTools::Message(msg.c_str(),"Warning");
     // first we add the rules for all the .fl to .h and .cxx files
     size_t lastHeadersClass = this->GeneratedSourcesClasses.size();

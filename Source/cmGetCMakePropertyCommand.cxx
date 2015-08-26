@@ -14,6 +14,8 @@
 #include "cmGlobalGenerator.h"
 #include "cmLocalGenerator.h"
 #include "cmake.h"
+#include "cmState.h"
+#include "cmAlgorithms.h"
 
 // cmGetCMakePropertyCommand
 bool cmGetCMakePropertyCommand
@@ -25,7 +27,6 @@ bool cmGetCMakePropertyCommand
     return false;
     }
 
-  std::vector<std::string>::size_type cc;
   std::string variable = args[0];
   std::string output = "NOTFOUND";
 
@@ -35,38 +36,25 @@ bool cmGetCMakePropertyCommand
     std::vector<std::string> vars = this->Makefile->GetDefinitions(cacheonly);
     if (!vars.empty())
       {
-      output = vars[0];
-      }
-    for ( cc = 1; cc < vars.size(); ++cc )
-      {
-      output += ";";
-      output += vars[cc];
+      output = cmJoin(vars, ";");
       }
     }
   else if ( args[1] == "MACROS" )
     {
+    output.clear();
     this->Makefile->GetListOfMacros(output);
     }
   else if ( args[1] == "COMPONENTS" )
     {
     const std::set<std::string>* components
-      = this->Makefile->GetLocalGenerator()->GetGlobalGenerator()
-        ->GetInstallComponents();
-    std::set<std::string>::const_iterator compIt;
-    output = "";
-    for (compIt = components->begin(); compIt != components->end(); ++compIt)
-      {
-      if (compIt != components->begin())
-        {
-        output += ";";
-        }
-      output += *compIt;
-      }
+      = this->Makefile->GetGlobalGenerator()->GetInstallComponents();
+    output = cmJoin(*components, ";");
     }
   else
     {
     const char *prop =
-      this->Makefile->GetCMakeInstance()->GetProperty(args[1]);
+      this->Makefile->GetState()
+          ->GetGlobalProperty(args[1]);
     if (prop)
       {
       output = prop;

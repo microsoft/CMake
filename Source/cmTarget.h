@@ -19,7 +19,11 @@
 
 #include <cmsys/auto_ptr.hxx>
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#include <cmsys/hash_map.hxx>
+# ifdef CMake_HAVE_CXX11_UNORDERED_MAP
+#  include <unordered_map>
+# else
+#  include <cmsys/hash_map.hxx>
+# endif
 #endif
 
 #define CM_FOR_EACH_TARGET_POLICY(F) \
@@ -34,7 +38,9 @@
   F(CMP0041) \
   F(CMP0042) \
   F(CMP0046) \
-  F(CMP0052)
+  F(CMP0052) \
+  F(CMP0060) \
+  F(CMP0063)
 
 class cmake;
 class cmMakefile;
@@ -201,7 +207,8 @@ public:
     KeywordTLLSignature,
     PlainTLLSignature
   };
-  bool PushTLLCommandTrace(TLLSignature signature);
+  bool PushTLLCommandTrace(TLLSignature signature,
+                           cmListFileContext const& lfc);
   void GetTllSignatureTraces(std::ostringstream &s, TLLSignature sig) const;
 
   void MergeLinkLibraries( cmMakefile& mf, const std::string& selfname,
@@ -488,15 +495,13 @@ public:
                        const char** imp,
                        std::string& suffix) const;
 
-  // Define the properties
-  static void DefineProperties(cmake *cm);
-
   /** Get the macro to define when building sources in this target.
       If no macro should be defined null is returned.  */
   const char* GetExportMacro() const;
 
   void GetCompileDefinitions(std::vector<std::string> &result,
-                             const std::string& config) const;
+                             const std::string& config,
+                             const std::string& language) const;
 
   // Compute the set of languages compiled by the target.  This is
   // computed every time it is called because the languages can change
@@ -525,6 +530,9 @@ public:
 
   /** Return whether this target is a CFBundle (plugin) on Apple.  */
   bool IsCFBundleOnApple() const;
+
+  /** Return whether this target is a XCTest on Apple.  */
+  bool IsXCTestOnApple() const;
 
   /** Return whether this target is an executable Bundle on Apple.  */
   bool IsAppBundleOnApple() const;
@@ -567,7 +575,8 @@ public:
                                     bool contentOnly) const;
 
   std::vector<std::string> GetIncludeDirectories(
-                     const std::string& config) const;
+                     const std::string& config,
+                     const std::string& language) const;
   void InsertInclude(const cmValueWithOrigin &entry,
                      bool before = false);
   void InsertCompileOption(const cmValueWithOrigin &entry,
@@ -577,7 +586,8 @@ public:
   void AppendBuildInterfaceIncludes();
 
   void GetCompileOptions(std::vector<std::string> &result,
-                         const std::string& config) const;
+                         const std::string& config,
+                         const std::string& language) const;
   void GetAutoUicOptions(std::vector<std::string> &result,
                          const std::string& config) const;
   void GetCompileFeatures(std::vector<std::string> &features,
@@ -637,7 +647,7 @@ private:
   // directories.
   std::set<std::string> SystemIncludeDirectories;
 
-  std::vector<std::pair<TLLSignature, cmListFileBacktrace> > TLLCommands;
+  std::vector<std::pair<TLLSignature, cmListFileContext> > TLLCommands;
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
   /**
@@ -845,7 +855,11 @@ private:
 };
 
 #ifdef CMAKE_BUILD_WITH_CMAKE
-typedef cmsys::hash_map<std::string,cmTarget> cmTargets;
+#ifdef CMake_HAVE_CXX11_UNORDERED_MAP
+typedef std::unordered_map<std::string, cmTarget> cmTargets;
+#else
+typedef cmsys::hash_map<std::string, cmTarget> cmTargets;
+#endif
 #else
 typedef std::map<std::string,cmTarget> cmTargets;
 #endif

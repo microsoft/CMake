@@ -16,6 +16,7 @@
 #include "cmSystemTools.h"
 #include <stdlib.h>
 #include <stack>
+#include <list>
 #include <float.h>
 #include <cmsys/FStream.hxx>
 
@@ -112,13 +113,19 @@ void cmCTestMultiProcessHandler::RunTests()
 //---------------------------------------------------------
 void cmCTestMultiProcessHandler::StartTestProcess(int test)
 {
-  cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT, "test " << test << "\n");
+  cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
+    "test " << test << "\n", this->Quiet);
   this->TestRunningMap[test] = true; // mark the test as running
   // now remove the test itself
   this->EraseTest(test);
   this->RunningCount += GetProcessorsUsed(test);
 
   cmCTestRunTest* testRun = new cmCTestRunTest(this->TestHandler);
+  if(this->CTest->GetRepeatUntilFail())
+    {
+    testRun->SetRunUntilFailOn();
+    testRun->SetNumberOfRuns(this->CTest->GetTestRepeat());
+    }
   testRun->SetIndex(test);
   testRun->SetTestProperties(this->Properties[test]);
 
@@ -287,7 +294,13 @@ bool cmCTestMultiProcessHandler::CheckOutput()
     cmCTestRunTest* p = *i;
     int test = p->GetIndex();
 
-    if(p->EndTest(this->Completed, this->Total, true))
+    bool testResult = p->EndTest(this->Completed, this->Total, true);
+    if(p->StartAgain())
+      {
+      this->Completed--; // remove the completed test because run again
+      continue;
+      }
+    if(testResult)
       {
       this->Passed->push_back(p->GetTestProperties()->Name);
       }
@@ -638,39 +651,44 @@ void cmCTestMultiProcessHandler::PrintTestList()
 
     if(!p.Labels.empty()) //print the labels
       {
-      cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT, "Labels:");
+      cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT, "Labels:",
+        this->Quiet);
       }
     for(std::vector<std::string>::iterator label = p.Labels.begin();
         label != p.Labels.end(); ++label)
       {
-      cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT, " " << *label);
+      cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT, " " << *label,
+        this->Quiet);
       }
     if(!p.Labels.empty()) //print the labels
       {
-      cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT, std::endl);
+      cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT, std::endl,
+        this->Quiet);
       }
 
     if (this->TestHandler->MemCheck)
       {
-      cmCTestLog(this->CTest, HANDLER_OUTPUT, "  Memory Check");
+      cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, "  Memory Check",
+        this->Quiet);
       }
      else
       {
-      cmCTestLog(this->CTest, HANDLER_OUTPUT, "  Test");
+      cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, "  Test", this->Quiet);
       }
     std::ostringstream indexStr;
     indexStr << " #" << p.Index << ":";
-    cmCTestLog(this->CTest, HANDLER_OUTPUT,
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
       std::setw(3 + getNumWidth(this->TestHandler->GetMaxIndex()))
-      << indexStr.str());
-    cmCTestLog(this->CTest, HANDLER_OUTPUT, " ");
-    cmCTestLog(this->CTest, HANDLER_OUTPUT, p.Name.c_str() << std::endl);
+      << indexStr.str(), this->Quiet);
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, " ", this->Quiet);
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
+      p.Name.c_str() << std::endl, this->Quiet);
     //pop working dir
     cmSystemTools::ChangeDirectory(current_dir);
     }
 
-  cmCTestLog(this->CTest, HANDLER_OUTPUT, std::endl << "Total Tests: "
-    << this->Total << std::endl);
+  cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT, std::endl << "Total Tests: "
+    << this->Total << std::endl, this->Quiet);
 }
 
 void cmCTestMultiProcessHandler::PrintLabels()
@@ -685,16 +703,19 @@ void cmCTestMultiProcessHandler::PrintLabels()
 
   if(!allLabels.empty())
     {
-    cmCTestLog(this->CTest, HANDLER_OUTPUT, "All Labels:" << std::endl);
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
+      "All Labels:" << std::endl, this->Quiet);
     }
   else
     {
-    cmCTestLog(this->CTest, HANDLER_OUTPUT, "No Labels Exist" << std::endl);
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
+      "No Labels Exist" << std::endl, this->Quiet);
     }
   for(std::set<std::string>::iterator label = allLabels.begin();
       label != allLabels.end(); ++label)
     {
-    cmCTestLog(this->CTest, HANDLER_OUTPUT, "  " << *label << std::endl);
+    cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
+      "  " << *label << std::endl, this->Quiet);
     }
 }
 
@@ -757,8 +778,8 @@ int cmCTestMultiProcessHandler::FindMaxIndex()
 //Returns true if no cycles exist in the dependency graph
 bool cmCTestMultiProcessHandler::CheckCycles()
 {
-  cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
-             "Checking test dependency graph..." << std::endl);
+  cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
+             "Checking test dependency graph..." << std::endl, this->Quiet);
   for(TestMap::iterator it = this->Tests.begin();
       it != this->Tests.end(); ++it)
     {
@@ -793,7 +814,7 @@ bool cmCTestMultiProcessHandler::CheckCycles()
         }
       }
     }
-  cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
-             "Checking test dependency graph end" << std::endl);
+  cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
+             "Checking test dependency graph end" << std::endl, this->Quiet);
   return true;
 }

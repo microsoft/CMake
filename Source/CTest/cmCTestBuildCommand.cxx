@@ -58,7 +58,8 @@ cmCTestGenericHandler* cmCTestBuildCommand::InitializeHandler()
     = this->Makefile->GetDefinition("CTEST_BUILD_COMMAND");
   if ( ctestBuildCommand && *ctestBuildCommand )
     {
-    this->CTest->SetCTestConfiguration("MakeCommand", ctestBuildCommand);
+    this->CTest->SetCTestConfiguration("MakeCommand", ctestBuildCommand,
+      this->Quiet);
     }
   else
     {
@@ -140,11 +141,12 @@ cmCTestGenericHandler* cmCTestBuildCommand::InitializeHandler()
         = this->GlobalGenerator->
         GenerateCMakeBuildCommand(cmakeBuildTarget ? cmakeBuildTarget : "",
           cmakeBuildConfiguration,
-          cmakeBuildAdditionalFlags ? cmakeBuildAdditionalFlags : "", true);
-      cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
-                 "SetMakeCommand:"
-                 << buildCommand << "\n");
-      this->CTest->SetCTestConfiguration("MakeCommand", buildCommand.c_str());
+          cmakeBuildAdditionalFlags ? cmakeBuildAdditionalFlags : "",
+          this->Makefile->IgnoreErrorsCMP0061());
+      cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
+        "SetMakeCommand:" << buildCommand << "\n", this->Quiet);
+      this->CTest->SetCTestConfiguration("MakeCommand", buildCommand.c_str(),
+        this->Quiet);
       }
     else
       {
@@ -168,9 +170,11 @@ cmCTestGenericHandler* cmCTestBuildCommand::InitializeHandler()
   if(const char* useLaunchers =
      this->Makefile->GetDefinition("CTEST_USE_LAUNCHERS"))
     {
-    this->CTest->SetCTestConfiguration("UseLaunchers", useLaunchers);
+    this->CTest->SetCTestConfiguration("UseLaunchers", useLaunchers,
+      this->Quiet);
     }
 
+  handler->SetQuiet(this->Quiet);
   return handler;
 }
 

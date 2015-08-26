@@ -250,16 +250,45 @@ inline int Chdir(const kwsys_stl::string& dir)
   return _wchdir(KWSYS_NAMESPACE::Encoding::ToWide(dir).c_str());
   #endif
 }
-inline void Realpath(const kwsys_stl::string& path, kwsys_stl::string & resolved_path)
+inline void Realpath(const kwsys_stl::string& path,
+                     kwsys_stl::string& resolved_path,
+                     kwsys_stl::string* errorMessage = 0)
 {
   kwsys_stl::wstring tmp = KWSYS_NAMESPACE::Encoding::ToWide(path);
   wchar_t *ptemp;
   wchar_t fullpath[MAX_PATH];
-  if( GetFullPathNameW(tmp.c_str(), sizeof(fullpath)/sizeof(fullpath[0]),
-                       fullpath, &ptemp) )
+  DWORD bufferLen = GetFullPathNameW(tmp.c_str(),
+      sizeof(fullpath) / sizeof(fullpath[0]),
+      fullpath, &ptemp);
+  if( bufferLen < sizeof(fullpath)/sizeof(fullpath[0]) )
     {
     resolved_path = KWSYS_NAMESPACE::Encoding::ToNarrow(fullpath);
     KWSYS_NAMESPACE::SystemTools::ConvertToUnixSlashes(resolved_path);
+    }
+  else if(errorMessage)
+    {
+    if(bufferLen)
+      {
+      *errorMessage = "Destination path buffer size too small.";
+      }
+    else if(unsigned int errorId = GetLastError())
+      {
+      LPSTR message = NULL;
+      DWORD size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER
+                                   | FORMAT_MESSAGE_FROM_SYSTEM
+                                   | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                   NULL, errorId,
+                                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                   (LPSTR)&message, 0, NULL);
+      *errorMessage = std::string(message, size);
+      LocalFree(message);
+      }
+    else
+      {
+      *errorMessage = "Unknown error.";
+      }
+
+    resolved_path = "";
     }
   else
     {
@@ -287,14 +316,30 @@ inline int Chdir(const kwsys_stl::string& dir)
 {
   return chdir(dir.c_str());
 }
-inline void Realpath(const kwsys_stl::string& path, kwsys_stl::string & resolved_path)
+inline void Realpath(const kwsys_stl::string& path,
+                     kwsys_stl::string& resolved_path,
+                     kwsys_stl::string* errorMessage = 0)
 {
   char resolved_name[KWSYS_SYSTEMTOOLS_MAXPATH];
 
+  errno = 0;
   char *ret = realpath(path.c_str(), resolved_name);
   if(ret)
     {
     resolved_path = ret;
+    }
+  else if(errorMessage)
+    {
+    if(errno)
+      {
+      *errorMessage = strerror(errno);
+      }
+    else
+      {
+      *errorMessage = "Unknown error.";
+      }
+
+    resolved_path = "";
     }
   else
     {
@@ -1215,15 +1260,22 @@ bool SystemTools::PathCygwinToWin32(const char *path, char *win32_path)
 
 bool SystemTools::Touch(const kwsys_stl::string& filename, bool create)
 {
-  if(create && !SystemTools::FileExists(filename))
+  if (!SystemTools::FileExists(filename))
     {
-    FILE* file = Fopen(filename, "a+b");
-    if(file)
+    if(create)
       {
-      fclose(file);
+      FILE* file = Fopen(filename, "a+b");
+      if(file)
+        {
+        fclose(file);
+        return true;
+        }
+      return false;
+      }
+    else
+      {
       return true;
       }
-    return false;
     }
 #if defined(_WIN32) && !defined(__CYGWIN__)
   HANDLE h = CreateFileW(
@@ -2622,27 +2674,43 @@ kwsys_stl::string SystemTools::GetLastSystemError()
 bool SystemTools::RemoveFile(const kwsys_stl::string& source)
 {
 #ifdef _WIN32
-  mode_t mode;
-  if ( !SystemTools::GetPermissions(source, mode) )
+  kwsys_stl::wstring const& ws =
+    SystemTools::ConvertToWindowsExtendedPath(source);
+  if (DeleteFileW(ws.c_str()))
+    {
+    return true;
+    }
+  DWORD err = GetLastError();
+  if (err == ERROR_FILE_NOT_FOUND ||
+      err == ERROR_PATH_NOT_FOUND)
+    {
+    return true;
+    }
+  if (err != ERROR_ACCESS_DENIED)
     {
     return false;
     }
-  /* Win32 unlink is stupid --- it fails if the file is read-only  */
-  SystemTools::SetPermissions(source, S_IWRITE);
-#endif
-#ifdef _WIN32
-  bool res =
-    _wunlink(SystemTools::ConvertToWindowsExtendedPath(source).c_str()) == 0;
-#else
-  bool res = unlink(source.c_str()) != 0 ? false : true;
-#endif
-#ifdef _WIN32
-  if ( !res )
+  /* The file may be read-only.  Try adding write permission.  */
+  mode_t mode;
+  if (!SystemTools::GetPermissions(source, mode) ||
+      !SystemTools::SetPermissions(source, S_IWRITE))
     {
-    SystemTools::SetPermissions(source, mode);
+    SetLastError(err);
+    return false;
     }
+  if (DeleteFileW(ws.c_str()) ||
+      GetLastError() == ERROR_FILE_NOT_FOUND ||
+      GetLastError() == ERROR_PATH_NOT_FOUND)
+    {
+    return true;
+    }
+  /* Try to restore the original permissions.  */
+  SystemTools::SetPermissions(source, mode);
+  SetLastError(err);
+  return false;
+#else
+  return unlink(source.c_str()) == 0 || errno == ENOENT;
 #endif
-  return res;
 }
 
 bool SystemTools::RemoveADirectory(const kwsys_stl::string& source)
@@ -3050,10 +3118,11 @@ kwsys_stl::string SystemTools
   return "";
 }
 
-kwsys_stl::string SystemTools::GetRealPath(const kwsys_stl::string& path)
+kwsys_stl::string SystemTools::GetRealPath(const kwsys_stl::string& path,
+                                           kwsys_stl::string* errorMessage)
 {
   kwsys_stl::string ret;
-  Realpath(path, ret);
+  Realpath(path, ret, errorMessage);
   return ret;
 }
 

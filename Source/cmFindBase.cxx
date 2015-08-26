@@ -11,6 +11,9 @@
 ============================================================================*/
 #include "cmFindBase.h"
 
+#include "cmAlgorithms.h"
+#include "cmState.h"
+
 cmFindBase::cmFindBase()
 {
   this->AlreadyInCache = false;
@@ -166,11 +169,9 @@ bool cmFindBase::ParseArguments(std::vector<std::string> const& argsIn)
       }
     else
       {
-      this->VariableDocumentation += "one of the " + this->Names[0];
-      for (unsigned int j = 1; j < this->Names.size() - 1; ++j)
-        {
-        this->VariableDocumentation += ", " + this->Names[j];
-        }
+      this->VariableDocumentation += "one of the ";
+      this->VariableDocumentation += cmJoin(cmRange(this->Names).retreat(1),
+                                            ", ");
       this->VariableDocumentation += " or "
         + this->Names[this->Names.size() - 1] + " libraries be found";
       }
@@ -277,6 +278,7 @@ void cmFindBase::FillSystemEnvironmentPath()
   if(!this->EnvironmentPath.empty())
     {
     paths.AddEnvPath(this->EnvironmentPath);
+    paths.AddEnvPrefixPath("PATH", true);
     }
   // Add PATH
   paths.AddEnvPath("PATH");
@@ -352,25 +354,12 @@ void cmFindBase::PrintFindStuff()
   std::cerr << "NoCMakeSystemPath " << this->NoCMakeSystemPath << "\n";
   std::cerr << "EnvironmentPath " << this->EnvironmentPath << "\n";
   std::cerr << "CMakePathName " << this->CMakePathName << "\n";
-  std::cerr << "Names  ";
-  for(unsigned int i =0; i < this->Names.size(); ++i)
-    {
-    std::cerr << this->Names[i] << " ";
-    }
-  std::cerr << "\n";
+  std::cerr << "Names  " << cmJoin(this->Names, " ") << "\n";
   std::cerr << "\n";
   std::cerr << "SearchPathSuffixes  ";
-  for(unsigned int i =0; i < this->SearchPathSuffixes.size(); ++i)
-    {
-    std::cerr << this->SearchPathSuffixes[i] << "\n";
-    }
-  std::cerr << "\n";
+  std::cerr << cmJoin(this->SearchPathSuffixes, "\n") << "\n";
   std::cerr << "SearchPaths\n";
-  for(std::vector<std::string>::const_iterator i = this->SearchPaths.begin();
-      i != this->SearchPaths.end(); ++i)
-    {
-    std::cerr << "[" << *i << "]\n";
-    }
+  std::cerr << cmWrap("[", this->SearchPaths, "]", "\n") << "\n";
 }
 
 bool cmFindBase::CheckForVariableInCache()
@@ -378,18 +367,18 @@ bool cmFindBase::CheckForVariableInCache()
   if(const char* cacheValue =
      this->Makefile->GetDefinition(this->VariableName))
     {
-    cmCacheManager::CacheIterator it =
-      this->Makefile->GetCacheManager()->
-      GetCacheIterator(this->VariableName.c_str());
+    cmState* state = this->Makefile->GetState();
+    const char* cacheEntry = state->GetCacheEntryValue(this->VariableName);
     bool found = !cmSystemTools::IsNOTFOUND(cacheValue);
-    bool cached = !it.IsAtEnd();
+    bool cached = cacheEntry ? true : false;
     if(found)
       {
       // If the user specifies the entry on the command line without a
       // type we should add the type and docstring but keep the
       // original value.  Tell the subclass implementations to do
       // this.
-      if(cached && it.GetType() == cmCacheManager::UNINITIALIZED)
+      if(cached && state->GetCacheEntryType(this->VariableName)
+                                            == cmState::UNINITIALIZED)
         {
         this->AlreadyInCacheWithoutMetaInfo = true;
         }
@@ -397,7 +386,8 @@ bool cmFindBase::CheckForVariableInCache()
       }
     else if(cached)
       {
-      const char* hs = it.GetProperty("HELPSTRING");
+      const char* hs = state->GetCacheEntryProperty(this->VariableName,
+                                                     "HELPSTRING");
       this->VariableDocumentation = hs?hs:"(none)";
       }
     }

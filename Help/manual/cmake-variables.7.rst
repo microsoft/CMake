@@ -25,6 +25,7 @@ Variables that Provide Information
    /variable/CMAKE_CFG_INTDIR
    /variable/CMAKE_COMMAND
    /variable/CMAKE_CROSSCOMPILING
+   /variable/CMAKE_CROSSCOMPILING_EMULATOR
    /variable/CMAKE_CTEST_COMMAND
    /variable/CMAKE_CURRENT_BINARY_DIR
    /variable/CMAKE_CURRENT_LIST_DIR
@@ -181,6 +182,7 @@ Variables that Describe the System
    /variable/CMAKE_SYSTEM_VERSION
    /variable/CYGWIN
    /variable/ENV
+   /variable/GHS-MULTI
    /variable/MINGW
    /variable/MSVC10
    /variable/MSVC11
@@ -211,6 +213,7 @@ Variables that Control the Build
    /variable/CMAKE_ANDROID_API_MIN
    /variable/CMAKE_ANDROID_GUI
    /variable/CMAKE_ARCHIVE_OUTPUT_DIRECTORY
+   /variable/CMAKE_ARCHIVE_OUTPUT_DIRECTORY_CONFIG
    /variable/CMAKE_AUTOMOC_MOC_OPTIONS
    /variable/CMAKE_AUTOMOC
    /variable/CMAKE_AUTORCC
@@ -232,8 +235,10 @@ Variables that Control the Build
    /variable/CMAKE_INSTALL_NAME_DIR
    /variable/CMAKE_INSTALL_RPATH
    /variable/CMAKE_INSTALL_RPATH_USE_LINK_PATH
+   /variable/CMAKE_LANG_INCLUDE_WHAT_YOU_USE
    /variable/CMAKE_LANG_VISIBILITY_PRESET
    /variable/CMAKE_LIBRARY_OUTPUT_DIRECTORY
+   /variable/CMAKE_LIBRARY_OUTPUT_DIRECTORY_CONFIG
    /variable/CMAKE_LIBRARY_PATH_FLAG
    /variable/CMAKE_LINK_DEF_FILE_FLAG
    /variable/CMAKE_LINK_DEPENDS_NO_SHARED
@@ -254,6 +259,7 @@ Variables that Control the Build
    /variable/CMAKE_PDB_OUTPUT_DIRECTORY_CONFIG
    /variable/CMAKE_POSITION_INDEPENDENT_CODE
    /variable/CMAKE_RUNTIME_OUTPUT_DIRECTORY
+   /variable/CMAKE_RUNTIME_OUTPUT_DIRECTORY_CONFIG
    /variable/CMAKE_SHARED_LINKER_FLAGS_CONFIG
    /variable/CMAKE_SHARED_LINKER_FLAGS
    /variable/CMAKE_SKIP_BUILD_RPATH
@@ -263,6 +269,7 @@ Variables that Control the Build
    /variable/CMAKE_TRY_COMPILE_CONFIGURATION
    /variable/CMAKE_USE_RELATIVE_PATHS
    /variable/CMAKE_VISIBILITY_INLINES_HIDDEN
+   /variable/CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD
    /variable/CMAKE_WIN32_EXECUTABLE
    /variable/CMAKE_XCODE_ATTRIBUTE_an-attribute
    /variable/EXECUTABLE_OUTPUT_PATH
@@ -306,6 +313,10 @@ Variables for Languages
    /variable/CMAKE_LANG_FLAGS_RELEASE
    /variable/CMAKE_LANG_FLAGS_RELWITHDEBINFO
    /variable/CMAKE_LANG_FLAGS
+   /variable/CMAKE_LANG_GHS_KERNEL_FLAGS_DEBUG
+   /variable/CMAKE_LANG_GHS_KERNEL_FLAGS_MINSIZEREL
+   /variable/CMAKE_LANG_GHS_KERNEL_FLAGS_RELEASE
+   /variable/CMAKE_LANG_GHS_KERNEL_FLAGS_RELWITHDEBINFO
    /variable/CMAKE_LANG_IGNORE_EXTENSIONS
    /variable/CMAKE_LANG_IMPLICIT_INCLUDE_DIRECTORIES
    /variable/CMAKE_LANG_IMPLICIT_LINK_DIRECTORIES

@@ -12,18 +12,14 @@
 #include "cmQTWrapUICommand.h"
 
 // cmQTWrapUICommand
-bool cmQTWrapUICommand::InitialPass(std::vector<std::string> const& argsIn,
+bool cmQTWrapUICommand::InitialPass(std::vector<std::string> const& args,
                                     cmExecutionStatus &)
 {
-  if(argsIn.size() < 4 )
+  if(args.size() < 4 )
     {
     this->SetError("called with incorrect number of arguments");
     return false;
     }
-
-  // This command supports source list inputs for compatibility.
-  std::vector<std::string> args;
-  this->Makefile->ExpandSourceListArguments(argsIn, args, 3);
 
   // Get the uic and moc executables to run in the custom commands.
   const char* uic_exe =
@@ -40,7 +36,7 @@ bool cmQTWrapUICommand::InitialPass(std::vector<std::string> const& argsIn,
     this->Makefile->GetSafeDefinition(sourceList);
 
   // Create rules for all sources listed.
-  for(std::vector<std::string>::iterator j = (args.begin() + 3);
+  for(std::vector<std::string>::const_iterator j = (args.begin() + 3);
       j != args.end(); ++j)
     {
     cmSourceFile *curr = this->Makefile->GetSource(*j);
@@ -50,15 +46,15 @@ bool cmQTWrapUICommand::InitialPass(std::vector<std::string> const& argsIn,
       // Compute the name of the files to generate.
       std::string srcName =
         cmSystemTools::GetFilenameWithoutLastExtension(*j);
-      std::string hName = this->Makefile->GetCurrentOutputDirectory();
+      std::string hName = this->Makefile->GetCurrentBinaryDirectory();
       hName += "/";
       hName += srcName;
       hName += ".h";
-      std::string cxxName = this->Makefile->GetCurrentOutputDirectory();
+      std::string cxxName = this->Makefile->GetCurrentBinaryDirectory();
       cxxName += "/";
       cxxName += srcName;
       cxxName += ".cxx";
-      std::string mocName = this->Makefile->GetCurrentOutputDirectory();
+      std::string mocName = this->Makefile->GetCurrentBinaryDirectory();
       mocName += "/moc_";
       mocName += srcName;
       mocName += ".cxx";
@@ -73,11 +69,11 @@ bool cmQTWrapUICommand::InitialPass(std::vector<std::string> const& argsIn,
         {
         if(curr && curr->GetPropertyAsBool("GENERATED"))
           {
-          uiName = this->Makefile->GetCurrentOutputDirectory();
+          uiName = this->Makefile->GetCurrentBinaryDirectory();
           }
         else
           {
-          uiName = this->Makefile->GetCurrentDirectory();
+          uiName = this->Makefile->GetCurrentSourceDirectory();
           }
         uiName += "/";
         uiName += *j;

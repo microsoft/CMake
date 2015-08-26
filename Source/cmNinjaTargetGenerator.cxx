@@ -45,7 +45,8 @@ cmNinjaTargetGenerator::New(cmGeneratorTarget* target)
         // (i.e. top-level) directory.  CMake creates copies of these targets
         // in every directory, which we don't need.
         cmMakefile *mf = target->Target->GetMakefile();
-        if (strcmp(mf->GetStartDirectory(), mf->GetHomeDirectory()) == 0)
+        if (strcmp(mf->GetCurrentSourceDirectory(),
+                   mf->GetHomeDirectory()) == 0)
           return new cmNinjaUtilityTargetGenerator(target);
         // else fallthrough
       }
@@ -94,6 +95,13 @@ cmGlobalNinjaGenerator* cmNinjaTargetGenerator::GetGlobalGenerator() const
 std::string const& cmNinjaTargetGenerator::GetConfigName() const
 {
   return this->LocalGenerator->GetConfigName();
+}
+
+std::string cmNinjaTargetGenerator::LanguageCompilerRule(
+  const std::string& lang) const
+{
+  return lang + "_COMPILER__" +
+    cmGlobalNinjaGenerator::EncodeRuleName(this->Target->GetName());
 }
 
 // TODO: Picked up from cmMakefileTargetGenerator.  Refactor it.
@@ -174,7 +182,7 @@ cmNinjaTargetGenerator::ComputeFlagsForObject(cmSourceFile const* source,
                                         // needed by cmcldeps
                                             false,
                                             this->GetConfigName());
-    if(cmGlobalNinjaGenerator::IsMinGW())
+    if (this->GetGlobalGenerator()->IsGCCOnWindows())
       cmSystemTools::ReplaceString(includeFlags, "\\", "/");
 
     this->LocalGenerator->AppendFlags(languageFlags, includeFlags);
@@ -231,7 +239,7 @@ ComputeDefines(cmSourceFile const* source, const std::string& language)
 
   // Add preprocessor definitions for this target and configuration.
   this->LocalGenerator->AddCompileDefinitions(defines, this->Target,
-                                             this->GetConfigName());
+                                             this->GetConfigName(), language);
   this->LocalGenerator->AppendDefines
     (defines,
      source->GetProperty("COMPILE_DEFINITIONS"));
@@ -449,6 +457,23 @@ cmNinjaTargetGenerator
   std::string compileCmd = mf->GetRequiredDefinition(cmdVar);
   std::vector<std::string> compileCmds;
   cmSystemTools::ExpandListArgument(compileCmd, compileCmds);
+
+  // Maybe insert an include-what-you-use runner.
+  if (!compileCmds.empty() && (lang == "C" || lang == "CXX"))
+    {
+    std::string const iwyu_prop = lang + "_INCLUDE_WHAT_YOU_USE";
+    const char *iwyu = this->Target->GetProperty(iwyu_prop);
+    if (iwyu && *iwyu)
+      {
+      std::string run_iwyu =
+        this->GetLocalGenerator()->ConvertToOutputFormat(
+          cmSystemTools::GetCMakeCommand(), cmLocalGenerator::SHELL);
+      run_iwyu += " -E __run_iwyu --iwyu=";
+      run_iwyu += this->GetLocalGenerator()->EscapeForShell(iwyu);
+      run_iwyu += " -- ";
+      compileCmds.front().insert(0, run_iwyu);
+      }
+    }
 
   if (!compileCmds.empty())
     {

@@ -20,6 +20,7 @@
 #include "cmGeneratorExpressionDAGChecker.h"
 #include "cmComputeLinkInformation.h"
 #include "cmCustomCommandGenerator.h"
+#include "cmAlgorithms.h"
 
 #include <queue>
 
@@ -131,8 +132,7 @@ struct TagVisitor
 
   TagVisitor(cmTarget *target, DataType& data)
     : Data(data), Target(target),
-    GlobalGenerator(target->GetMakefile()
-                          ->GetLocalGenerator()->GetGlobalGenerator()),
+    GlobalGenerator(target->GetMakefile()->GetGlobalGenerator()),
     Header(CM_HEADER_REGEX),
     IsObjLib(target->GetType() == cmTarget::OBJECT_LIBRARY)
   {
@@ -225,7 +225,7 @@ cmGeneratorTarget::cmGeneratorTarget(cmTarget* t): Target(t),
 {
   this->Makefile = this->Target->GetMakefile();
   this->LocalGenerator = this->Makefile->GetLocalGenerator();
-  this->GlobalGenerator = this->LocalGenerator->GetGlobalGenerator();
+  this->GlobalGenerator = this->Makefile->GetGlobalGenerator();
 }
 
 //----------------------------------------------------------------------------
@@ -459,11 +459,11 @@ cmGeneratorTarget
 void
 cmGeneratorTarget::GetExpectedXamlHeaders(std::set<std::string>& headers,
                                           const std::string& config) const
-  {
+{
   XamlData data;
   IMPLEMENT_VISIT_IMPL(Xaml, COMMA cmGeneratorTarget::XamlData)
   headers = data.ExpectedXamlHeaders;
-  }
+}
 
 //----------------------------------------------------------------------------
 void
@@ -561,12 +561,12 @@ void cmGeneratorTarget::GetSourceFiles(std::vector<cmSourceFile*> &files,
 }
 
 //----------------------------------------------------------------------------
-cmSourceFile const*
+std::string
 cmGeneratorTarget::GetModuleDefinitionFile(const std::string& config) const
 {
-  std::vector<cmSourceFile const*> data;
-  IMPLEMENT_VISIT(ModuleDefinitionFile);
-  return data.empty() ? nullptr : data.back();
+  std::string data;
+  IMPLEMENT_VISIT_IMPL(ModuleDefinitionFile, COMMA std::string)
+  return data;
 }
 
 //----------------------------------------------------------------------------
@@ -577,23 +577,22 @@ cmGeneratorTarget::UseObjectLibraries(std::vector<std::string>& objs,
   std::vector<cmSourceFile const*> objectFiles;
   this->GetExternalObjects(objectFiles, config);
   std::vector<cmTarget*> objectLibraries;
-  std::set<cmTarget*> emitted;
   for(std::vector<cmSourceFile const*>::const_iterator
       it = objectFiles.begin(); it != objectFiles.end(); ++it)
     {
     std::string objLib = (*it)->GetObjectLibrary();
     if (cmTarget* tgt = this->Makefile->FindTargetToUse(objLib))
       {
-      if (emitted.insert(tgt).second)
-        {
-        objectLibraries.push_back(tgt);
-        }
+      objectLibraries.push_back(tgt);
       }
     }
 
+  std::vector<cmTarget*>::const_iterator end
+      = cmRemoveDuplicates(objectLibraries);
+
   for(std::vector<cmTarget*>::const_iterator
         ti = objectLibraries.begin();
-      ti != objectLibraries.end(); ++ti)
+      ti != end; ++ti)
     {
     cmTarget* objLib = *ti;
     cmGeneratorTarget* ogt =
@@ -648,8 +647,7 @@ cmTargetTraceDependencies
 {
   // Convenience.
   this->Makefile = this->Target->GetMakefile();
-  this->GlobalGenerator =
-    this->Makefile->GetLocalGenerator()->GetGlobalGenerator();
+  this->GlobalGenerator = this->Makefile->GetGlobalGenerator();
   this->CurrentEntry = 0;
 
   // Queue all the source files already specified for the target.
@@ -1010,9 +1008,10 @@ cmGeneratorTarget::GetCreateRuleVariable(std::string const& lang,
 
 //----------------------------------------------------------------------------
 std::vector<std::string>
-cmGeneratorTarget::GetIncludeDirectories(const std::string& config) const
+cmGeneratorTarget::GetIncludeDirectories(const std::string& config,
+                                         const std::string& lang) const
 {
-  return this->Target->GetIncludeDirectories(config);
+  return this->Target->GetIncludeDirectories(config, lang);
 }
 
 //----------------------------------------------------------------------------
@@ -1024,8 +1023,7 @@ void cmGeneratorTarget::GenerateTargetManifest(
     return;
     }
   cmMakefile* mf = this->Target->GetMakefile();
-  cmLocalGenerator* lg = mf->GetLocalGenerator();
-  cmGlobalGenerator* gg = lg->GetGlobalGenerator();
+  cmGlobalGenerator* gg = mf->GetGlobalGenerator();
 
   // Get the names.
   std::string name;
@@ -1098,8 +1096,8 @@ bool cmStrictTargetComparison::operator()(cmTarget const* t1,
   int nameResult = strcmp(t1->GetName().c_str(), t2->GetName().c_str());
   if (nameResult == 0)
     {
-    return strcmp(t1->GetMakefile()->GetStartOutputDirectory(),
-                  t2->GetMakefile()->GetStartOutputDirectory()) < 0;
+    return strcmp(t1->GetMakefile()->GetCurrentBinaryDirectory(),
+                  t2->GetMakefile()->GetCurrentBinaryDirectory()) < 0;
     }
   return nameResult < 0;
 }

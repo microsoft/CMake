@@ -51,12 +51,14 @@ void CCONV cmSetError(void *info, const char *err)
 unsigned int CCONV  cmGetCacheMajorVersion(void *arg)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  return mf->GetCacheMajorVersion();
+  cmCacheManager *manager = mf->GetCMakeInstance()->GetCacheManager();
+  return manager->GetCacheMajorVersion();
 }
 unsigned int CCONV cmGetCacheMinorVersion(void *arg)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  return mf->GetCacheMinorVersion();
+  cmCacheManager *manager = mf->GetCMakeInstance()->GetCacheManager();
+  return manager->GetCacheMinorVersion();
 }
 
 unsigned int CCONV cmGetMajorVersion(void *)
@@ -85,27 +87,27 @@ void CCONV cmAddCacheDefinition(void *arg, const char* name,
     {
     case CM_CACHE_BOOL:
       mf->AddCacheDefinition(name,value,doc,
-                             cmCacheManager::BOOL);
+                             cmState::BOOL);
       break;
     case CM_CACHE_PATH:
       mf->AddCacheDefinition(name,value,doc,
-                             cmCacheManager::PATH);
+                             cmState::PATH);
       break;
     case CM_CACHE_FILEPATH:
       mf->AddCacheDefinition(name,value,doc,
-                             cmCacheManager::FILEPATH);
+                             cmState::FILEPATH);
       break;
     case CM_CACHE_STRING:
       mf->AddCacheDefinition(name,value,doc,
-                             cmCacheManager::STRING);
+                             cmState::STRING);
       break;
     case CM_CACHE_INTERNAL:
       mf->AddCacheDefinition(name,value,doc,
-                             cmCacheManager::INTERNAL);
+                             cmState::INTERNAL);
       break;
     case CM_CACHE_STATIC:
       mf->AddCacheDefinition(name,value,doc,
-                             cmCacheManager::STATIC);
+                             cmState::STATIC);
       break;
     }
 }
@@ -129,22 +131,22 @@ const char* CCONV cmGetHomeOutputDirectory(void *arg)
 const char* CCONV cmGetStartDirectory(void *arg)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  return mf->GetStartDirectory();
+  return mf->GetCurrentSourceDirectory();
 }
 const char* CCONV cmGetStartOutputDirectory(void *arg)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  return mf->GetStartOutputDirectory();
+  return mf->GetCurrentBinaryDirectory();
 }
 const char* CCONV cmGetCurrentDirectory(void *arg)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  return mf->GetCurrentDirectory();
+  return mf->GetCurrentSourceDirectory();
 }
 const char* CCONV cmGetCurrentOutputDirectory(void *arg)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  return mf->GetCurrentOutputDirectory();
+  return mf->GetCurrentBinaryDirectory();
 }
 const char* CCONV cmGetDefinition(void *arg,const char*def)
 {
@@ -162,7 +164,7 @@ int CCONV cmIsOn(void *arg, const char* name)
 int CCONV cmCommandExists(void *arg, const char* name)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  return static_cast<int>(mf->CommandExists(name));
+  return static_cast<int>(mf->GetState()->GetCommand(name) ? 1 : 0);
 }
 
 void CCONV cmAddDefineFlag(void *arg, const char* definition)
@@ -438,15 +440,14 @@ void CCONV cmExpandSourceListArguments(void *arg,
                                  char ***resArgv,
                                  unsigned int startArgumentIndex)
 {
-  cmMakefile *mf = static_cast<cmMakefile *>(arg);
+  (void)arg;
+  (void)startArgumentIndex;
   std::vector<std::string> result;
-  std::vector<std::string> args2;
   int i;
   for (i = 0; i < numArgs; ++i)
     {
-    args2.push_back(args[i]);
+    result.push_back(args[i]);
     }
-  mf->ExpandSourceListArguments(args2, result, startArgumentIndex);
   int resargc = static_cast<int>(result.size());
   char **resargv = 0;
   if (resargc)
@@ -866,7 +867,7 @@ void CCONV DefineSourceFileProperty (void *arg, const char *name,
   int chained)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  mf->GetCMakeInstance()->DefineProperty(name,cmProperty::SOURCE_FILE,
+  mf->GetState()->DefineProperty(name,cmProperty::SOURCE_FILE,
                                          briefDocs, longDocs,
                                          chained != 0);
 }

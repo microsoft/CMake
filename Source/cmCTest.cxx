@@ -26,6 +26,9 @@
 #include "cmVersionMacros.h"
 #include "cmCTestCommand.h"
 #include "cmCTestStartCommand.h"
+#include "cmAlgorithms.h"
+#include "cmState.h"
+#include "cmXMLWriter.h"
 
 #include "cmCTestBuildHandler.h"
 #include "cmCTestBuildAndTestHandler.h"
@@ -328,9 +331,11 @@ cmCTest::cmCTest()
   this->OutputTestOutputOnTestFailure = false;
   this->ComputedCompressTestOutput = false;
   this->ComputedCompressMemCheckOutput = false;
-  if(cmSystemTools::GetEnv("CTEST_OUTPUT_ON_FAILURE"))
+  this->RepeatTests = 1; // default to run each test once
+  this->RepeatUntilFail = false;
+  if(const char* outOnFail = cmSystemTools::GetEnv("CTEST_OUTPUT_ON_FAILURE"))
     {
-    this->OutputTestOutputOnTestFailure = true;
+    this->OutputTestOutputOnTestFailure = !cmSystemTools::IsOff(outOnFail);
     }
   this->InitStreams();
 
@@ -463,7 +468,13 @@ cmCTest::Part cmCTest::GetPartFromName(const char* name)
 //----------------------------------------------------------------------
 int cmCTest::Initialize(const char* binary_dir, cmCTestStartCommand* command)
 {
-  cmCTestLog(this, DEBUG, "Here: " << __LINE__ << std::endl);
+  bool quiet = false;
+  if (command && command->ShouldBeQuiet())
+    {
+    quiet = true;
+    }
+
+  cmCTestOptionalLog(this, DEBUG, "Here: " << __LINE__ << std::endl, quiet);
   if(!this->InteractiveDebugMode)
     {
     this->BlockTestErrorDiagnostics();
@@ -478,37 +489,37 @@ int cmCTest::Initialize(const char* binary_dir, cmCTestStartCommand* command)
 
   this->UpdateCTestConfiguration();
 
-  cmCTestLog(this, DEBUG, "Here: " << __LINE__ << std::endl);
+  cmCTestOptionalLog(this, DEBUG, "Here: " << __LINE__ << std::endl, quiet);
   if ( this->ProduceXML )
     {
-    cmCTestLog(this, DEBUG, "Here: " << __LINE__ << std::endl);
-    cmCTestLog(this, OUTPUT,
-               "   Site: " << this->GetCTestConfiguration("Site") << std::endl
-               << "   Build name: "
-               << cmCTest::SafeBuildIdField(
-                 this->GetCTestConfiguration("BuildName"))
-               << std::endl);
-    cmCTestLog(this, DEBUG, "Produce XML is on" << std::endl);
+    cmCTestOptionalLog(this, DEBUG, "Here: " << __LINE__ << std::endl, quiet);
+    cmCTestOptionalLog(this, OUTPUT,
+      "   Site: " << this->GetCTestConfiguration("Site") << std::endl <<
+      "   Build name: " << cmCTest::SafeBuildIdField(
+      this->GetCTestConfiguration("BuildName")) << std::endl, quiet);
+    cmCTestOptionalLog(this, DEBUG, "Produce XML is on" << std::endl, quiet);
     if ( this->TestModel == cmCTest::NIGHTLY &&
          this->GetCTestConfiguration("NightlyStartTime").empty() )
       {
-      cmCTestLog(this, WARNING,
-                 "WARNING: No nightly start time found please set in"
-                 " CTestConfig.cmake or DartConfig.cmake" << std::endl);
-      cmCTestLog(this, DEBUG, "Here: " << __LINE__ << std::endl);
+      cmCTestOptionalLog(this, WARNING,
+        "WARNING: No nightly start time found please set in CTestConfig.cmake"
+        " or DartConfig.cmake" << std::endl, quiet);
+      cmCTestOptionalLog(this, DEBUG, "Here: " << __LINE__ << std::endl,
+        quiet);
       return 0;
       }
     }
 
   cmake cm;
-  cmGlobalGenerator gg;
-  gg.SetCMakeInstance(&cm);
-  cmsys::auto_ptr<cmLocalGenerator> lg(gg.CreateLocalGenerator());
+  cm.SetHomeDirectory("");
+  cm.SetHomeOutputDirectory("");
+  cmGlobalGenerator gg(&cm);
+  cmsys::auto_ptr<cmLocalGenerator> lg(gg.MakeLocalGenerator());
   cmMakefile *mf = lg->GetMakefile();
   if ( !this->ReadCustomConfigurationFileTree(this->BinaryDir.c_str(), mf) )
     {
-    cmCTestLog(this, DEBUG, "Cannot find custom configuration file tree"
-      << std::endl);
+    cmCTestOptionalLog(this, DEBUG,
+      "Cannot find custom configuration file tree" << std::endl, quiet);
     return 0;
     }
 
@@ -583,9 +594,10 @@ int cmCTest::Initialize(const char* binary_dir, cmCTestStartCommand* command)
         }
       if (tag.empty() || (0 != command) || this->Parts[PartStart])
         {
-        cmCTestLog(this, DEBUG, "TestModel: " << this->GetTestModelString()
-          << std::endl);
-        cmCTestLog(this, DEBUG, "TestModel: " << this->TestModel << std::endl);
+        cmCTestOptionalLog(this, DEBUG, "TestModel: " <<
+          this->GetTestModelString() << std::endl, quiet);
+        cmCTestOptionalLog(this, DEBUG, "TestModel: " <<
+          this->TestModel << std::endl, quiet);
         if ( this->TestModel == cmCTest::NIGHTLY )
           {
           lctime = this->GetNightlyTime(
@@ -609,8 +621,8 @@ int cmCTest::Initialize(const char* binary_dir, cmCTestStartCommand* command)
         ofs.close();
         if ( 0 == command )
           {
-          cmCTestLog(this, OUTPUT, "Create new tag: " << tag << " - "
-            << this->GetTestModelString() << std::endl);
+          cmCTestOptionalLog(this, OUTPUT, "Create new tag: " << tag << " - "
+            << this->GetTestModelString() << std::endl, quiet);
           }
         }
       }
@@ -630,8 +642,8 @@ int cmCTest::Initialize(const char* binary_dir, cmCTestStartCommand* command)
         return 0;
         }
 
-      cmCTestLog(this, OUTPUT, "  Use existing tag: " << tag << " - "
-        << this->GetTestModelString() << std::endl);
+      cmCTestOptionalLog(this, OUTPUT, "  Use existing tag: " << tag << " - "
+        << this->GetTestModelString() << std::endl, quiet);
       }
 
     this->CurrentTag = tag;
@@ -675,10 +687,9 @@ bool cmCTest::InitializeFromCommand(cmCTestStartCommand* command)
 
   if ( !fname.empty() )
     {
-    cmCTestLog(this, OUTPUT, "   Reading ctest configuration file: "
-      << fname << std::endl);
-    bool readit = mf->ReadListFile(mf->GetCurrentListFile(),
-      fname.c_str() );
+    cmCTestOptionalLog(this, OUTPUT, "   Reading ctest configuration file: "
+      << fname << std::endl, command->ShouldBeQuiet());
+    bool readit = mf->ReadDependentFile(fname.c_str());
     if(!readit)
       {
       std::string m = "Could not find include file: ";
@@ -689,19 +700,20 @@ bool cmCTest::InitializeFromCommand(cmCTestStartCommand* command)
     }
   else
     {
-    cmCTestLog(this, WARNING,
+    cmCTestOptionalLog(this, WARNING,
       "Cannot locate CTest configuration: in BuildDirectory: "
-      << bld_dir_fname << std::endl);
-    cmCTestLog(this, WARNING,
+      << bld_dir_fname << std::endl, command->ShouldBeQuiet());
+    cmCTestOptionalLog(this, WARNING,
       "Cannot locate CTest configuration: in SourceDirectory: "
-      << src_dir_fname << std::endl);
+      << src_dir_fname << std::endl, command->ShouldBeQuiet());
     }
 
   this->SetCTestConfigurationFromCMakeVariable(mf, "NightlyStartTime",
-    "CTEST_NIGHTLY_START_TIME");
-  this->SetCTestConfigurationFromCMakeVariable(mf, "Site", "CTEST_SITE");
+    "CTEST_NIGHTLY_START_TIME", command->ShouldBeQuiet());
+  this->SetCTestConfigurationFromCMakeVariable(mf, "Site", "CTEST_SITE",
+    command->ShouldBeQuiet());
   this->SetCTestConfigurationFromCMakeVariable(mf, "BuildName",
-    "CTEST_BUILD_NAME");
+    "CTEST_BUILD_NAME", command->ShouldBeQuiet());
   const char* dartVersion = mf->GetDefinition("CTEST_DART_SERVER_VERSION");
   if ( dartVersion )
     {
@@ -720,8 +732,9 @@ bool cmCTest::InitializeFromCommand(cmCTestStartCommand* command)
     {
     return false;
     }
-  cmCTestLog(this, OUTPUT, "   Use " << this->GetTestModelString()
-    << " tag: " << this->GetCurrentTag() << std::endl);
+  cmCTestOptionalLog(this, OUTPUT, "   Use " << this->GetTestModelString()
+    << " tag: " << this->GetCurrentTag() << std::endl,
+    command->ShouldBeQuiet());
   return true;
 }
 
@@ -1332,16 +1345,21 @@ int cmCTest::RunTest(std::vector<const char*> argv,
       }
 
     *retVal = inst.Run(args, output);
-    *output += oss.str();
-    if ( log )
+    if(output)
+      {
+      *output += oss.str();
+      }
+    if ( log && output)
       {
       *log << *output;
       }
     cmSystemTools::ChangeDirectory(oldpath);
-
-    cmCTestLog(this, HANDLER_VERBOSE_OUTPUT,
-      "Internal cmCTest object used to run test." << std::endl
-      <<  *output << std::endl);
+    if(output)
+      {
+      cmCTestLog(this, HANDLER_VERBOSE_OUTPUT,
+                 "Internal cmCTest object used to run test." << std::endl
+                 <<  *output << std::endl);
+      }
 
     return cmsysProcess_State_Exited;
     }
@@ -1411,7 +1429,10 @@ int cmCTest::RunTest(std::vector<const char*> argv,
     *retVal = cmsysProcess_GetExitException(cp);
     std::string outerr = "\n*** Exception executing: ";
     outerr += cmsysProcess_GetExceptionString(cp);
-    *output += outerr;
+    if(output)
+      {
+      *output += outerr;
+      }
     cmCTestLog(this, HANDLER_VERBOSE_OUTPUT, outerr.c_str() << std::endl
       << std::flush);
     }
@@ -1419,7 +1440,10 @@ int cmCTest::RunTest(std::vector<const char*> argv,
     {
     std::string outerr = "\n*** ERROR executing: ";
     outerr += cmsysProcess_GetErrorString(cp);
-    *output += outerr;
+    if(output)
+      {
+      *output += outerr;
+      }
     cmCTestLog(this, HANDLER_VERBOSE_OUTPUT, outerr.c_str() << std::endl
       << std::flush);
     }
@@ -1466,7 +1490,7 @@ std::string cmCTest::SafeBuildIdField(const std::string& value)
 }
 
 //----------------------------------------------------------------------
-void cmCTest::StartXML(std::ostream& ostr, bool append)
+void cmCTest::StartXML(cmXMLWriter& xml, bool append)
 {
   if(this->CurrentTag.empty())
     {
@@ -1489,42 +1513,45 @@ void cmCTest::StartXML(std::ostream& ostr, bool append)
   std::string site = cmCTest::SafeBuildIdField(
     this->GetCTestConfiguration("Site"));
 
-  ostr << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-       << "<Site BuildName=\"" << buildname << "\"\n"
-       << "\tBuildStamp=\"" << stamp << "\"\n"
-       << "\tName=\"" << site << "\"\n"
-       << "\tGenerator=\"ctest-" << cmVersion::GetCMakeVersion() << "\"\n"
-       << (append? "\tAppend=\"true\"\n":"")
-       << "\tCompilerName=\"" << this->GetCTestConfiguration("Compiler")
-       << "\"\n"
+  xml.StartDocument();
+  xml.StartElement("Site");
+  xml.Attribute("BuildName", buildname);
+  xml.BreakAttributes();
+  xml.Attribute("BuildStamp", stamp);
+  xml.Attribute("Name", site);
+  xml.Attribute("Generator",
+                     std::string("ctest-") + cmVersion::GetCMakeVersion());
+  if(append)
+    {
+    xml.Attribute("Append", "true");
+    }
+  xml.Attribute("CompilerName", this->GetCTestConfiguration("Compiler"));
 #ifdef _COMPILER_VERSION
-       << "\tCompilerVersion=\"_COMPILER_VERSION\"\n"
+  xml.Attribute("CompilerVersion", _COMPILER_VERSION);
 #endif
-       << "\tOSName=\"" << info.GetOSName() << "\"\n"
-       << "\tHostname=\"" << info.GetHostname() << "\"\n"
-       << "\tOSRelease=\"" << info.GetOSRelease() << "\"\n"
-       << "\tOSVersion=\"" << info.GetOSVersion() << "\"\n"
-       << "\tOSPlatform=\"" << info.GetOSPlatform() << "\"\n"
-       << "\tIs64Bits=\"" << info.Is64Bits() << "\"\n"
-       << "\tVendorString=\"" << info.GetVendorString() << "\"\n"
-       << "\tVendorID=\"" << info.GetVendorID() << "\"\n"
-       << "\tFamilyID=\"" << info.GetFamilyID() << "\"\n"
-       << "\tModelID=\"" << info.GetModelID() << "\"\n"
-       << "\tProcessorCacheSize=\"" << info.GetProcessorCacheSize() << "\"\n"
-       << "\tNumberOfLogicalCPU=\"" << info.GetNumberOfLogicalCPU() << "\"\n"
-       << "\tNumberOfPhysicalCPU=\""<< info.GetNumberOfPhysicalCPU() << "\"\n"
-       << "\tTotalVirtualMemory=\"" << info.GetTotalVirtualMemory() << "\"\n"
-       << "\tTotalPhysicalMemory=\""<< info.GetTotalPhysicalMemory() << "\"\n"
-       << "\tLogicalProcessorsPerPhysical=\""
-       << info.GetLogicalProcessorsPerPhysical() << "\"\n"
-       << "\tProcessorClockFrequency=\""
-       << info.GetProcessorClockFrequency() << "\"\n"
-       << ">" << std::endl;
-  this->AddSiteProperties(ostr);
+  xml.Attribute("OSName", info.GetOSName());
+  xml.Attribute("Hostname", info.GetHostname());
+  xml.Attribute("OSRelease", info.GetOSRelease());
+  xml.Attribute("OSVersion", info.GetOSVersion());
+  xml.Attribute("OSPlatform", info.GetOSPlatform());
+  xml.Attribute("Is64Bits", info.Is64Bits());
+  xml.Attribute("VendorString", info.GetVendorString());
+  xml.Attribute("VendorID", info.GetVendorID());
+  xml.Attribute("FamilyID", info.GetFamilyID());
+  xml.Attribute("ModelID", info.GetModelID());
+  xml.Attribute("ProcessorCacheSize", info.GetProcessorCacheSize());
+  xml.Attribute("NumberOfLogicalCPU", info.GetNumberOfLogicalCPU());
+  xml.Attribute("NumberOfPhysicalCPU", info.GetNumberOfPhysicalCPU());
+  xml.Attribute("TotalVirtualMemory", info.GetTotalVirtualMemory());
+  xml.Attribute("TotalPhysicalMemory", info.GetTotalPhysicalMemory());
+  xml.Attribute("LogicalProcessorsPerPhysical",
+                     info.GetLogicalProcessorsPerPhysical());
+  xml.Attribute("ProcessorClockFrequency", info.GetProcessorClockFrequency());
+  this->AddSiteProperties(xml);
 }
 
 //----------------------------------------------------------------------
-void cmCTest::AddSiteProperties(std::ostream& ostr)
+void cmCTest::AddSiteProperties(cmXMLWriter& xml)
 {
   cmCTestScriptHandler* ch =
     static_cast<cmCTestScriptHandler*>(this->GetHandler("script"));
@@ -1536,94 +1563,99 @@ void cmCTest::AddSiteProperties(std::ostream& ostr)
     return;
     }
   // This code should go when cdash is changed to use labels only
-  const char* subproject = cm->GetProperty("SubProject", cmProperty::GLOBAL);
+  const char* subproject = cm->GetState()
+                             ->GetGlobalProperty("SubProject");
   if(subproject)
     {
-    ostr << "<Subproject name=\"" << subproject << "\">\n";
+    xml.StartElement("Subproject");
+    xml.Attribute("name", subproject);
     const char* labels =
-      ch->GetCMake()->GetProperty("SubProjectLabels", cmProperty::GLOBAL);
+      ch->GetCMake()->GetState()
+                    ->GetGlobalProperty("SubProjectLabels");
     if(labels)
       {
-      ostr << "  <Labels>\n";
+      xml.StartElement("Labels");
       std::string l = labels;
       std::vector<std::string> args;
       cmSystemTools::ExpandListArgument(l, args);
       for(std::vector<std::string>::iterator i = args.begin();
           i != args.end(); ++i)
         {
-        ostr << "    <Label>" << *i << "</Label>\n";
+        xml.Element("Label", *i);
         }
-      ostr << "  </Labels>\n";
+      xml.EndElement();
       }
-    ostr << "</Subproject>\n";
+    xml.EndElement();
     }
 
   // This code should stay when cdash only does label based sub-projects
-  const char* label = cm->GetProperty("Label", cmProperty::GLOBAL);
+  const char* label = cm->GetState()->GetGlobalProperty("Label");
   if(label)
     {
-    ostr << "<Labels>\n";
-    ostr << "  <Label>" << label << "</Label>\n";
-    ostr << "</Labels>\n";
+    xml.StartElement("Labels");
+    xml.Element("Label", label);
+    xml.EndElement();
     }
 }
 
-
 //----------------------------------------------------------------------
-void cmCTest::EndXML(std::ostream& ostr)
+void cmCTest::EndXML(cmXMLWriter& xml)
 {
-  ostr << "</Site>" << std::endl;
+  xml.EndElement(); // Site
+  xml.EndDocument();
 }
 
 //----------------------------------------------------------------------
-int cmCTest::GenerateCTestNotesOutput(std::ostream& os,
+int cmCTest::GenerateCTestNotesOutput(cmXMLWriter& xml,
   const cmCTest::VectorOfStrings& files)
 {
   std::string buildname = cmCTest::SafeBuildIdField(
     this->GetCTestConfiguration("BuildName"));
   cmCTest::VectorOfStrings::const_iterator it;
-  os << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-     << "<?xml-stylesheet type=\"text/xsl\" "
+  xml.StartDocument();
+  xml.ProcessingInstruction("xml-stylesheet", "type=\"text/xsl\" "
     "href=\"Dart/Source/Server/XSL/Build.xsl "
-    "<file:///Dart/Source/Server/XSL/Build.xsl> \"?>\n"
-     << "<Site BuildName=\"" << buildname
-     << "\" BuildStamp=\""
-     << this->CurrentTag << "-" << this->GetTestModelString() << "\" Name=\""
-     << this->GetCTestConfiguration("Site") << "\" Generator=\"ctest"
-     << cmVersion::GetCMakeVersion()
-     << "\">\n";
-  this->AddSiteProperties(os);
-  os << "<Notes>" << std::endl;
+    "<file:///Dart/Source/Server/XSL/Build.xsl> \"");
+  xml.StartElement("Site");
+  xml.Attribute("BuildName", buildname);
+  xml.Attribute("BuildStamp", this->CurrentTag+"-"+this->GetTestModelString());
+  xml.Attribute("Name", this->GetCTestConfiguration("Site"));
+  xml.Attribute("Generator",std::string("ctest")+cmVersion::GetCMakeVersion());
+  this->AddSiteProperties(xml);
+  xml.StartElement("Notes");
 
   for ( it = files.begin(); it != files.end(); it ++ )
     {
     cmCTestLog(this, OUTPUT, "\tAdd file: " << *it << std::endl);
     std::string note_time = this->CurrentTime();
-    os << "<Note Name=\"" << cmXMLSafe(*it) << "\">\n"
-      << "<Time>" << cmSystemTools::GetTime() << "</Time>\n"
-      << "<DateTime>" << note_time << "</DateTime>\n"
-      << "<Text>" << std::endl;
+    xml.StartElement("Note");
+    xml.Attribute("Name", *it);
+    xml.Element("Time", cmSystemTools::GetTime());
+    xml.Element("DateTime", note_time);
+    xml.StartElement("Text");
     cmsys::ifstream ifs(it->c_str());
     if ( ifs )
       {
       std::string line;
       while ( cmSystemTools::GetLineFromStream(ifs, line) )
         {
-        os << cmXMLSafe(line) << std::endl;
+        xml.Content(line);
+        xml.Content("\n");
         }
       ifs.close();
       }
     else
       {
-      os << "Problem reading file: " << *it << std::endl;
+      xml.Content("Problem reading file: " + *it + "\n");
       cmCTestLog(this, ERROR_MESSAGE, "Problem reading file: " << *it
         << " while creating notes" << std::endl);
       }
-    os << "</Text>\n"
-      << "</Note>" << std::endl;
+    xml.EndElement(); // Text
+    xml.EndElement(); // Note
     }
-  os << "</Notes>\n"
-    << "</Site>" << std::endl;
+  xml.EndElement(); // Notes
+  xml.EndElement(); // Site
+  xml.EndDocument();
   return 1;
 }
 
@@ -1636,8 +1668,8 @@ int cmCTest::GenerateNotesFile(const VectorOfStrings &files)
     cmCTestLog(this, ERROR_MESSAGE, "Cannot open notes file" << std::endl);
     return 1;
     }
-
-  this->GenerateCTestNotesOutput(ofs, files);
+  cmXMLWriter xml(ofs);
+  this->GenerateCTestNotesOutput(xml, files);
   return 0;
 }
 
@@ -1975,11 +2007,11 @@ bool cmCTest::CheckArgument(const std::string& arg, const char* varg1,
 //----------------------------------------------------------------------
 // Processes one command line argument (and its arguments if any)
 // for many simple options and then returns
-void cmCTest::HandleCommandLineArguments(size_t &i,
-                                         std::vector<std::string> &args)
+bool cmCTest::HandleCommandLineArguments(size_t &i,
+                                         std::vector<std::string> &args,
+                                         std::string& errormsg)
 {
   std::string arg = args[i];
-
   if(this->CheckArgument(arg, "-F"))
     {
     this->Failover = true;
@@ -1996,6 +2028,27 @@ void cmCTest::HandleCommandLineArguments(size_t &i,
     int plevel = atoi(arg.substr(2).c_str());
     this->SetParallelLevel(plevel);
     this->ParallelLevelSetInCli = true;
+    }
+  if(this->CheckArgument(arg, "--repeat-until-fail"))
+    {
+    if( i >= args.size() - 1)
+      {
+      errormsg = "'--repeat-until-fail' requires an argument";
+      return false;
+      }
+    i++;
+    long repeat = 1;
+    if(!cmSystemTools::StringToLong(args[i].c_str(), &repeat))
+      {
+      errormsg = "'--repeat-until-fail' given non-integer value '"
+        + args[i] + "'";
+      return false;
+      }
+    this->RepeatTests = static_cast<int>(repeat);
+    if(repeat > 1)
+      {
+      this->RepeatUntilFail = true;
+      }
     }
 
   if(this->CheckArgument(arg, "--no-compress-output"))
@@ -2182,6 +2235,7 @@ void cmCTest::HandleCommandLineArguments(size_t &i,
     this->GetHandler("test")->SetPersistentOption("RerunFailed", "true");
     this->GetHandler("memcheck")->SetPersistentOption("RerunFailed", "true");
     }
+  return true;
 }
 
 //----------------------------------------------------------------------
@@ -2235,9 +2289,9 @@ bool cmCTest::AddVariableDefinition(const std::string &arg)
 {
   std::string name;
   std::string value;
-  cmCacheManager::CacheEntryType type = cmCacheManager::UNINITIALIZED;
+  cmState::CacheEntryType type = cmState::UNINITIALIZED;
 
-  if (cmCacheManager::ParseEntry(arg, name, value, type))
+  if (cmake::ParseCacheEntry(arg, name, value, type))
     {
     this->Definitions[name] = value;
     return true;
@@ -2256,16 +2310,20 @@ int cmCTest::Run(std::vector<std::string> &args, std::string* output)
   bool SRArgumentSpecified = false;
 
   // copy the command line
-  for(size_t i=0; i < args.size(); ++i)
-    {
-    this->InitialCommandLineArguments.push_back(args[i]);
-    }
+  this->InitialCommandLineArguments.insert(
+      this->InitialCommandLineArguments.end(),
+      args.begin(), args.end());
 
   // process the command line arguments
   for(size_t i=1; i < args.size(); ++i)
     {
     // handle the simple commandline arguments
-    this->HandleCommandLineArguments(i,args);
+    std::string errormsg;
+    if(!this->HandleCommandLineArguments(i,args, errormsg))
+      {
+      cmSystemTools::Error(errormsg.c_str());
+      return 1;
+      }
 
     // handle the script arguments -S -SR -SP
     this->HandleScriptArguments(i,args,SRArgumentSpecified);
@@ -2526,7 +2584,7 @@ int cmCTest::ReadCustomConfigurationFileTree(const char* dir, cmMakefile* mf)
     bool erroroc = cmSystemTools::GetErrorOccuredFlag();
     cmSystemTools::ResetErrorOccuredFlag();
 
-    if ( !mf->ReadListFile(0, fname.c_str()) ||
+    if ( !mf->ReadListFile(fname.c_str()) ||
       cmSystemTools::GetErrorOccuredFlag() )
       {
       cmCTestLog(this, ERROR_MESSAGE,
@@ -2556,7 +2614,7 @@ int cmCTest::ReadCustomConfigurationFileTree(const char* dir, cmMakefile* mf)
       {
       cmCTestLog(this, DEBUG, "* Read custom CTest configuration file: "
         << *fileIt << std::endl);
-      if ( !mf->ReadListFile(0, fileIt->c_str()) ||
+      if ( !mf->ReadListFile(fileIt->c_str()) ||
         cmSystemTools::GetErrorOccuredFlag() )
         {
         cmCTestLog(this, ERROR_MESSAGE,
@@ -2741,10 +2799,11 @@ void cmCTest::DetermineNextDayStop()
 }
 
 //----------------------------------------------------------------------
-void cmCTest::SetCTestConfiguration(const char *name, const char* value)
+void cmCTest::SetCTestConfiguration(const char *name, const char* value,
+                                    bool suppress)
 {
-  cmCTestLog(this, HANDLER_VERBOSE_OUTPUT, "SetCTestConfiguration:"
-    << name << ":" << (value ? value : "(null)") << "\n");
+  cmCTestOptionalLog(this, HANDLER_VERBOSE_OUTPUT, "SetCTestConfiguration:"
+    << name << ":" << (value ? value : "(null)") << "\n", suppress);
 
   if ( !name )
     {
@@ -2858,7 +2917,7 @@ void cmCTest::SetConfigType(const char* ct)
 
 //----------------------------------------------------------------------
 bool cmCTest::SetCTestConfigurationFromCMakeVariable(cmMakefile* mf,
-  const char* dconfig, const std::string& cmake_var)
+  const char* dconfig, const std::string& cmake_var, bool suppress)
 {
   const char* ctvar;
   ctvar = mf->GetDefinition(cmake_var);
@@ -2866,10 +2925,10 @@ bool cmCTest::SetCTestConfigurationFromCMakeVariable(cmMakefile* mf,
     {
     return false;
     }
-  cmCTestLog(this, HANDLER_VERBOSE_OUTPUT,
-             "SetCTestConfigurationFromCMakeVariable:"
-             << dconfig << ":" << cmake_var << std::endl);
-  this->SetCTestConfiguration(dconfig, ctvar);
+  cmCTestOptionalLog(this, HANDLER_VERBOSE_OUTPUT,
+    "SetCTestConfigurationFromCMakeVariable:" << dconfig << ":" <<
+    cmake_var << std::endl, suppress);
+  this->SetCTestConfiguration(dconfig, ctvar, suppress);
   return true;
 }
 
@@ -3034,9 +3093,14 @@ void cmCTest::InitStreams()
   this->StreamErr = &std::cerr;
 }
 
-void cmCTest::Log(int logType, const char* file, int line, const char* msg)
+void cmCTest::Log(int logType, const char* file, int line, const char* msg,
+                  bool suppress)
 {
   if ( !msg || !*msg )
+    {
+    return;
+    }
+  if ( suppress && logType != cmCTest::ERROR_MESSAGE )
     {
     return;
     }

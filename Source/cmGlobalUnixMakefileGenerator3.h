@@ -54,7 +54,7 @@ class cmLocalUnixMakefileGenerator3;
 class cmGlobalUnixMakefileGenerator3 : public cmGlobalGenerator
 {
 public:
-  cmGlobalUnixMakefileGenerator3();
+  cmGlobalUnixMakefileGenerator3(cmake* cm);
   static cmGlobalGeneratorFactory* NewFactory() {
     return new cmGlobalGeneratorSimpleFactory
       <cmGlobalUnixMakefileGenerator3>(); }
@@ -68,7 +68,8 @@ public:
   static void GetDocumentation(cmDocumentationEntry& entry);
 
   ///! Create a local generator appropriate to this Global Generator3
-  virtual cmLocalGenerator *CreateLocalGenerator();
+  virtual cmLocalGenerator *CreateLocalGenerator(cmLocalGenerator* parent,
+                                                 cmState::Snapshot snapshot);
 
   /**
    * Try to determine system information such as shared library
@@ -114,7 +115,7 @@ public:
     const std::string& projectDir,
     const std::string& targetName,
     const std::string& config,
-    bool fast,
+    bool fast, bool verbose,
     std::vector<std::string> const& makeOptions = std::vector<std::string>()
     );
 
@@ -128,7 +129,15 @@ public:
   /** Does the make tool tolerate .NOTPARALLEL? */
   virtual bool AllowNotParallel() const { return true; }
 
+  /** Does the make tool tolerate .DELETE_ON_ERROR? */
+  virtual bool AllowDeleteOnError() const { return true; }
+
   virtual void ComputeTargetObjectDirectory(cmGeneratorTarget* gt) const;
+
+  std::string IncludeDirective;
+  bool DefineWindowsNULL;
+  bool PassMakeflags;
+  bool UnixCD;
 protected:
   void WriteMainMakefile2();
   void WriteMainCMakefile();

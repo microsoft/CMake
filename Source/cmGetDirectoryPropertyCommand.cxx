@@ -43,7 +43,7 @@ bool cmGetDirectoryPropertyCommand
     // make sure the start dir is a full path
     if (!cmSystemTools::FileIsFullPath(sd.c_str()))
       {
-      sd = this->Makefile->GetStartDirectory();
+      sd = this->Makefile->GetCurrentSourceDirectory();
       sd += "/";
       sd += *i;
       }
@@ -53,7 +53,7 @@ bool cmGetDirectoryPropertyCommand
 
     // lookup the makefile from the directory name
     cmLocalGenerator *lg =
-      this->Makefile->GetLocalGenerator()->GetGlobalGenerator()->
+      this->Makefile->GetGlobalGenerator()->
       FindLocalGenerator(sd);
     if (!lg)
       {

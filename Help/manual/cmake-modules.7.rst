@@ -22,6 +22,7 @@ All Modules
    /module/CheckCXXSourceCompiles
    /module/CheckCXXSourceRuns
    /module/CheckCXXSymbolExists
+   /module/CheckFortranCompilerFlag
    /module/CheckFortranFunctionExists
    /module/CheckFortranSourceCompiles
    /module/CheckFunctionExists
@@ -211,6 +212,7 @@ All Modules
    /module/FindWish
    /module/FindwxWidgets
    /module/FindwxWindows
+   /module/FindXCTest
    /module/FindXercesC
    /module/FindX11
    /module/FindXMLRPC

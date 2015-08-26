@@ -13,7 +13,10 @@ find_library
 .. |CMAKE_XXX_PATH| replace:: CMAKE_LIBRARY_PATH
 .. |CMAKE_XXX_MAC_PATH| replace:: CMAKE_FRAMEWORK_PATH
 
-.. |SYSTEM_ENVIRONMENT_PATH_XXX| replace:: PATH and LIB
+.. |SYSTEM_ENVIRONMENT_PATH_XXX| replace:: Directories in LIB,
+   <prefix>/lib/<arch> if CMAKE_LIBRARY_ARCHITECTURE is set, and
+   |SYSTEM_ENVIRONMENT_PREFIX_PATH_XXX_SUBDIR|,
+   and the directories in PATH itself.
 
 .. |CMAKE_SYSTEM_PREFIX_PATH_XXX| replace::
    <prefix>/lib/<arch> if CMAKE_LIBRARY_ARCHITECTURE is set, and
@@ -30,6 +33,12 @@ When more than one value is given to the NAMES option this command by
 default will consider one name at a time and search every directory
 for it.  The NAMES_PER_DIR option tells this command to consider one
 directory at a time and search for all names in it.
+
+Each library name given to the ``NAMES`` option is first considered
+as a library file name and then considered with platform-specific
+prefixes (e.g. ``lib``) and suffixes (e.g. ``.so``).  Therefore one
+may specify library file names such as ``libfoo.a`` directly.
+This can be used to locate static libraries on UNIX-like systems.
 
 If the library found is a framework, then VAR will be set to the full
 path to the framework <fullPath>/A.framework.  When a full path to a

@@ -11,9 +11,9 @@
 ============================================================================*/
 #include "cmCoreTryCompile.h"
 #include "cmake.h"
-#include "cmCacheManager.h"
 #include "cmLocalGenerator.h"
 #include "cmGlobalGenerator.h"
+#include "cmAlgorithms.h"
 #include "cmExportTryCompileFileGenerator.h"
 #include <cmsys/Directory.hxx>
 
@@ -242,8 +242,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       }
 
     // Detect languages to enable.
-    cmLocalGenerator* lg = this->Makefile->GetLocalGenerator();
-    cmGlobalGenerator* gg = lg->GetGlobalGenerator();
+    cmGlobalGenerator* gg = this->Makefile->GetGlobalGenerator();
     std::set<std::string> testLangs;
     for(std::vector<std::string>::iterator si = sources.begin();
         si != sources.end(); ++si)
@@ -260,14 +259,10 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
         err << "Unknown extension \"" << ext << "\" for file\n"
             << "  " << *si << "\n"
             << "try_compile() works only for enabled languages.  "
-            << "Currently these are:\n ";
+            << "Currently these are:\n  ";
         std::vector<std::string> langs;
         gg->GetEnabledLanguages(langs);
-        for(std::vector<std::string>::iterator l = langs.begin();
-            l != langs.end(); ++l)
-          {
-          err << " " << *l;
-          }
+        err << cmJoin(langs, " ");
         err << "\nSee project() command to enable other languages.";
         this->Makefile->IssueMessage(cmake::FATAL_ERROR, err.str());
         return -1;
@@ -296,7 +291,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
             cmVersion::GetPatchVersion(), cmVersion::GetTweakVersion());
     if(def)
       {
-      fprintf(fout, "set(CMAKE_MODULE_PATH %s)\n", def);
+      fprintf(fout, "set(CMAKE_MODULE_PATH \"%s\")\n", def);
       }
 
     std::string projectLangs;
@@ -327,7 +322,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       std::string langFlags = "CMAKE_" + *li + "_FLAGS";
       const char* flags = this->Makefile->GetDefinition(langFlags);
       fprintf(fout, "set(CMAKE_%s_FLAGS %s)\n", li->c_str(),
-              lg->EscapeForCMake(flags?flags:"").c_str());
+              cmLocalGenerator::EscapeForCMake(flags?flags:"").c_str());
       fprintf(fout, "set(CMAKE_%s_FLAGS \"${CMAKE_%s_FLAGS}"
               " ${COMPILE_DEFINITIONS}\")\n", li->c_str(), li->c_str());
       }
@@ -338,8 +333,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
              "CMAKE_POLICY_WARNING_CMP0056"))
           {
           std::ostringstream w;
-          w << (this->Makefile->GetCMakeInstance()->GetPolicies()
-                ->GetPolicyWarning(cmPolicies::CMP0056)) << "\n"
+          w << cmPolicies::GetPolicyWarning(cmPolicies::CMP0056) << "\n"
             "For compatibility with older versions of CMake, try_compile "
             "is not honoring caller link flags (e.g. CMAKE_EXE_LINKER_FLAGS) "
             "in the test project."
@@ -353,8 +347,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       case cmPolicies::REQUIRED_ALWAYS:
         this->Makefile->IssueMessage(
           cmake::FATAL_ERROR,
-          this->Makefile->GetCMakeInstance()->GetPolicies()
-          ->GetRequiredPolicyError(cmPolicies::CMP0056)
+          cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0056)
           );
       case cmPolicies::NEW:
         // NEW behavior is to pass linker flags.
@@ -362,7 +355,8 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
         const char* exeLinkFlags =
           this->Makefile->GetDefinition("CMAKE_EXE_LINKER_FLAGS");
         fprintf(fout, "set(CMAKE_EXE_LINKER_FLAGS %s)\n",
-                lg->EscapeForCMake(exeLinkFlags?exeLinkFlags:"").c_str());
+                cmLocalGenerator::EscapeForCMake(
+                    exeLinkFlags ? exeLinkFlags : "").c_str());
         } break;
       }
     fprintf(fout, "set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS}"
@@ -373,18 +367,13 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     // handle any compile flags we need to pass on
     if (!compileDefs.empty())
       {
-      fprintf(fout, "add_definitions( ");
-      for (size_t i = 0; i < compileDefs.size(); ++i)
-        {
-        fprintf(fout,"%s ",compileDefs[i].c_str());
-        }
-      fprintf(fout, ")\n");
+      fprintf(fout, "add_definitions(%s)\n", cmJoin(compileDefs, " ").c_str());
       }
 
     /* Use a random file name to avoid rapid creation and deletion
        of the same executable name (some filesystems fail on that).  */
-    sprintf(targetNameBuf, "cmTryCompileExec%u",
-            cmSystemTools::RandomSeed());
+    sprintf(targetNameBuf, "cmTC_%05x",
+            cmSystemTools::RandomSeed() & 0xFFFFF);
     targetName = targetNameBuf;
 
     if (!targets.empty())
@@ -535,7 +524,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
   this->Makefile->AddCacheDefinition(argv[0],
                                      (res == 0 ? "TRUE" : "FALSE"),
                                      "Result of TRY_COMPILE",
-                                     cmCacheManager::INTERNAL);
+                                     cmState::INTERNAL);
 
   if (!outputVariable.empty())
     {
@@ -685,19 +674,16 @@ void cmCoreTryCompile::FindOutputFile(const std::string& targetName)
     command += tmpOutputFile;
     if(cmSystemTools::FileExists(command.c_str()))
       {
-      tmpOutputFile = cmSystemTools::CollapseFullPath(command);
-      this->OutputFile = tmpOutputFile;
+      this->OutputFile = cmSystemTools::CollapseFullPath(command);
       return;
       }
     }
 
   std::ostringstream emsg;
   emsg << "Unable to find the executable at any of:\n";
-  for (unsigned int i = 0; i < searchDirs.size(); ++i)
-    {
-    emsg << "  " << this->BinaryDirectory << searchDirs[i]
-         << tmpOutputFile << "\n";
-    }
+  emsg << cmWrap("  " + this->BinaryDirectory,
+                 searchDirs,
+                 tmpOutputFile, "\n") << "\n";
   this->FindErrorMessage = emsg.str();
   return;
 }

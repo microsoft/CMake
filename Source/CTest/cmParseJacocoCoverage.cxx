@@ -49,8 +49,9 @@ class cmParseJacocoCoverage::XMLParser: public cmXMLParser
       else if(name == "sourcefile")
         {
         this->FileName = atts[1];
-        cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT, "Reading file: "
-                     << this->FileName << std::endl);
+        cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
+          "Reading file: " << this->FileName << std::endl,
+          this->Coverage.Quiet);
           for(size_t i=0;i < FilePaths.size();i++)
             {
             std::string finalpath = FilePaths[i] + "/" + this->FileName;
@@ -77,7 +78,10 @@ class cmParseJacocoCoverage::XMLParser: public cmXMLParser
           std::string line;
           FileLinesType& curFileLines =
             this->Coverage.TotalCoverage[this->CurFileName];
-          curFileLines.push_back(-1);
+          if(fin)
+            {
+            curFileLines.push_back(-1);
+            }
           while(cmSystemTools::GetLineFromStream(fin, line))
           {
             curFileLines.push_back(-1);
@@ -148,8 +152,8 @@ bool cmParseJacocoCoverage::LoadCoverageData(
     {
     path = files[i];
 
-    cmCTestLog(this->CTest,HANDLER_VERBOSE_OUTPUT,
-      "Reading XML File " << path  << std::endl);
+    cmCTestOptionalLog(this->CTest,HANDLER_VERBOSE_OUTPUT,
+      "Reading XML File " << path  << std::endl, this->Coverage.Quiet);
     if(cmSystemTools::GetFilenameLastExtension(path) == ".xml")
       {
       if(!this->ReadJacocoXML(path.c_str()))

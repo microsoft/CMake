@@ -68,16 +68,6 @@ bool cmExportBuildFileGenerator::GenerateMainFile(std::ostream& os)
       tei != this->Exports.end(); ++tei)
     {
     cmTarget* te = *tei;
-    if (te->GetProperty("INTERFACE_SOURCES"))
-      {
-      std::ostringstream e;
-      e << "Target \""
-        << te->GetName()
-        << "\" has a populated INTERFACE_SOURCES property.  This is not "
-          "currently supported.";
-      cmSystemTools::Error(e.str().c_str());
-      return false;
-      }
     this->GenerateImportTargetCode(os, te);
 
     te->AppendBuildInterfaceIncludes();
@@ -85,6 +75,9 @@ bool cmExportBuildFileGenerator::GenerateMainFile(std::ostream& os)
     ImportPropertyMap properties;
 
     this->PopulateInterfaceProperty("INTERFACE_INCLUDE_DIRECTORIES", te,
+                                    cmGeneratorExpression::BuildInterface,
+                                    properties, missingTargets);
+    this->PopulateInterfaceProperty("INTERFACE_SOURCES", te,
                                     cmGeneratorExpression::BuildInterface,
                                     properties, missingTargets);
     this->PopulateInterfaceProperty("INTERFACE_COMPILE_DEFINITIONS", te,
@@ -281,7 +274,7 @@ cmExportBuildFileGenerator
 ::FindNamespaces(cmMakefile* mf, const std::string& name)
 {
   std::vector<std::string> namespaces;
-  cmGlobalGenerator* gg = mf->GetLocalGenerator()->GetGlobalGenerator();
+  cmGlobalGenerator* gg = mf->GetGlobalGenerator();
 
   std::map<std::string, cmExportBuildFileGenerator*>& exportSets
                                                   = gg->GetBuildExportSets();

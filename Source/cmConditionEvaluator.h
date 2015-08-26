@@ -15,6 +15,8 @@
 #include "cmCommand.h"
 #include "cmExpandedCommandArgument.h"
 
+#include <list>
+
 class cmConditionEvaluator
 {
 public:
@@ -91,6 +93,7 @@ private:
   cmMakefile& Makefile;
   cmPolicies::PolicyStatus Policy12Status;
   cmPolicies::PolicyStatus Policy54Status;
+  cmPolicies::PolicyStatus Policy57Status;
 };
 
 #endif

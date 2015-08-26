@@ -19,6 +19,7 @@
 #include "cmInstallExportGenerator.h"
 #include "cmInstallTargetGenerator.h"
 #include "cmTargetExport.h"
+#include "cmAlgorithms.h"
 
 //----------------------------------------------------------------------------
 cmExportInstallFileGenerator
@@ -73,8 +74,8 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
   // to reference if they are relative to the install prefix.
   std::string installPrefix =
     this->IEGen->GetMakefile()->GetSafeDefinition("CMAKE_INSTALL_PREFIX");
-  const char* installDest = this->IEGen->GetDestination();
-  if(cmSystemTools::FileIsFullPath(installDest))
+  std::string const& expDest = this->IEGen->GetDestination();
+  if(cmSystemTools::FileIsFullPath(expDest))
     {
     // The export file is being installed to an absolute path so the
     // package is not relocatable.  Use the configured install prefix.
@@ -87,7 +88,7 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
     {
     // Add code to compute the installation prefix relative to the
     // import file location.
-    std::string absDest = installPrefix + "/" + installDest;
+    std::string absDest = installPrefix + "/" + expDest;
     std::string absDestS = absDest + "/";
     os << "# Compute the installation prefix relative to this file.\n"
        << "get_filename_component(_IMPORT_PREFIX"
@@ -109,7 +110,7 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
         "unset(_realOrig)\n"
         "unset(_realCurr)\n";
       }
-    std::string dest = installDest;
+    std::string dest = expDest;
     while(!dest.empty())
       {
       os <<
@@ -123,6 +124,7 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
 
   bool require2_8_12 = false;
   bool require3_0_0 = false;
+  bool require3_1_0 = false;
   bool requiresConfigFiles = false;
   // Create all the imported targets.
   for(std::vector<cmTargetExport*>::const_iterator
@@ -130,17 +132,6 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
       tei != allTargets.end(); ++tei)
     {
     cmTarget* te = (*tei)->Target;
-
-    if (te->GetProperty("INTERFACE_SOURCES"))
-      {
-      std::ostringstream e;
-      e << "Target \""
-        << te->GetName()
-        << "\" has a populated INTERFACE_SOURCES property.  This is not "
-          "currently supported.";
-      cmSystemTools::Error(e.str().c_str());
-      return false;
-      }
 
     requiresConfigFiles = requiresConfigFiles
                               || te->GetType() != cmTarget::INTERFACE_LIBRARY;
@@ -150,6 +141,9 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
     ImportPropertyMap properties;
 
     this->PopulateIncludeDirectoriesInterface(*tei,
+                                  cmGeneratorExpression::InstallInterface,
+                                  properties, missingTargets);
+    this->PopulateSourcesInterface(*tei,
                                   cmGeneratorExpression::InstallInterface,
                                   properties, missingTargets);
     this->PopulateInterfaceProperty("INTERFACE_SYSTEM_INCLUDE_DIRECTORIES",
@@ -190,6 +184,13 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
       {
       require3_0_0 = true;
       }
+    if(te->GetProperty("INTERFACE_SOURCES"))
+      {
+      // We can only generate INTERFACE_SOURCES in CMake 3.3, but CMake 3.1
+      // can consume them.
+      require3_1_0 = true;
+      }
+
     this->PopulateInterfaceProperty("INTERFACE_POSITION_INDEPENDENT_CODE",
                                   te, properties);
     this->PopulateCompatibleInterfaceProperties(te, properties);
@@ -197,7 +198,11 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
     this->GenerateInterfaceProperties(te, os, properties);
     }
 
-  if (require3_0_0)
+  if (require3_1_0)
+    {
+    this->GenerateRequiredCMakeVersion(os, "3.1.0");
+    }
+  else if (require3_0_0)
     {
     this->GenerateRequiredCMakeVersion(os, "3.0.0");
     }
@@ -394,7 +399,7 @@ cmExportInstallFileGenerator
   cmTarget* target = itgen->GetTarget();
 
   // Construct the installed location of the target.
-  std::string dest = itgen->GetDestination();
+  std::string dest = itgen->GetDestination(config);
   std::string value;
   if(!cmSystemTools::FileIsFullPath(dest.c_str()))
     {
@@ -474,7 +479,7 @@ cmExportInstallFileGenerator
 ::FindNamespaces(cmMakefile* mf, const std::string& name)
 {
   std::vector<std::string> namespaces;
-  cmGlobalGenerator* gg = mf->GetLocalGenerator()->GetGlobalGenerator();
+  cmGlobalGenerator* gg = mf->GetGlobalGenerator();
   const cmExportSetMap& exportSets = gg->GetExportSets();
 
   for(cmExportSetMap::const_iterator expIt = exportSets.begin();

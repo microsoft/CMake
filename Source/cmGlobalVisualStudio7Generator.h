@@ -26,7 +26,8 @@ struct cmIDEFlagTable;
 class cmGlobalVisualStudio7Generator : public cmGlobalVisualStudioGenerator
 {
 public:
-  cmGlobalVisualStudio7Generator(const std::string& platformName = "");
+  cmGlobalVisualStudio7Generator(cmake* cm,
+                                 const std::string& platformName = "");
   ~cmGlobalVisualStudio7Generator();
 
   static cmGlobalGeneratorFactory* NewFactory() {
@@ -42,7 +43,8 @@ public:
   std::string const& GetPlatformName() const;
 
   ///! Create a local generator appropriate to this Global Generator
-  virtual cmLocalGenerator *CreateLocalGenerator();
+  virtual cmLocalGenerator *CreateLocalGenerator(cmLocalGenerator* parent,
+                                                 cmState::Snapshot snapshot);
 
   virtual bool SetSystemName(std::string const& s, cmMakefile* mf);
 
@@ -69,7 +71,7 @@ public:
     const std::string& projectDir,
     const std::string& targetName,
     const std::string& config,
-    bool fast,
+    bool fast, bool verbose,
     std::vector<std::string> const& makeOptions = std::vector<std::string>()
     );
 
@@ -77,11 +79,6 @@ public:
    * Generate the DSW workspace file.
    */
   virtual void OutputSLNFile();
-
-  /**
-   * Get the list of configurations
-   */
-  std::vector<std::string> *GetConfigurations();
 
   ///! Create a GUID or get an existing one.
   void CreateGUID(const std::string& name);
@@ -94,7 +91,8 @@ public:
                                         std::string& dir);
 
   ///! What is the configurations directory variable called?
-  virtual const char* GetCMakeCFGIntDir() const { return "$(OutDir)"; }
+  virtual const char* GetCMakeCFGIntDir() const
+    { return "$(ConfigurationName)"; }
 
   /** Return true if the target project file should have the option
       LinkLibraryDependencies and link to .sln dependencies. */
@@ -110,6 +108,8 @@ public:
   // Encoding for Visual Studio files
   virtual std::string Encoding();
 
+  cmIDEFlagTable const* ExtraFlagTable;
+
 protected:
   virtual void Generate();
   virtual const char* GetIDEVersion() { return "7.0"; }
@@ -119,7 +119,6 @@ protected:
 
   static const char* ExternalProjectType(const char* location);
 
-  static cmIDEFlagTable const* GetExtraFlagTableVS7();
   virtual void OutputSLNFile(cmLocalGenerator* root,
                              std::vector<cmLocalGenerator*>& generators);
   virtual void WriteSLNFile(std::ostream& fout, cmLocalGenerator* root,
@@ -132,6 +131,7 @@ protected:
                            cmTarget const&t);
   virtual void WriteProjectConfigurations(
     std::ostream& fout, const std::string& name, cmTarget::TargetType type,
+    std::vector<std::string> const& configs,
     const std::set<std::string>& configsPartOfDefaultBuild,
     const std::string& platformMapping = "");
   virtual void WriteSLNGlobalSections(std::ostream& fout,
@@ -149,9 +149,8 @@ protected:
     OrderedTargetDependSet const& projectTargets);
   virtual void WriteTargetConfigurations(
     std::ostream& fout,
+    std::vector<std::string> const& configs,
     OrderedTargetDependSet const& projectTargets);
-
-  void GenerateConfigurations(cmMakefile* mf);
 
   virtual void WriteExternalProject(std::ostream& fout,
                                     const std::string& name,
@@ -163,11 +162,11 @@ protected:
   std::string ConvertToSolutionPath(const char* path);
 
   std::set<std::string>
-    IsPartOfDefaultBuild(OrderedTargetDependSet const& projectTargets,
+    IsPartOfDefaultBuild(std::vector<std::string> const& configs,
+                         OrderedTargetDependSet const& projectTargets,
                          cmTarget const* target);
   bool IsDependedOn(OrderedTargetDependSet const& projectTargets,
                     cmTarget const* target);
-  std::vector<std::string> Configurations;
   std::map<std::string, std::string> GUIDMap;
 
   virtual void WriteFolders(std::ostream& fout);

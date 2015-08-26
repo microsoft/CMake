@@ -10,8 +10,10 @@ if(NOT "${CMAKE_CURRENT_SOURCE_DIR}" MATCHES "^/")
 endif()
 set(ExternalData_URL_TEMPLATES
   "file://${slash}${CMAKE_CURRENT_SOURCE_DIR}/%(algo)/%(hash)"
+  "file://${slash}${CMAKE_CURRENT_SOURCE_DIR}/Alt/%(algo:MyAlgoMap1)/%(hash)"
   "ExternalDataCustomScript://MyScript1/%(algo)/%(hash)"
   )
+set(ExternalData_URL_ALGO_MD5_MyAlgoMap1 MyAlgoMap1-md5)
 set(ExternalData_CUSTOM_SCRIPT_MyScript1 "${CMAKE_CURRENT_SOURCE_DIR}/MyScript1.cmake")
 set(ExternalData_BINARY_ROOT "${CMAKE_CURRENT_BINARY_DIR}/ExternalData")
 file(REMOVE_RECURSE ${ExternalData_BINARY_ROOT}) # clean test
@@ -26,6 +28,8 @@ ExternalData_Add_Test(Data1
     -D Data=DATA{Data.dat}
     ${Data1CheckSpaces}
     -D DataScript=DATA{DataScript.dat}
+    -D DataAlgoMapA=DATA{DataAlgoMapA.dat}
+    -D DataAlgoMapB=DATA{DataAlgoMapB.dat}
     -D DataMissing=DATA{DataMissing.dat}
     -D DataMissingWithAssociated=DATA{DataMissing.dat,Data.dat}
     -D SeriesA=DATA{SeriesA.dat,:}
@@ -40,6 +44,7 @@ ExternalData_Add_Test(Data1
     -D Paired=DATA{PairedA.dat,PairedB.dat}
     -D Meta=DATA{MetaTop.dat,REGEX:Meta[ABC].dat}
     -D Directory=DATA{Directory/,A.dat,REGEX:[BC].dat}
+    -D DirRecurse=DATA{DirRecurse/,RECURSE:,A.dat,REGEX:[BC].dat}
     -D "Semicolons=DATA{Data.dat}\\;DATA{Data.dat}"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/Data1Check.cmake
   )
@@ -48,3 +53,4 @@ ExternalData_Add_Target(Data1)
 add_subdirectory(Data2)
 add_subdirectory(Data3)
 add_subdirectory(Data4)
+add_subdirectory(DataNoSymlinks)

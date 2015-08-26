@@ -14,7 +14,6 @@
 #include "cmMakefile.h"
 #include "cmSystemTools.h"
 #include "cmSourceFile.h"
-#include "cmCacheManager.h"
 #include "cmGeneratorTarget.h"
 #include "cmCustomCommandGenerator.h"
 #include "cmake.h"
@@ -24,8 +23,11 @@
 #include <cmsys/RegularExpression.hxx>
 #include <cmsys/FStream.hxx>
 
-cmLocalVisualStudio6Generator::cmLocalVisualStudio6Generator():
-  cmLocalVisualStudioGenerator(VS6)
+cmLocalVisualStudio6Generator
+::cmLocalVisualStudio6Generator(cmGlobalGenerator* gg,
+                                cmLocalGenerator* parent,
+                                cmState::Snapshot snapshot):
+  cmLocalVisualStudioGenerator(gg, parent, snapshot)
 {
 }
 
@@ -118,14 +120,14 @@ void cmLocalVisualStudio6Generator::Generate()
 void cmLocalVisualStudio6Generator::OutputDSPFile()
 {
   // If not an in source build, then create the output directory
-  if(strcmp(this->Makefile->GetStartOutputDirectory(),
+  if(strcmp(this->Makefile->GetCurrentBinaryDirectory(),
             this->Makefile->GetHomeDirectory()) != 0)
     {
     if(!cmSystemTools::MakeDirectory
-       (this->Makefile->GetStartOutputDirectory()))
+       (this->Makefile->GetCurrentBinaryDirectory()))
       {
       cmSystemTools::Error("Error creating directory ",
-                           this->Makefile->GetStartOutputDirectory());
+                           this->Makefile->GetCurrentBinaryDirectory());
       }
     }
 
@@ -170,7 +172,7 @@ void cmLocalVisualStudio6Generator::OutputDSPFile()
       std::string::size_type pos = l->first.rfind('/');
       if(pos != std::string::npos)
         {
-        std::string dir = this->Makefile->GetStartOutputDirectory();
+        std::string dir = this->Makefile->GetCurrentBinaryDirectory();
         dir += "/";
         dir += l->first.substr(0, pos);
         if(!cmSystemTools::MakeDirectory(dir.c_str()))
@@ -196,7 +198,7 @@ void cmLocalVisualStudio6Generator::CreateSingleDSP(const std::string& lname,
 
   // create the dsp.cmake file
   std::string fname;
-  fname = this->Makefile->GetStartOutputDirectory();
+  fname = this->Makefile->GetCurrentBinaryDirectory();
   fname += "/";
   fname += pname;
   fname += ".dsp";
@@ -220,11 +222,9 @@ void cmLocalVisualStudio6Generator::AddDSPBuildRule(cmTarget& tgt)
 {
   std::string dspname = GetVS6TargetName(tgt.GetName());
   dspname += ".dsp.cmake";
-  const char* dsprule =
-    this->Makefile->GetRequiredDefinition("CMAKE_COMMAND");
   cmCustomCommandLine commandLine;
-  commandLine.push_back(dsprule);
-  std::string makefileIn = this->Makefile->GetStartDirectory();
+  commandLine.push_back(cmSystemTools::GetCMakeCommand());
+  std::string makefileIn = this->Makefile->GetCurrentSourceDirectory();
   makefileIn += "/";
   makefileIn += "CMakeLists.txt";
   if(!cmSystemTools::FileExists(makefileIn.c_str()))
@@ -586,9 +586,9 @@ cmLocalVisualStudio6Generator
                         const cmCustomCommand& origCommand)
 {
   // Create a fake output that forces the rule to run.
-  char* output = new char[(strlen(this->Makefile->GetStartOutputDirectory()) +
-                           target.GetName().size() + 30)];
-  sprintf(output,"%s/%s_force_%i", this->Makefile->GetStartOutputDirectory(),
+  char* output = new char[(strlen(this->Makefile->GetCurrentBinaryDirectory())
+                           + target.GetName().size() + 30)];
+  sprintf(output,"%s/%s_force_%i", this->Makefile->GetCurrentBinaryDirectory(),
           target.GetName().c_str(), count);
   const char* comment = origCommand.GetComment();
   if(!comment && origCommand.GetOutputs().empty())
@@ -816,7 +816,7 @@ cmLocalVisualStudio6Generator::MaybeCreateOutputDir(cmTarget& target,
 
   // Add a pre-link event to create the directory.
   cmCustomCommandLine command;
-  command.push_back(this->Makefile->GetRequiredDefinition("CMAKE_COMMAND"));
+  command.push_back(cmSystemTools::GetCMakeCommand());
   command.push_back("-E");
   command.push_back("make_directory");
   command.push_back(outDir);
@@ -1701,15 +1701,15 @@ void cmLocalVisualStudio6Generator
       = this->Makefile->GetDefinition("CMAKE_DEBUG_POSTFIX");
     cmSystemTools::ReplaceString(line, "DEBUG_POSTFIX",
                                  debugPostfix?debugPostfix:"");
-    // store flags for each configuration
-    std::string flags = " ";
-    std::string flagsRelease = " ";
-    std::string flagsMinSizeRel = " ";
-    std::string flagsDebug = " ";
-    std::string flagsRelWithDebInfo = " ";
     if(target.GetType() >= cmTarget::EXECUTABLE &&
        target.GetType() <= cmTarget::OBJECT_LIBRARY)
       {
+      // store flags for each configuration
+      std::string flags = " ";
+      std::string flagsRelease = " ";
+      std::string flagsMinSizeRel = " ";
+      std::string flagsDebug = " ";
+      std::string flagsRelWithDebInfo = " ";
       std::vector<std::string> configs;
       target.GetMakefile()->GetConfigurations(configs);
       std::vector<std::string>::const_iterator it = configs.begin();
@@ -1760,72 +1760,77 @@ void cmLocalVisualStudio6Generator
                               "MinSizeRel");
       this->AddCompileOptions(flagsRelWithDebInfo, &target, linkLanguage,
                               "RelWithDebInfo");
+
+      // if _UNICODE and _SBCS are not found, then add -D_MBCS
+      std::string defs = this->Makefile->GetDefineFlags();
+      if(flags.find("D_UNICODE") == flags.npos &&
+         defs.find("D_UNICODE") == flags.npos &&
+         flags.find("D_SBCS") == flags.npos &&
+         defs.find("D_SBCS") == flags.npos)
+        {
+        flags += " /D \"_MBCS\"";
+        }
+
+      // Add per-target and per-configuration preprocessor definitions.
+      std::set<std::string> definesSet;
+      std::set<std::string> debugDefinesSet;
+      std::set<std::string> releaseDefinesSet;
+      std::set<std::string> minsizeDefinesSet;
+      std::set<std::string> debugrelDefinesSet;
+
+      this->AddCompileDefinitions(definesSet, &target, "", linkLanguage);
+      this->AddCompileDefinitions(debugDefinesSet, &target,
+                                  "DEBUG", linkLanguage);
+      this->AddCompileDefinitions(releaseDefinesSet, &target,
+                                  "RELEASE", linkLanguage);
+      this->AddCompileDefinitions(minsizeDefinesSet, &target,
+                                  "MINSIZEREL", linkLanguage);
+      this->AddCompileDefinitions(debugrelDefinesSet, &target,
+                                  "RELWITHDEBINFO", linkLanguage);
+
+      std::string defines = " ";
+      std::string debugDefines = " ";
+      std::string releaseDefines = " ";
+      std::string minsizeDefines = " ";
+      std::string debugrelDefines = " ";
+
+      this->JoinDefines(definesSet, defines, "");
+      this->JoinDefines(debugDefinesSet, debugDefines, "");
+      this->JoinDefines(releaseDefinesSet, releaseDefines, "");
+      this->JoinDefines(minsizeDefinesSet, minsizeDefines, "");
+      this->JoinDefines(debugrelDefinesSet, debugrelDefines, "");
+
+      flags += defines;
+      flagsDebug += debugDefines;
+      flagsRelease += releaseDefines;
+      flagsMinSizeRel += minsizeDefines;
+      flagsRelWithDebInfo += debugrelDefines;
+
+      // The template files have CXX FLAGS in them, that need to be replaced.
+      // There are not separate CXX and C template files, so we use the same
+      // variable names.   The previous code sets up flags* variables to
+      // contain the correct C or CXX flags
+      cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS_MINSIZEREL",
+                                   flagsMinSizeRel.c_str());
+      cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS_DEBUG",
+                                   flagsDebug.c_str());
+      cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS_RELWITHDEBINFO",
+                                   flagsRelWithDebInfo.c_str());
+      cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS_RELEASE",
+                                   flagsRelease.c_str());
+      cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS", flags.c_str());
+
+      cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS_MINSIZEREL",
+                                   minsizeDefines.c_str());
+      cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS_DEBUG",
+                                   debugDefines.c_str());
+      cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS_RELWITHDEBINFO",
+                                   debugrelDefines.c_str());
+      cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS_RELEASE",
+                                   releaseDefines.c_str());
+      cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS",
+                                   defines.c_str());
       }
-
-    // if _UNICODE and _SBCS are not found, then add -D_MBCS
-    std::string defs = this->Makefile->GetDefineFlags();
-    if(flags.find("D_UNICODE") == flags.npos &&
-       defs.find("D_UNICODE") == flags.npos &&
-       flags.find("D_SBCS") == flags.npos &&
-       defs.find("D_SBCS") == flags.npos)
-      {
-      flags += " /D \"_MBCS\"";
-      }
-
-    // Add per-target and per-configuration preprocessor definitions.
-    std::set<std::string> definesSet;
-    std::set<std::string> debugDefinesSet;
-    std::set<std::string> releaseDefinesSet;
-    std::set<std::string> minsizeDefinesSet;
-    std::set<std::string> debugrelDefinesSet;
-
-    this->AddCompileDefinitions(definesSet, &target, "");
-    this->AddCompileDefinitions(debugDefinesSet, &target, "DEBUG");
-    this->AddCompileDefinitions(releaseDefinesSet, &target, "RELEASE");
-    this->AddCompileDefinitions(minsizeDefinesSet, &target, "MINSIZEREL");
-    this->AddCompileDefinitions(debugrelDefinesSet, &target, "RELWITHDEBINFO");
-
-    std::string defines = " ";
-    std::string debugDefines = " ";
-    std::string releaseDefines = " ";
-    std::string minsizeDefines = " ";
-    std::string debugrelDefines = " ";
-
-    this->JoinDefines(definesSet, defines, "");
-    this->JoinDefines(debugDefinesSet, debugDefines, "");
-    this->JoinDefines(releaseDefinesSet, releaseDefines, "");
-    this->JoinDefines(minsizeDefinesSet, minsizeDefines, "");
-    this->JoinDefines(debugrelDefinesSet, debugrelDefines, "");
-
-    flags += defines;
-    flagsDebug += debugDefines;
-    flagsRelease += releaseDefines;
-    flagsMinSizeRel += minsizeDefines;
-    flagsRelWithDebInfo += debugrelDefines;
-
-    // The template files have CXX FLAGS in them, that need to be replaced.
-    // There are not separate CXX and C template files, so we use the same
-    // variable names.   The previous code sets up flags* variables to contain
-    // the correct C or CXX flags
-    cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS_MINSIZEREL",
-                                 flagsMinSizeRel.c_str());
-    cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS_DEBUG",
-                                 flagsDebug.c_str());
-    cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS_RELWITHDEBINFO",
-                                 flagsRelWithDebInfo.c_str());
-    cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS_RELEASE",
-                                 flagsRelease.c_str());
-    cmSystemTools::ReplaceString(line, "CMAKE_CXX_FLAGS", flags.c_str());
-
-    cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS_MINSIZEREL",
-                                 minsizeDefines.c_str());
-    cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS_DEBUG",
-                                 debugDefines.c_str());
-    cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS_RELWITHDEBINFO",
-                                 debugrelDefines.c_str());
-    cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS_RELEASE",
-                                 releaseDefines.c_str());
-    cmSystemTools::ReplaceString(line, "COMPILE_DEFINITIONS", defines.c_str());
 
     fout << line.c_str() << std::endl;
     }
@@ -1964,7 +1969,7 @@ cmLocalVisualStudio6Generator
   // files directory for any configuration.  This is used to construct
   // object file names that do not produce paths that are too long.
   std::string dir_max;
-  dir_max += this->Makefile->GetCurrentOutputDirectory();
+  dir_max += this->Makefile->GetCurrentBinaryDirectory();
   dir_max += "/";
   dir_max += config_max;
   dir_max += "/";

@@ -13,6 +13,7 @@
 #define cmLocalGenerator_h
 
 #include "cmStandardIncludes.h"
+#include "cmState.h"
 
 class cmMakefile;
 class cmGlobalGenerator;
@@ -33,8 +34,12 @@ class cmCustomCommandGenerator;
 class cmLocalGenerator
 {
 public:
-  cmLocalGenerator();
+  cmLocalGenerator(cmGlobalGenerator* gg, cmLocalGenerator* parent,
+                   cmState::Snapshot snapshot);
   virtual ~cmLocalGenerator();
+
+  /// @return whether we are processing the top CMakeLists.txt file.
+  bool IsRootMakefile() const;
 
   /**
    * Generate the makefile for this directory.
@@ -88,8 +93,8 @@ public:
   const cmGlobalGenerator *GetGlobalGenerator() const {
     return this->GlobalGenerator; }
 
-  ///! Set the Global Generator, done on creation by the GlobalGenerator
-  void SetGlobalGenerator(cmGlobalGenerator *gg);
+  cmState* GetState() const;
+  cmState::Snapshot GetStateSnapshot() const;
 
   /**
    * Convert something to something else. This is a centralized conversion
@@ -131,25 +136,25 @@ public:
 
   ///! set/get the parent generator
   cmLocalGenerator* GetParent() const {return this->Parent;}
-  void SetParent(cmLocalGenerator* g) { this->Parent = g; g->AddChild(this); }
 
   ///! set/get the children
   void AddChild(cmLocalGenerator* g) { this->Children.push_back(g); }
   std::vector<cmLocalGenerator*>& GetChildren() { return this->Children; }
 
 
-  void AddArchitectureFlags(std::string& flags, cmGeneratorTarget* target,
+  void AddArchitectureFlags(std::string& flags,
+                            cmGeneratorTarget const* target,
                             const std::string&lang, const std::string& config);
 
   void AddLanguageFlags(std::string& flags, const std::string& lang,
                         const std::string& config);
-  void AddCMP0018Flags(std::string &flags, cmTarget* target,
+  void AddCMP0018Flags(std::string &flags, cmTarget const* target,
                        std::string const& lang, const std::string& config);
-  void AddVisibilityPresetFlags(std::string &flags, cmTarget* target,
+  void AddVisibilityPresetFlags(std::string &flags, cmTarget const* target,
                                 const std::string& lang);
   void AddConfigVariableFlags(std::string& flags, const std::string& var,
                               const std::string& config);
-  void AddCompilerRequirementFlag(std::string &flags, cmTarget* target,
+  void AddCompilerRequirementFlag(std::string &flags, cmTarget const* target,
                                   const std::string& lang);
   ///! Append flags to a string.
   virtual void AppendFlags(std::string& flags, const std::string& newFlags);
@@ -239,7 +244,8 @@ public:
                          const std::string& lang, const std::string& config);
   void AddCompileDefinitions(std::set<std::string>& defines,
                              cmTarget const* target,
-                             const std::string& config);
+                             const std::string& config,
+                             const std::string& lang);
 
   /** Compute the language used to compile the given source file.  */
   std::string GetSourceFileLanguage(const cmSourceFile& source);
@@ -296,9 +302,6 @@ public:
   std::string EscapeForShell(const std::string& str, bool makeVars = false,
                              bool forEcho = false,
                              bool useWatcomQuote = false);
-
-  /** Backwards-compatibility version of EscapeForShell.  */
-  std::string EscapeForShellOldStyle(const std::string& str);
 
   /** Escape the given string as an argument in a CMake script.  */
   static std::string EscapeForCMake(const std::string& str);
@@ -384,9 +387,16 @@ public:
                         std::map<cmSourceFile const*, std::string>& mapping,
                         cmGeneratorTarget const* gt = 0);
 
+  bool IsWindowsShell() const;
+  bool IsWatcomWMake() const;
+  bool IsMinGWMake() const;
+  bool IsNMake() const;
+
+  void SetConfiguredCMP0014(bool configured);
+
 protected:
   ///! put all the libraries for a target on into the given stream
-  virtual void OutputLinkLibraries(std::string& linkLibraries,
+  void OutputLinkLibraries(std::string& linkLibraries,
                                    std::string& frameworkPath,
                                    std::string& linkPath,
                                    cmGeneratorTarget &,
@@ -431,11 +441,6 @@ protected:
                                               std::string const& dir_max);
   void ComputeObjectMaxPath();
 
-  void ConfigureRelativePaths();
-  std::string FindRelativePathTopSource();
-  std::string FindRelativePathTopBinary();
-  void SetupPathConversions();
-
   virtual std::string ConvertToLinkReference(std::string const& lib,
                                              OutputFormat format = SHELL);
 
@@ -443,48 +448,25 @@ protected:
       definition.  Issues a warning.  */
   virtual bool CheckDefinition(std::string const& define) const;
 
-  /** Read the input CMakeLists.txt file.  */
-  void ReadInputFile();
-
   cmMakefile *Makefile;
+  cmState::Snapshot StateSnapshot;
   cmGlobalGenerator *GlobalGenerator;
-  // members used for relative path function ConvertToMakefilePath
-  std::string RelativePathToSourceDir;
-  std::string RelativePathToBinaryDir;
-  std::vector<std::string> HomeDirectoryComponents;
-  std::vector<std::string> StartDirectoryComponents;
-  std::vector<std::string> HomeOutputDirectoryComponents;
-  std::vector<std::string> StartOutputDirectoryComponents;
   cmLocalGenerator* Parent;
   std::vector<cmLocalGenerator*> Children;
   std::map<std::string, std::string> UniqueObjectNamesMap;
   std::string::size_type ObjectPathMax;
   std::set<std::string> ObjectMaxPathViolations;
-  bool WindowsShell;
-  bool WindowsVSIDE;
-  bool WatcomWMake;
-  bool MinGWMake;
-  bool NMake;
-  bool ForceUnixPath;
-  bool MSYSShell;
+
+  std::set<cmTarget const*> WarnCMP0063;
+
   bool LinkScriptShell;
   bool UseRelativePaths;
-  bool IgnoreLibPrefix;
   bool Configured;
   bool EmitUniversalBinaryFlags;
+
   // Hack for ExpandRuleVariable until object-oriented version is
   // committed.
   std::string TargetImplib;
-
-  // The top-most directories for relative path conversion.  Both the
-  // source and destination location of a relative path conversion
-  // must be underneath one of these directories (both under source or
-  // both under binary) in order for the relative path to be evaluated
-  // safely by the build tools.
-  std::string RelativePathTopSource;
-  std::string RelativePathTopBinary;
-  bool RelativePathsConfigured;
-  bool PathConversionsSetup;
 
   cmIML_INT_uint64_t BackwardsCompatibility;
   bool BackwardsCompatibilityFinal;

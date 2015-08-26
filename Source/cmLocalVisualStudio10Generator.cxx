@@ -61,8 +61,11 @@ class cmVS10XMLParser : public cmXMLParser
 
 
 //----------------------------------------------------------------------------
-cmLocalVisualStudio10Generator::cmLocalVisualStudio10Generator(VSVersion v):
-  cmLocalVisualStudio7Generator(v)
+cmLocalVisualStudio10Generator
+::cmLocalVisualStudio10Generator(cmGlobalGenerator* gg,
+                                 cmLocalGenerator* parent,
+                                 cmState::Snapshot snapshot):
+  cmLocalVisualStudio7Generator(gg, parent, snapshot)
 {
 }
 
@@ -118,7 +121,7 @@ void cmLocalVisualStudio10Generator
     AddCacheEntry(guidStoreName.c_str(),
                   parser.GUID.c_str(),
                   "Stored GUID",
-                  cmCacheManager::INTERNAL);
+                  cmState::INTERNAL);
 }
 
 //----------------------------------------------------------------------------

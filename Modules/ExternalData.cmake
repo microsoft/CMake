@@ -117,6 +117,13 @@ calling any of the functions provided by this module.
   data fetch rule created for the content link will use the staged
   object if it cannot be found using any URL template.
 
+.. variable:: ExternalData_NO_SYMLINKS
+
+  The real data files named by expanded ``DATA{}`` references may be made
+  available under ``ExternalData_BINARY_ROOT`` using symbolic links on
+  some platforms.  The ``ExternalData_NO_SYMLINKS`` variable may be set
+  to disable use of symbolic links and enable use of copies instead.
+
 .. variable:: ExternalData_OBJECT_STORES
 
   The ``ExternalData_OBJECT_STORES`` variable may be set to a list of local
@@ -155,13 +162,23 @@ calling any of the functions provided by this module.
   inactivity timeout, in seconds, with a default of ``60`` seconds.
   Set to ``0`` to disable enforcement.
 
+.. variable:: ExternalData_URL_ALGO_<algo>_<key>
+
+  Specify a custom URL component to be substituted for URL template
+  placeholders of the form ``%(algo:<key>)``, where ``<key>`` is a
+  valid C identifier, when fetching an object referenced via hash
+  algorithm ``<algo>``.  If not defined, the default URL component
+  is just ``<algo>`` for any ``<key>``.
+
 .. variable:: ExternalData_URL_TEMPLATES
 
   The ``ExternalData_URL_TEMPLATES`` may be set to provide a list of
   of URL templates using the placeholders ``%(algo)`` and ``%(hash)``
   in each template.  Data fetch rules try each URL template in order
   by substituting the hash algorithm name for ``%(algo)`` and the hash
-  value for ``%(hash)``.
+  value for ``%(hash)``.  Alternatively one may use ``%(algo:<key>)``
+  with ``ExternalData_URL_ALGO_<algo>_<key>`` variables to gain more
+  flexibility in remote URLs.
 
 Referencing Files
 ^^^^^^^^^^^^^^^^^
@@ -234,7 +251,8 @@ associated file options.  For example, the argument
 ``DATA{MyDataDir/,REGEX:.*}`` will pass the full path to a ``MyDataDir``
 directory on the command line and ensure that the directory contains
 files corresponding to every file or content link in the ``MyDataDir``
-source directory.
+source directory.  In order to match associated files in subdirectories,
+specify a ``RECURSE:`` option, e.g. ``DATA{MyDataDir/,RECURSE:,REGEX:.*}``.
 
 Hash Algorithms
 ^^^^^^^^^^^^^^^
@@ -347,6 +365,25 @@ function(ExternalData_add_target target)
           "Bad ExternalDataCustomScript key '${key}' in URL template:\n"
           " ${url_template}\n"
           "The key must be a valid C identifier.")
+      endif()
+    endif()
+
+    # Store custom algorithm name to URL component maps.
+    if("${url_template}" MATCHES "%\\(algo:([^)]*)\\)")
+      set(key "${CMAKE_MATCH_1}")
+      if(key MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
+        string(REPLACE "|" ";" _algos "${_ExternalData_REGEX_ALGO}")
+        foreach(algo ${_algos})
+          if(DEFINED ExternalData_URL_ALGO_${algo}_${key})
+            string(CONCAT _ExternalData_CONFIG_CODE "${_ExternalData_CONFIG_CODE}\n"
+              "set(ExternalData_URL_ALGO_${algo}_${key} \"${ExternalData_URL_ALGO_${algo}_${key}}\")")
+          endif()
+        endforeach()
+      else()
+        message(FATAL_ERROR
+          "Bad %(algo:${key}) in URL template:\n"
+          " ${url_template}\n"
+          "The transform name must be a valid C identifier.")
       endif()
     endif()
   endforeach()
@@ -568,6 +605,7 @@ function(_ExternalData_arg target arg options var_file)
 
   # Process options.
   set(series_option "")
+  set(recurse_option "")
   set(associated_files "")
   set(associated_regex "")
   foreach(opt ${options})
@@ -577,6 +615,9 @@ function(_ExternalData_arg target arg options var_file)
     elseif(opt STREQUAL ":")
       # Activate series matching.
       set(series_option "${opt}")
+    elseif(opt STREQUAL "RECURSE:")
+      # Activate recursive matching in directories.
+      set(recurse_option "${opt}")
     elseif("x${opt}" MATCHES "^[^][:/*?]+$")
       # Specific associated file.
       list(APPEND associated_files "${opt}")
@@ -593,6 +634,9 @@ function(_ExternalData_arg target arg options var_file)
     if(associated_files OR associated_regex)
       message(FATAL_ERROR "Series option \"${series_option}\" not allowed with associated files.")
     endif()
+    if(recurse_option)
+      message(FATAL_ERROR "Recurse option \"${recurse_option}\" allowed only with directories.")
+    endif()
     # Load a whole file series.
     _ExternalData_arg_series()
   elseif(data_is_directory)
@@ -605,6 +649,9 @@ function(_ExternalData_arg target arg options var_file)
         "must list associated files.")
     endif()
   else()
+    if(recurse_option)
+      message(FATAL_ERROR "Recurse option \"${recurse_option}\" allowed only with directories.")
+    endif()
     # Load the named data file.
     _ExternalData_arg_single()
     if(associated_files OR associated_regex)
@@ -652,11 +699,18 @@ macro(_ExternalData_arg_associated)
     set(reldir "${reldir}/")
   endif()
   _ExternalData_exact_regex(reldir_regex "${reldir}")
+  if(recurse_option)
+    set(glob GLOB_RECURSE)
+    set(reldir_regex "${reldir_regex}(.+/)?")
+  else()
+    set(glob GLOB)
+  endif()
 
   # Find files named explicitly.
   foreach(file ${associated_files})
     _ExternalData_exact_regex(file_regex "${file}")
-    _ExternalData_arg_find_files("${reldir}${file}" "${reldir_regex}${file_regex}")
+    _ExternalData_arg_find_files(${glob} "${reldir}${file}"
+      "${reldir_regex}${file_regex}")
   endforeach()
 
   # Find files matching the given regular expressions.
@@ -666,13 +720,13 @@ macro(_ExternalData_arg_associated)
     set(all "${all}${sep}${reldir_regex}${regex}")
     set(sep "|")
   endforeach()
-  _ExternalData_arg_find_files("${reldir}" "${all}")
+  _ExternalData_arg_find_files(${glob} "${reldir}" "${all}")
 endmacro()
 
 macro(_ExternalData_arg_single)
   # Match only the named data by itself.
   _ExternalData_exact_regex(data_regex "${reldata}")
-  _ExternalData_arg_find_files("${reldata}" "${data_regex}")
+  _ExternalData_arg_find_files(GLOB "${reldata}" "${data_regex}")
 endmacro()
 
 macro(_ExternalData_arg_series)
@@ -727,12 +781,15 @@ macro(_ExternalData_arg_series)
   # Then match base, number, and extension.
   _ExternalData_exact_regex(series_base "${relbase}")
   _ExternalData_exact_regex(series_ext "${ext}")
-  _ExternalData_arg_find_files("${relbase}*${ext}"
+  _ExternalData_arg_find_files(GLOB "${relbase}*${ext}"
     "${series_base}${series_match}${series_ext}")
 endmacro()
 
-function(_ExternalData_arg_find_files pattern regex)
-  file(GLOB globbed RELATIVE "${top_src}" "${top_src}/${pattern}*")
+function(_ExternalData_arg_find_files glob pattern regex)
+  cmake_policy(PUSH)
+  cmake_policy(SET CMP0009 NEW)
+  file(${glob} globbed RELATIVE "${top_src}" "${top_src}/${pattern}*")
+  cmake_policy(POP)
   foreach(entry IN LISTS globbed)
     if("x${entry}" MATCHES "^x(.*)(\\.(${_ExternalData_REGEX_EXT}))$")
       set(relname "${CMAKE_MATCH_1}")
@@ -792,7 +849,7 @@ function(_ExternalData_link_or_copy src dst)
   file(MAKE_DIRECTORY "${dst_dir}")
   _ExternalData_random(random)
   set(tmp "${dst}.tmp${random}")
-  if(UNIX)
+  if(UNIX AND NOT ExternalData_NO_SYMLINKS)
     # Create a symbolic link.
     set(tgt "${src}")
     if(relative_top)
@@ -904,6 +961,16 @@ function(_ExternalData_download_object name hash algo var_obj)
   foreach(url_template IN LISTS ExternalData_URL_TEMPLATES)
     string(REPLACE "%(hash)" "${hash}" url_tmp "${url_template}")
     string(REPLACE "%(algo)" "${algo}" url "${url_tmp}")
+    if(url MATCHES "^(.*)%\\(algo:([A-Za-z_][A-Za-z0-9_]*)\\)(.*)$")
+      set(lhs "${CMAKE_MATCH_1}")
+      set(key "${CMAKE_MATCH_2}")
+      set(rhs "${CMAKE_MATCH_3}")
+      if(DEFINED ExternalData_URL_ALGO_${algo}_${key})
+        set(url "${lhs}${ExternalData_URL_ALGO_${algo}_${key}}${rhs}")
+      else()
+        set(url "${lhs}${algo}${rhs}")
+      endif()
+    endif()
     message(STATUS "Fetching \"${url}\"")
     if(url MATCHES "^ExternalDataCustomScript://([A-Za-z_][A-Za-z0-9_]*)/(.*)$")
       _ExternalData_custom_fetch("${CMAKE_MATCH_1}" "${CMAKE_MATCH_2}" "${tmp}" err errMsg)

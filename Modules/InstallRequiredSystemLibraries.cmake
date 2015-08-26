@@ -2,36 +2,49 @@
 # InstallRequiredSystemLibraries
 # ------------------------------
 #
+# Include this module to search for compiler-provided system runtime
+# libraries and add install rules for them.  Some optional variables
+# may be set prior to including the module to adjust behavior:
 #
+# ``CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS``
+#   Specify additional runtime libraries that may not be detected.
+#   After inclusion any detected libraries will be appended to this.
 #
-# By including this file, all library files listed in the variable
-# CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS will be installed with
-# install(PROGRAMS ...) into bin for WIN32 and lib for non-WIN32.  If
-# CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP is set to TRUE before including
-# this file, then the INSTALL command is not called.  The user can use
-# the variable CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS to use a custom install
-# command and install them however they want.  If it is the MSVC
-# compiler, then the microsoft run time libraries will be found and
-# automatically added to the CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS, and
-# installed.  If CMAKE_INSTALL_DEBUG_LIBRARIES is set and it is the MSVC
-# compiler, then the debug libraries are installed when available.  If
-# CMAKE_INSTALL_DEBUG_LIBRARIES_ONLY is set then only the debug
-# libraries are installed when both debug and release are available.  If
-# CMAKE_INSTALL_MFC_LIBRARIES is set then the MFC run time libraries are
-# installed as well as the CRT run time libraries.  If
-# CMAKE_INSTALL_OPENMP_LIBRARIES is set then the OpenMP run time libraries
-# are installed as well.  If
-# CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION is set then the libraries are
-# installed to that directory rather than the default.  If
-# CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_NO_WARNINGS is NOT set, then this
-# file warns about required files that do not exist.  You can set this
-# variable to ON before including this file to avoid the warning.  For
-# example, the Visual Studio Express editions do not include the
-# redistributable files, so if you include this file on a machine with
-# only VS Express installed, you'll get the warning.
+# ``CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP``
+#   Set to TRUE to skip calling the :command:`install(PROGRAMS)` command to
+#   allow the includer to specify its own install rule, using the value of
+#   ``CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS`` to get the list of libraries.
+#
+# ``CMAKE_INSTALL_DEBUG_LIBRARIES``
+#   Set to TRUE to install the debug runtime libraries when available
+#   with MSVC tools.
+#
+# ``CMAKE_INSTALL_DEBUG_LIBRARIES_ONLY``
+#   Set to TRUE to install only the debug runtime libraries with MSVC
+#   tools even if the release runtime libraries are also available.
+#
+# ``CMAKE_INSTALL_MFC_LIBRARIES``
+#   Set to TRUE to install the MSVC MFC runtime libraries.
+#
+# ``CMAKE_INSTALL_OPENMP_LIBRARIES``
+#   Set to TRUE to install the MSVC OpenMP runtime libraries
+#
+# ``CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION``
+#   Specify the :command:`install(PROGRAMS)` command ``DESTINATION``
+#   option.  If not specified, the default is ``bin`` on Windows
+#   and ``lib`` elsewhere.
+#
+# ``CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_NO_WARNINGS``
+#   Set to TRUE to disable warnings about required library files that
+#   do not exist.  (For example, Visual Studio Express editions may
+#   not provide the redistributable files.)
+#
+# ``CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT``
+#   Specify the :command:`install(PROGRAMS)` command ``COMPONENT``
+#   option.  If not specified, no such option will be used.
 
 #=============================================================================
-# Copyright 2006-2009 Kitware, Inc.
+# Copyright 2006-2015 Kitware, Inc.
 #
 # Distributed under the OSI-approved BSD License (the "License");
 # see accompanying file Copyright.txt for details.
@@ -172,8 +185,12 @@ if(MSVC)
     if(NOT CMAKE_INSTALL_DEBUG_LIBRARIES_ONLY)
       set(__install__libs
         "${MSVC${v}_CRT_DIR}/msvcp${v}0.dll"
-        "${MSVC${v}_CRT_DIR}/msvcr${v}0.dll"
         )
+      if(NOT v VERSION_LESS 14)
+        list(APPEND __install__libs "${MSVC${v}_CRT_DIR}/vcruntime${v}0.dll")
+      else()
+        list(APPEND __install__libs "${MSVC${v}_CRT_DIR}/msvcr${v}0.dll")
+      endif()
     else()
       set(__install__libs)
     endif()
@@ -183,8 +200,12 @@ if(MSVC)
         "${MSVC${v}_REDIST_DIR}/Debug_NonRedist/${CMAKE_MSVC_ARCH}/Microsoft.VC${v}0.DebugCRT")
       set(__install__libs ${__install__libs}
         "${MSVC${v}_CRT_DIR}/msvcp${v}0d.dll"
-        "${MSVC${v}_CRT_DIR}/msvcr${v}0d.dll"
         )
+      if(NOT v VERSION_LESS 14)
+        list(APPEND __install__libs "${MSVC${v}_CRT_DIR}/vcruntime${v}0d.dll")
+      else()
+        list(APPEND __install__libs "${MSVC${v}_CRT_DIR}/msvcr${v}0d.dll")
+      endif()
     endif()
   endmacro()
 
@@ -311,11 +332,6 @@ if(MSVC)
       # Multi-Byte Character Set versions of MFC are available as optional
       # addon since Visual Studio 12.  So for version 12 or higher, check
       # whether they are available and exclude them if they are not.
-      if("${v}" LESS 12 OR EXISTS "${MSVC${v}_MFC_DIR}/mfc${v}0d.dll")
-        set(mbcs ON)
-      else()
-        set(mbcs OFF)
-      endif()
 
       if(CMAKE_INSTALL_DEBUG_LIBRARIES)
         set(MSVC${v}_MFC_DIR
@@ -324,7 +340,7 @@ if(MSVC)
           "${MSVC${v}_MFC_DIR}/mfc${v}0ud.dll"
           "${MSVC${v}_MFC_DIR}/mfcm${v}0ud.dll"
           )
-        if(mbcs)
+        if("${v}" LESS 12 OR EXISTS "${MSVC${v}_MFC_DIR}/mfc${v}0d.dll")
           set(__install__libs ${__install__libs}
             "${MSVC${v}_MFC_DIR}/mfc${v}0d.dll"
             "${MSVC${v}_MFC_DIR}/mfcm${v}0d.dll"
@@ -338,7 +354,7 @@ if(MSVC)
           "${MSVC${v}_MFC_DIR}/mfc${v}0u.dll"
           "${MSVC${v}_MFC_DIR}/mfcm${v}0u.dll"
           )
-        if(mbcs)
+        if("${v}" LESS 12 OR EXISTS "${MSVC${v}_MFC_DIR}/mfc${v}0.dll")
           set(__install__libs ${__install__libs}
             "${MSVC${v}_MFC_DIR}/mfc${v}0.dll"
             "${MSVC${v}_MFC_DIR}/mfcm${v}0.dll"
@@ -477,7 +493,13 @@ if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
         set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION lib)
       endif()
     endif()
+    if(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT)
+      set(_CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT
+        COMPONENT ${CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT})
+    endif()
     install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
-      DESTINATION ${CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION})
+      DESTINATION ${CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION}
+      ${_CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT}
+      )
   endif()
 endif()

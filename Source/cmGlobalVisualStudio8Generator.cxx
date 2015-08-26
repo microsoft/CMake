@@ -24,8 +24,8 @@ class cmGlobalVisualStudio8Generator::Factory
   : public cmGlobalGeneratorFactory
 {
 public:
-  virtual cmGlobalGenerator* CreateGlobalGenerator(
-                                              const std::string& name) const {
+  virtual cmGlobalGenerator*
+  CreateGlobalGenerator(const std::string& name, cmake* cm) const {
     if(strncmp(name.c_str(), vs8generatorName,
                sizeof(vs8generatorName) - 1) != 0)
       {
@@ -35,8 +35,7 @@ public:
     const char* p = name.c_str() + sizeof(vs8generatorName) - 1;
     if(p[0] == '\0')
       {
-      return new cmGlobalVisualStudio8Generator(
-        name, "");
+      return new cmGlobalVisualStudio8Generator(cm, name, "");
       }
 
     if(p[0] != ' ')
@@ -48,8 +47,7 @@ public:
 
     if(!strcmp(p, "Win64"))
       {
-      return new cmGlobalVisualStudio8Generator(
-        name, "x64");
+      return new cmGlobalVisualStudio8Generator(cm, name, "x64");
       }
 
     cmVisualStudioWCEPlatformParser parser(p);
@@ -59,15 +57,18 @@ public:
       return 0;
       }
 
-    cmGlobalVisualStudio8Generator* ret = new cmGlobalVisualStudio8Generator(
-      name, p);
+    cmGlobalVisualStudio8Generator* ret =
+        new cmGlobalVisualStudio8Generator(cm, name, p);
     ret->WindowsCEVersion = parser.GetOSVersion();
     return ret;
   }
 
   virtual void GetDocumentation(cmDocumentationEntry& entry) const {
-    entry.Name = vs8generatorName;
-    entry.Brief = "Generates Visual Studio 8 2005 project files.";
+    entry.Name = std::string(vs8generatorName) + " [arch]";
+    entry.Brief =
+      "Generates Visual Studio 2005 project files.  "
+      "Optional [arch] can be \"Win64\"."
+      ;
   }
 
   virtual void GetGenerators(std::vector<std::string>& names) const {
@@ -92,12 +93,14 @@ cmGlobalGeneratorFactory* cmGlobalVisualStudio8Generator::NewFactory()
 }
 
 //----------------------------------------------------------------------------
-cmGlobalVisualStudio8Generator::cmGlobalVisualStudio8Generator(
+cmGlobalVisualStudio8Generator::cmGlobalVisualStudio8Generator(cmake* cm,
   const std::string& name, const std::string& platformName)
-  : cmGlobalVisualStudio71Generator(platformName)
+  : cmGlobalVisualStudio71Generator(cm, platformName)
 {
   this->ProjectConfigurationSectionName = "ProjectConfigurationPlatforms";
   this->Name = name;
+  this->ExtraFlagTable = this->GetExtraFlagTableVS8();
+  this->Version = VS8;
 }
 
 //----------------------------------------------------------------------------
@@ -118,17 +121,6 @@ std::string cmGlobalVisualStudio8Generator::FindDevEnvCommand()
     }
   // Now look for devenv.
   return this->cmGlobalVisualStudio71Generator::FindDevEnvCommand();
-}
-
-//----------------------------------------------------------------------------
-///! Create a local generator appropriate to this Global Generator
-cmLocalGenerator *cmGlobalVisualStudio8Generator::CreateLocalGenerator()
-{
-  cmLocalVisualStudio7Generator *lg =
-    new cmLocalVisualStudio7Generator(cmLocalVisualStudioGenerator::VS8);
-  lg->SetExtraFlagTable(this->GetExtraFlagTableVS8());
-  lg->SetGlobalGenerator(this);
-  return lg;
 }
 
 //----------------------------------------------------------------------------
@@ -258,7 +250,6 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
     return false;
     }
 
-  std::string cmake_command = mf->GetRequiredDefinition("CMAKE_COMMAND");
   cmCustomCommandLines noCommandLines;
   cmTarget* tgt =
     mf->AddUtilityCommand(CMAKE_CHECK_BUILD_SYSTEM_TARGET, false,
@@ -278,7 +269,7 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
   stampList += "generate.stamp.list";
   {
   std::string stampListFile =
-    generators[0]->GetMakefile()->GetCurrentOutputDirectory();
+    generators[0]->GetMakefile()->GetCurrentBinaryDirectory();
   stampListFile += "/";
   stampListFile += stampList;
   std::string stampFile;
@@ -286,7 +277,7 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
   for(std::vector<cmLocalGenerator*>::const_iterator
         gi = generators.begin(); gi != generators.end(); ++gi)
     {
-    stampFile = (*gi)->GetMakefile()->GetCurrentOutputDirectory();
+    stampFile = (*gi)->GetMakefile()->GetCurrentBinaryDirectory();
     stampFile += "/";
     stampFile += cmake::GetCMakeFilesDirectoryPostSlash();
     stampFile += "generate.stamp";
@@ -316,9 +307,8 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
   // Create a rule to re-run CMake.
   std::string stampName = cmake::GetCMakeFilesDirectoryPostSlash();
   stampName += "generate.stamp";
-  const char* dsprule = mf->GetRequiredDefinition("CMAKE_COMMAND");
   cmCustomCommandLine commandLine;
-  commandLine.push_back(dsprule);
+  commandLine.push_back(cmSystemTools::GetCMakeCommand());
   std::string argH = "-H";
   argH += lg->Convert(mf->GetHomeDirectory(),
                       cmLocalGenerator::START_OUTPUT,
@@ -383,11 +373,12 @@ void cmGlobalVisualStudio8Generator::Generate()
 //----------------------------------------------------------------------------
 void
 cmGlobalVisualStudio8Generator
-::WriteSolutionConfigurations(std::ostream& fout)
+::WriteSolutionConfigurations(std::ostream& fout,
+                              std::vector<std::string> const& configs)
 {
   fout << "\tGlobalSection(SolutionConfigurationPlatforms) = preSolution\n";
-  for(std::vector<std::string>::iterator i = this->Configurations.begin();
-      i != this->Configurations.end(); ++i)
+  for(std::vector<std::string>::const_iterator i = configs.begin();
+      i != configs.end(); ++i)
     {
     fout << "\t\t" << *i << "|" << this->GetPlatformName()
          << " = "  << *i << "|" << this->GetPlatformName() << "\n";
@@ -400,12 +391,13 @@ void
 cmGlobalVisualStudio8Generator
 ::WriteProjectConfigurations(
   std::ostream& fout, const std::string& name, cmTarget::TargetType type,
+  std::vector<std::string> const& configs,
   const std::set<std::string>& configsPartOfDefaultBuild,
   std::string const& platformMapping)
 {
   std::string guid = this->GetGUID(name);
-  for(std::vector<std::string>::iterator i = this->Configurations.begin();
-      i != this->Configurations.end(); ++i)
+  for(std::vector<std::string>::const_iterator i = configs.begin();
+      i != configs.end(); ++i)
     {
     fout << "\t\t{" << guid << "}." << *i
          << "|" << this->GetPlatformName() << ".ActiveCfg = " << *i << "|"

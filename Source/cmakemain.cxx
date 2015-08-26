@@ -18,12 +18,13 @@
 
 #include "cmake.h"
 #include "cmcmd.h"
-#include "cmCacheManager.h"
+#include "cmState.h"
 #include "cmListFileCache.h"
 #include "cmSourceFile.h"
 #include "cmGlobalGenerator.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
+#include "cmAlgorithms.h"
 #include <cmsys/Encoding.hxx>
 
 #ifdef CMAKE_BUILD_WITH_CMAKE
@@ -129,7 +130,7 @@ static std::string cmakemainGetStack(void *clientdata)
   cmMakefile* mf=cmakemainGetMakefile(clientdata);
   if (mf)
     {
-    msg = mf->GetListFileStack();
+    msg = mf->FormatListFileStack();
     if (!msg.empty())
       {
       msg = "\n   Called from: " + msg;
@@ -153,12 +154,12 @@ static void cmakemainProgressCallback(const char *m, float prog,
   if ((mf) && (strstr(m, "Configuring")==m) && (prog<0))
     {
     dir = " ";
-    dir += mf->GetCurrentDirectory();
+    dir += mf->GetCurrentSourceDirectory();
     }
   else if ((mf) && (strstr(m, "Generating")==m))
     {
     dir = " ";
-    dir += mf->GetCurrentOutputDirectory();
+    dir += mf->GetCurrentBinaryDirectory();
     }
 
   if ((prog < 0) || (!dir.empty()))
@@ -213,6 +214,8 @@ int do_cmake(int ac, char const* const* av)
     {
     // Construct and print requested documentation.
     cmake hcm;
+    hcm.SetHomeDirectory("");
+    hcm.SetHomeOutputDirectory("");
     hcm.AddCMakePaths();
 
     // the command line args are processed here so that you can do
@@ -316,10 +319,14 @@ int do_cmake(int ac, char const* const* av)
   if (sysinfo)
     {
     cmake cm;
+    cm.SetHomeDirectory("");
+    cm.SetHomeOutputDirectory("");
     int ret = cm.GetSystemInformation(args);
     return ret;
     }
   cmake cm;
+  cm.SetHomeDirectory("");
+  cm.SetHomeOutputDirectory("");
   cmSystemTools::SetMessageCallback(cmakemainMessageCallback, (void *)&cm);
   cm.SetProgressCallback(cmakemainProgressCallback, (void *)&cm);
   cm.SetWorkingMode(workingMode);
@@ -327,25 +334,29 @@ int do_cmake(int ac, char const* const* av)
   int res = cm.Run(args, view_only);
   if ( list_cached || list_all_cached )
     {
-    cmCacheManager::CacheIterator it =
-      cm.GetCacheManager()->GetCacheIterator();
     std::cout << "-- Cache values" << std::endl;
-    for ( it.Begin(); !it.IsAtEnd(); it.Next() )
+    std::vector<std::string> keys = cm.GetState()->GetCacheEntryKeys();
+    for (std::vector<std::string>::const_iterator it = keys.begin();
+        it != keys.end(); ++it)
       {
-      cmCacheManager::CacheEntryType t = it.GetType();
-      if ( t != cmCacheManager::INTERNAL && t != cmCacheManager::STATIC &&
-        t != cmCacheManager::UNINITIALIZED )
+      cmState::CacheEntryType t = cm.GetState()->GetCacheEntryType(*it);
+      if (t != cmState::INTERNAL && t != cmState::STATIC &&
+          t != cmState::UNINITIALIZED)
         {
-        bool advanced = it.PropertyExists("ADVANCED");
-        if ( list_all_cached || !advanced)
+        const char* advancedProp =
+            cm.GetState()->GetCacheEntryProperty(*it, "ADVANCED");
+        if ( list_all_cached || !advancedProp)
           {
           if ( list_help )
             {
-            std::cout << "// " << it.GetProperty("HELPSTRING") << std::endl;
+            std::cout << "// "
+                      << cm.GetState()->GetCacheEntryProperty(*it,
+                                                   "HELPSTRING") << std::endl;
             }
-          std::cout << it.GetName() << ":" <<
-            cmCacheManager::TypeToString(it.GetType())
-            << "=" << it.GetValue() << std::endl;
+          std::cout << *it << ":" <<
+            cmState::CacheEntryTypeToString(t)
+            << "=" << cm.GetState()->GetCacheEntryValue(*it)
+            << std::endl;
           if ( list_help )
             {
             std::cout << std::endl;

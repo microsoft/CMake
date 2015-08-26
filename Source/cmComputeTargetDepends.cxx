@@ -15,6 +15,7 @@
 #include "cmGlobalGenerator.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
+#include "cmState.h"
 #include "cmSystemTools.h"
 #include "cmSourceFile.h"
 #include "cmTarget.h"
@@ -98,8 +99,10 @@ cmComputeTargetDepends::cmComputeTargetDepends(cmGlobalGenerator* gg)
 {
   this->GlobalGenerator = gg;
   cmake* cm = this->GlobalGenerator->GetCMakeInstance();
-  this->DebugMode = cm->GetPropertyAsBool("GLOBAL_DEPENDS_DEBUG_MODE");
-  this->NoCycles = cm->GetPropertyAsBool("GLOBAL_DEPENDS_NO_CYCLES");
+  this->DebugMode = cm->GetState()
+                      ->GetGlobalPropertyAsBool("GLOBAL_DEPENDS_DEBUG_MODE");
+  this->NoCycles = cm->GetState()
+                      ->GetGlobalPropertyAsBool("GLOBAL_DEPENDS_NO_CYCLES");
 }
 
 //----------------------------------------------------------------------------
@@ -213,9 +216,7 @@ void cmComputeTargetDepends::CollectTargetDepends(int depender_index)
   // deal with config-specific dependencies.
   {
   std::set<std::string> emitted;
-  cmGeneratorTarget* gt = depender->GetMakefile()->GetLocalGenerator()
-                                  ->GetGlobalGenerator()
-                                  ->GetGeneratorTarget(depender);
+  cmGeneratorTarget* gt = this->GlobalGenerator->GetGeneratorTarget(depender);
 
   std::vector<std::string> configs;
   depender->GetMakefile()->GetConfigurations(configs);
@@ -358,15 +359,13 @@ void cmComputeTargetDepends::AddTargetDepend(
   if(!dependee && !linking &&
     (depender->GetType() != cmTarget::GLOBAL_TARGET))
     {
-    cmMakefile *makefile = depender->GetMakefile();
     cmake::MessageType messageType = cmake::AUTHOR_WARNING;
     bool issueMessage = false;
     std::ostringstream e;
     switch(depender->GetPolicyStatusCMP0046())
       {
       case cmPolicies::WARN:
-        e << (makefile->GetPolicies()
-          ->GetPolicyWarning(cmPolicies::CMP0046)) << "\n";
+        e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0046) << "\n";
         issueMessage = true;
       case cmPolicies::OLD:
         break;
@@ -418,9 +417,11 @@ void cmComputeTargetDepends::AddTargetDepend(int depender_index,
                                              cmTarget const* dependee,
                                              bool linking)
 {
-  if(dependee->IsImported())
+  if(dependee->IsImported() ||
+     dependee->GetType() == cmTarget::INTERFACE_LIBRARY)
     {
-    // Skip imported targets but follow their utility dependencies.
+    // Skip IMPORTED and INTERFACE targets but follow their utility
+    // dependencies.
     std::set<cmLinkItem> const& utils = dependee->GetUtilityItems();
     for(std::set<cmLinkItem>::const_iterator i = utils.begin();
         i != utils.end(); ++i)

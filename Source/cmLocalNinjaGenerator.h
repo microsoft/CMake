@@ -31,36 +31,25 @@ class cmake;
 class cmLocalNinjaGenerator : public cmLocalGenerator
 {
 public:
-  /// Default constructor.
-  cmLocalNinjaGenerator();
+  cmLocalNinjaGenerator(cmGlobalGenerator* gg, cmLocalGenerator* parent,
+                        cmState::Snapshot snapshot);
 
-  /// Destructor.
   virtual ~cmLocalNinjaGenerator();
 
-  /// Overloaded methods. @see cmLocalGenerator::Generate()
   virtual void Generate();
 
-  /// Overloaded methods. @see cmLocalGenerator::Configure()
   virtual void Configure();
 
-  /// Overloaded methods. @see cmLocalGenerator::GetTargetDirectory()
   virtual std::string GetTargetDirectory(cmTarget const& target) const;
 
   const cmGlobalNinjaGenerator* GetGlobalNinjaGenerator() const;
   cmGlobalNinjaGenerator* GetGlobalNinjaGenerator();
 
-  /**
-   * Shortcut to get the cmake instance throw the global generator.
-   * @return an instance of the cmake object.
-   */
   const cmake* GetCMakeInstance() const;
   cmake* GetCMakeInstance();
 
   std::string const& GetConfigName() const
   { return this->ConfigName; }
-
-  /// @return whether we are processing the top CMakeLists.txt file.
-  bool isRootMakefile() const;
 
   /// @returns the relative path between the HomeOutputDirectory and this
   /// local generators StartOutputDirectory.

@@ -45,11 +45,11 @@ if (Qt5Widgets_FOUND)
         get_filename_component(_qt_plugin_file "${_qt_plugin_path}" NAME)
         get_filename_component(_qt_plugin_type "${_qt_plugin_path}" PATH)
         get_filename_component(_qt_plugin_type "${_qt_plugin_type}" NAME)
-        set(_qt_plugin_dest "${CMAKE_INSTALL_PREFIX}/PlugIns/${_qt_plugin_type}")
+        set(_qt_plugin_dest "PlugIns/${_qt_plugin_type}")
         install(FILES "${_qt_plugin_path}"
           DESTINATION "${_qt_plugin_dest}")
         set(${_qt_plugins_var}
-          "${${_qt_plugins_var}};${_qt_plugin_dest}/${_qt_plugin_file}")
+          "${${_qt_plugins_var}};\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_qt_plugin_dest}/${_qt_plugin_file}")
       else()
         message(FATAL_ERROR "QT plugin ${_qt_plugin_name} not found")
       endif()
@@ -99,15 +99,12 @@ set(SRCS
   QCMakeCacheView.h
   QCMakeWidgets.cxx
   QCMakeWidgets.h
-  QMacInstallDialog.cxx
-  QMacInstallDialog.h
   )
 QT4_WRAP_UI(UI_SRCS
   CMakeSetupDialog.ui
   Compilers.ui
   CrossCompiler.ui
   AddCacheEntry.ui
-  MacInstallDialog.ui
   )
 QT4_WRAP_CPP(MOC_SRCS
   AddCacheEntry.h
@@ -117,7 +114,6 @@ QT4_WRAP_CPP(MOC_SRCS
   QCMake.h
   QCMakeCacheView.h
   QCMakeWidgets.h
-  QMacInstallDialog.h
   )
 QT4_ADD_RESOURCES(RC_SRCS CMakeSetup.qrc)
 

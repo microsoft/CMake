@@ -191,6 +191,9 @@ public:
   ///! Compute the md5sum of a file
   static bool ComputeFileMD5(const std::string& source, char* md5out);
 
+  ///! Get the SHA thumbprint for a certificate file
+  static std::string ComputeCertificateThumbprint(const std::string& source);
+
   /** Compute the md5sum of a string.  */
   static std::string ComputeStringMD5(const std::string& input);
 
@@ -223,7 +226,9 @@ public:
      OUTPUT_NORMAL,
      OUTPUT_PASSTHROUGH
    };
-  static bool RunSingleCommand(const char* command, std::string* output = 0,
+  static bool RunSingleCommand(const char* command,
+                               std::string* captureStdOut = 0,
+                               std::string* captureStdErr = 0,
                                int* retVal = 0, const char* dir = 0,
                                OutputOption outputflag = OUTPUT_MERGE,
                                double timeout = 0.0);
@@ -233,7 +238,8 @@ public:
    * be in comand[1]...command[command.size()]
    */
   static bool RunSingleCommand(std::vector<std::string> const& command,
-                               std::string* output = 0,
+                               std::string* captureStdOut = 0,
+                               std::string* captureStdErr = 0,
                                int* retVal = 0, const char* dir = 0,
                                OutputOption outputflag = OUTPUT_MERGE,
                                double timeout = 0.0);
@@ -395,7 +401,8 @@ public:
   static bool CreateTar(const char* outFileName,
                         const std::vector<std::string>& files,
                         cmTarCompression compressType, bool verbose,
-                        std::string const& mtime = std::string());
+                        std::string const& mtime = std::string(),
+                        std::string const& format = std::string());
   static bool ExtractTar(const char* inFileName, bool verbose);
   // This should be called first thing in main
   // it will keep child processes from inheriting the
@@ -428,11 +435,9 @@ public:
   static std::string const& GetCMakeCursesCommand();
   static std::string const& GetCMakeRoot();
 
-#if defined(CMAKE_BUILD_WITH_CMAKE)
   /** Echo a message in color using KWSys's Terminal cprintf.  */
   static void MakefileColorEcho(int color, const char* message,
                                 bool newLine, bool enabled);
-#endif
 
   /** Try to guess the soname of a shared library.  */
   static bool GuessLibrarySOName(std::string const& fullPath,

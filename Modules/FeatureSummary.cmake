@@ -379,6 +379,9 @@ function(_FS_GET_FEATURE_SUMMARY _property _var _includeQuiet)
 
   set(_currentFeatureText "")
   get_property(_EnabledFeatures  GLOBAL PROPERTY ${_property})
+  if(_EnabledFeatures)
+    list(REMOVE_DUPLICATES _EnabledFeatures)
+  endif(_EnabledFeatures)
 
   foreach(_currentFeature ${_EnabledFeatures})
 
@@ -559,8 +562,14 @@ endfunction()
 # The stuff below is only kept for compatibility
 
 function(SET_PACKAGE_INFO _name _desc)
-  set(_url "${ARGV2}")
-  set(_purpose "${ARGV3}")
+  unset(_url)
+  unset(_purpose)
+  if(ARGC GREATER 2)
+    set(_url "${ARGV2}")
+  endif()
+  if(ARGC GREATER 3)
+    set(_purpose "${ARGV3}")
+  endif()
   set_property(GLOBAL PROPERTY _CMAKE_${_name}_DESCRIPTION "${_desc}" )
   if(NOT _url STREQUAL "")
     set_property(GLOBAL PROPERTY _CMAKE_${_name}_URL "${_url}" )

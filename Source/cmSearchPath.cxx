@@ -12,6 +12,7 @@
 
 #include "cmSearchPath.h"
 #include "cmFindCommon.h"
+#include "cmAlgorithms.h"
 
 //----------------------------------------------------------------------------
 cmSearchPath::cmSearchPath(cmFindCommon* findCmd)
@@ -85,7 +86,7 @@ void cmSearchPath::AddUserPath(const std::string& path)
   for(std::vector<std::string>::const_iterator p = outPaths.begin();
       p != outPaths.end(); ++p)
     {
-    this->AddPathInternal(*p, this->FC->Makefile->GetCurrentDirectory());
+    this->AddPathInternal(*p, this->FC->Makefile->GetCurrentSourceDirectory());
     }
 }
 
@@ -103,7 +104,8 @@ void cmSearchPath::AddCMakePath(const std::string& variable)
     for(std::vector<std::string>::const_iterator p = expanded.begin();
         p!= expanded.end(); ++p)
       {
-      this->AddPathInternal(*p, this->FC->Makefile->GetCurrentDirectory());
+      this->AddPathInternal(*p,
+                            this->FC->Makefile->GetCurrentSourceDirectory());
       }
     }
 }
@@ -131,15 +133,36 @@ void cmSearchPath::AddCMakePrefixPath(const std::string& variable)
     std::vector<std::string> expanded;
     cmSystemTools::ExpandListArgument(value, expanded);
 
-    this->AddPrefixPaths(expanded, this->FC->Makefile->GetCurrentDirectory());
+    this->AddPrefixPaths(expanded,
+                         this->FC->Makefile->GetCurrentSourceDirectory());
     }
 }
 
 //----------------------------------------------------------------------------
-void cmSearchPath::AddEnvPrefixPath(const std::string& variable)
+static std::string cmSearchPathStripBin(std::string const& s)
+{
+  // If the path is a PREFIX/bin case then add its parent instead.
+  if((cmHasLiteralSuffix(s, "/bin")) ||
+     (cmHasLiteralSuffix(s, "/sbin")))
+    {
+    return cmSystemTools::GetFilenamePath(s);
+    }
+  else
+    {
+    return s;
+    }
+}
+
+//----------------------------------------------------------------------------
+void cmSearchPath::AddEnvPrefixPath(const std::string& variable, bool stripBin)
 {
   std::vector<std::string> expanded;
   cmSystemTools::GetPath(expanded, variable.c_str());
+  if (stripBin)
+    {
+    std::transform(expanded.begin(), expanded.end(), expanded.begin(),
+                   cmSearchPathStripBin);
+    }
   this->AddPrefixPaths(expanded);
 }
 

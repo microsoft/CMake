@@ -15,7 +15,7 @@
 #include "cmCTest.h"
 #include "cmGeneratedFileStream.h"
 #include "cmake.h"
-#include "cmXMLSafe.h"
+#include "cmXMLWriter.h"
 #include <cmsys/Process.h>
 
 
@@ -35,7 +35,8 @@ void cmCTestConfigureHandler::Initialize()
 //functions and commented...
 int cmCTestConfigureHandler::ProcessHandler()
 {
-  cmCTestLog(this->CTest, HANDLER_OUTPUT, "Configure project" << std::endl);
+  cmCTestOptionalLog(this->CTest, HANDLER_OUTPUT,
+    "Configure project" << std::endl, this->Quiet);
   std::string cCommand
     = this->CTest->GetCTestConfiguration("ConfigureCommand");
   if (cCommand.empty())
@@ -75,8 +76,8 @@ int cmCTestConfigureHandler::ProcessHandler()
 
     cmGeneratedFileStream ofs;
     this->StartLogFile("Configure", ofs);
-    cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT, "Configure with command: "
-      << cCommand << std::endl);
+    cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
+      "Configure with command: " << cCommand << std::endl, this->Quiet);
     res = this->CTest->RunMakeCommand(cCommand.c_str(), output,
       &retVal, buildDirectory.c_str(),
       0, ofs);
@@ -88,39 +89,28 @@ int cmCTestConfigureHandler::ProcessHandler()
 
     if ( os )
       {
-      this->CTest->StartXML(os, this->AppendXML);
-      os << "<Configure>\n"
-         << "\t<StartDateTime>" << start_time << "</StartDateTime>"
-         << std::endl
-         << "\t<StartConfigureTime>" << start_time_time
-         << "</StartConfigureTime>\n";
-
-      if ( res == cmsysProcess_State_Exited && retVal )
-        {
-        os << retVal;
-        }
-      os << "<ConfigureCommand>" << cCommand << "</ConfigureCommand>"
-        << std::endl;
-      cmCTestLog(this->CTest, DEBUG, "End" << std::endl);
-      os << "<Log>" << cmXMLSafe(output) << "</Log>" << std::endl;
-      std::string end_time = this->CTest->CurrentTime();
-      os << "\t<ConfigureStatus>" << retVal << "</ConfigureStatus>\n"
-         << "\t<EndDateTime>" << end_time << "</EndDateTime>\n"
-         << "\t<EndConfigureTime>" <<
-        static_cast<unsigned int>(cmSystemTools::GetTime())
-         << "</EndConfigureTime>\n"
-         << "<ElapsedMinutes>"
-         << static_cast<int>(
-           (cmSystemTools::GetTime() - elapsed_time_start)/6)/10.0
-         << "</ElapsedMinutes>"
-         << "</Configure>" << std::endl;
-      this->CTest->EndXML(os);
+      cmXMLWriter xml(os);
+      this->CTest->StartXML(xml, this->AppendXML);
+      xml.StartElement("Configure");
+      xml.Element("StartDateTime", start_time);
+      xml.Element("StartConfigureTime", start_time_time);
+      xml.Element("ConfigureCommand", cCommand);
+      cmCTestOptionalLog(this->CTest, DEBUG, "End" << std::endl, this->Quiet);
+      xml.Element("Log", output);
+      xml.Element("ConfigureStatus", retVal);
+      xml.Element("EndDateTime", this->CTest->CurrentTime());
+      xml.Element("EndConfigureTime",
+        static_cast<unsigned int>(cmSystemTools::GetTime()));
+      xml.Element("ElapsedMinutes", static_cast<int>(
+        (cmSystemTools::GetTime() - elapsed_time_start)/6)/10.0);
+      xml.EndElement(); // Configure
+      this->CTest->EndXML(xml);
       }
     }
   else
     {
-    cmCTestLog(this->CTest, DEBUG, "Configure with command: " << cCommand
-      << std::endl);
+    cmCTestOptionalLog(this->CTest, DEBUG,
+      "Configure with command: " << cCommand << std::endl, this->Quiet);
     }
   if (! res || retVal )
     {

@@ -12,6 +12,7 @@
 #include "cmListCommand.h"
 #include <cmsys/RegularExpression.hxx>
 #include <cmsys/SystemTools.hxx>
+#include "cmAlgorithms.h"
 
 #include <stdlib.h> // required for atoi
 #include <ctype.h>
@@ -104,19 +105,8 @@ bool cmListCommand::GetList(std::vector<std::string>& list,
     }
   // expand the variable into a list
   cmSystemTools::ExpandListArgument(listString, list, true);
-  // check the list for empty values
-  bool hasEmpty = false;
-  for(std::vector<std::string>::iterator i = list.begin();
-      i != list.end(); ++i)
-    {
-    if(i->empty())
-      {
-      hasEmpty = true;
-      break;
-      }
-    }
   // if no empty elements then just return
-  if(!hasEmpty)
+  if (std::find(list.begin(), list.end(), std::string()) == list.end())
     {
     return true;
     }
@@ -131,8 +121,7 @@ bool cmListCommand::GetList(std::vector<std::string>& list,
       // empty values
       list.clear();
       cmSystemTools::ExpandListArgument(listString, list);
-      std::string warn = this->Makefile->GetPolicies()->
-        GetPolicyWarning(cmPolicies::CMP0007);
+      std::string warn = cmPolicies::GetPolicyWarning(cmPolicies::CMP0007);
       warn += " List has value = [";
       warn += listString;
       warn += "].";
@@ -153,8 +142,7 @@ bool cmListCommand::GetList(std::vector<std::string>& list,
     case cmPolicies::REQUIRED_ALWAYS:
       this->Makefile->IssueMessage(
         cmake::FATAL_ERROR,
-        this->Makefile->GetPolicies()
-        ->GetRequiredPolicyError(cmPolicies::CMP0007)
+        cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0007)
         );
       return false;
     }
@@ -213,12 +201,12 @@ bool cmListCommand::HandleGetCommand(std::vector<std::string> const& args)
   std::string value;
   size_t cc;
   const char* sep = "";
+  size_t nitem = varArgsExpanded.size();
   for ( cc = 2; cc < args.size()-1; cc ++ )
     {
     int item = atoi(args[cc].c_str());
     value += sep;
     sep = ";";
-    size_t nitem = varArgsExpanded.size();
     if ( item < 0 )
       {
       item = (int)nitem + item;
@@ -227,8 +215,8 @@ bool cmListCommand::HandleGetCommand(std::vector<std::string> const& args)
       {
       std::ostringstream str;
       str << "index: " << item << " out of range (-"
-          << varArgsExpanded.size() << ", "
-          << varArgsExpanded.size()-1 << ")";
+          << nitem << ", "
+          << nitem - 1 << ")";
       this->SetError(str.str());
       return false;
       }
@@ -254,15 +242,12 @@ bool cmListCommand::HandleAppendCommand(std::vector<std::string> const& args)
   // expand the variable
   std::string listString;
   this->GetListString(listString, listName);
-  size_t cc;
-  for ( cc = 2; cc < args.size(); ++ cc )
+
+  if(!listString.empty() && !args.empty())
     {
-    if(!listString.empty())
-      {
-      listString += ";";
-      }
-    listString += args[cc];
+    listString += ";";
     }
+  listString += cmJoin(cmRange(args).advance(2), ";");
 
   this->Makefile->AddDefinition(listName, listString.c_str());
   return true;
@@ -287,18 +272,14 @@ bool cmListCommand::HandleFindCommand(std::vector<std::string> const& args)
     return true;
     }
 
-  std::vector<std::string>::iterator it;
-  unsigned int index = 0;
-  for ( it = varArgsExpanded.begin(); it != varArgsExpanded.end(); ++ it )
+  std::vector<std::string>::iterator it =
+      std::find(varArgsExpanded.begin(), varArgsExpanded.end(), args[2]);
+  if (it != varArgsExpanded.end())
     {
-    if ( *it == args[2] )
-      {
-      char indexString[32];
-      sprintf(indexString, "%d", index);
-      this->Makefile->AddDefinition(variableName, indexString);
-      return true;
-      }
-    index++;
+    std::ostringstream indexStream;
+    indexStream << std::distance(varArgsExpanded.begin(), it);
+    this->Makefile->AddDefinition(variableName, indexStream.str().c_str());
+    return true;
     }
 
   this->Makefile->AddDefinition(variableName, "-1");
@@ -373,25 +354,16 @@ bool cmListCommand
     return false;
     }
 
-  size_t cc;
-  for ( cc = 2; cc < args.size(); ++ cc )
-    {
-    size_t kk = 0;
-    while ( kk < varArgsExpanded.size() )
-      {
-      if ( varArgsExpanded[kk] == args[cc] )
-        {
-        varArgsExpanded.erase(varArgsExpanded.begin()+kk);
-        }
-      else
-        {
-        kk ++;
-        }
-      }
-    }
+  std::vector<std::string> remove(args.begin() + 2, args.end());
+  std::sort(remove.begin(), remove.end());
+  std::vector<std::string>::const_iterator remEnd =
+      std::unique(remove.begin(), remove.end());
+  std::vector<std::string>::const_iterator remBegin = remove.begin();
 
-
-  std::string value = cmJoin(varArgsExpanded, ";");
+  std::vector<std::string>::const_iterator argsEnd =
+      cmRemoveMatching(varArgsExpanded, cmRange(remBegin, remEnd));
+  std::vector<std::string>::const_iterator argsBegin = varArgsExpanded.begin();
+  std::string value = cmJoin(cmRange(argsBegin, argsEnd), ";");
   this->Makefile->AddDefinition(listName, value.c_str());
   return true;
 }
@@ -417,15 +389,7 @@ bool cmListCommand
     return false;
     }
 
-  std::string value;
-  std::vector<std::string>::reverse_iterator it;
-  const char* sep = "";
-  for ( it = varArgsExpanded.rbegin(); it != varArgsExpanded.rend(); ++ it )
-    {
-    value += sep;
-    value += it->c_str();
-    sep = ";";
-    }
+  std::string value = cmJoin(cmReverseRange(varArgsExpanded), ";");
 
   this->Makefile->AddDefinition(listName, value.c_str());
   return true;
@@ -453,24 +417,11 @@ bool cmListCommand
     return false;
     }
 
-  std::string value;
-
-
-  std::set<std::string> unique;
-  std::vector<std::string>::iterator it;
-  const char* sep = "";
-  for ( it = varArgsExpanded.begin(); it != varArgsExpanded.end(); ++ it )
-    {
-    if (unique.find(*it) != unique.end())
-      {
-      continue;
-      }
-    unique.insert(*it);
-    value += sep;
-    value += it->c_str();
-    sep = ";";
-    }
-
+  std::vector<std::string>::const_iterator argsEnd =
+      cmRemoveDuplicates(varArgsExpanded);
+  std::vector<std::string>::const_iterator argsBegin =
+      varArgsExpanded.begin();
+  std::string value = cmJoin(cmRange(argsBegin, argsEnd), ";");
 
   this->Makefile->AddDefinition(listName, value.c_str());
   return true;
@@ -532,10 +483,10 @@ bool cmListCommand::HandleRemoveAtCommand(
 
   size_t cc;
   std::vector<size_t> removed;
+  size_t nitem = varArgsExpanded.size();
   for ( cc = 2; cc < args.size(); ++ cc )
     {
     int item = atoi(args[cc].c_str());
-    size_t nitem = varArgsExpanded.size();
     if ( item < 0 )
       {
       item = (int)nitem + item;
@@ -544,35 +495,23 @@ bool cmListCommand::HandleRemoveAtCommand(
       {
       std::ostringstream str;
       str << "index: " << item << " out of range (-"
-          << varArgsExpanded.size() << ", "
-          << varArgsExpanded.size()-1 << ")";
+          << nitem << ", "
+          << nitem - 1 << ")";
       this->SetError(str.str());
       return false;
       }
     removed.push_back(static_cast<size_t>(item));
     }
 
-  std::string value;
-  const char* sep = "";
-  for ( cc = 0; cc < varArgsExpanded.size(); ++ cc )
-    {
-    size_t kk;
-    bool found = false;
-    for ( kk = 0; kk < removed.size(); ++ kk )
-      {
-      if ( cc == removed[kk] )
-        {
-        found = true;
-        }
-      }
+  std::sort(removed.begin(), removed.end());
+  std::vector<size_t>::const_iterator remEnd =
+      std::unique(removed.begin(), removed.end());
+  std::vector<size_t>::const_iterator remBegin = removed.begin();
 
-    if ( !found )
-      {
-      value += sep;
-      value += varArgsExpanded[cc];
-      sep = ";";
-      }
-    }
+  std::vector<std::string>::const_iterator argsEnd =
+      cmRemoveIndices(varArgsExpanded, cmRange(remBegin, remEnd));
+  std::vector<std::string>::const_iterator argsBegin = varArgsExpanded.begin();
+  std::string value = cmJoin(cmRange(argsBegin, argsEnd), ";");
 
   this->Makefile->AddDefinition(listName, value.c_str());
   return true;

@@ -228,7 +228,7 @@
 #
 #  List of four values that specify what project to install. The four values
 #  are: Build directory, Project Name, Project Component, Directory. If
-#  omitted, CPack will build an installer that installers everything.
+#  omitted, CPack will build an installer that installs everything.
 #
 # .. variable:: CPACK_SYSTEM_NAME
 #
@@ -314,7 +314,7 @@ macro(cpack_encode_variables)
   set(_CPACK_OTHER_VARIABLES_)
   get_cmake_property(res VARIABLES)
   foreach(var ${res})
-    if("xxx${var}" MATCHES "xxxCPACK")
+    if(var MATCHES "^CPACK")
       set(_CPACK_OTHER_VARIABLES_
         "${_CPACK_OTHER_VARIABLES_}\nSET(${var} \"${${var}}\")")
       endif()

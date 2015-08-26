@@ -24,6 +24,7 @@ class cmMakefile;
 class cmListFileBacktrace;
 
 struct cmGeneratorExpressionEvaluator;
+struct cmGeneratorExpressionContext;
 struct cmGeneratorExpressionDAGChecker;
 
 class cmCompiledGeneratorExpression;
@@ -80,11 +81,13 @@ public:
                        bool quiet = false,
                        cmTarget const* headTarget = 0,
                        cmTarget const* currentTarget = 0,
-                       cmGeneratorExpressionDAGChecker *dagChecker = 0) const;
+                       cmGeneratorExpressionDAGChecker *dagChecker = 0,
+                       std::string const& language = std::string()) const;
   const char* Evaluate(cmMakefile* mf, const std::string& config,
                        bool quiet,
                        cmTarget const* headTarget,
-                       cmGeneratorExpressionDAGChecker *dagChecker) const;
+                       cmGeneratorExpressionDAGChecker *dagChecker,
+                       std::string const& language = std::string()) const;
 
   /** Get set of targets found during evaluations.  */
   std::set<cmTarget*> const& GetTargets() const
@@ -129,6 +132,9 @@ public:
                     std::map<std::string, std::string>& mapping);
 
 private:
+  const char* EvaluateWithContext(cmGeneratorExpressionContext& context,
+                           cmGeneratorExpressionDAGChecker *dagChecker) const;
+
   cmCompiledGeneratorExpression(cmListFileBacktrace const& backtrace,
               const std::string& input);
 

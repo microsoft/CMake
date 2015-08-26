@@ -94,8 +94,8 @@ bool cmFunctionHelperCommand::InvokeInitialPass
     }
 
   // we push a scope on the makefile
-  cmMakefile::LexicalPushPop lexScope(this->Makefile);
   cmMakefile::ScopePushPop varScope(this->Makefile);
+  cmMakefile::LexicalPushPop lexScope(this->Makefile);
   static_cast<void>(varScope);
 
   // Push a weak policy scope which restores the policies recorded at
@@ -126,27 +126,10 @@ bool cmFunctionHelperCommand::InvokeInitialPass
     }
 
   // define ARGV and ARGN
-  std::vector<std::string>::const_iterator eit;
-  std::string argvDef;
-  std::string argnDef;
-  unsigned int cnt = 0;
-  for ( eit = expandedArgs.begin(); eit != expandedArgs.end(); ++eit )
-    {
-    if (!argvDef.empty())
-      {
-      argvDef += ";";
-      }
-    argvDef += *eit;
-    if ( cnt >= this->Args.size()-1 )
-      {
-      if (!argnDef.empty())
-        {
-        argnDef += ";";
-        }
-      argnDef += *eit;
-      }
-    cnt ++;
-    }
+  std::string argvDef = cmJoin(expandedArgs, ";");
+  std::vector<std::string>::const_iterator eit
+      = expandedArgs.begin() + (this->Args.size()-1);
+  std::string argnDef = cmJoin(cmRange(eit, expandedArgs.end()), ";");
   this->Makefile->AddDefinition("ARGV", argvDef.c_str());
   this->Makefile->MarkVariableAsUsed("ARGV");
   this->Makefile->AddDefinition("ARGN", argnDef.c_str());
@@ -192,15 +175,6 @@ IsFunctionBlocked(const cmListFileFunction& lff, cmMakefile &mf,
     // if this is the endfunction for this function then execute
     if (!this->Depth)
       {
-      std::string name = this->Args[0];
-      std::vector<std::string>::size_type cc;
-      name += "(";
-      for ( cc = 0; cc < this->Args.size(); cc ++ )
-        {
-        name += " " + this->Args[cc];
-        }
-      name += " )";
-
       // create a new command and add it to cmake
       cmFunctionHelperCommand *f = new cmFunctionHelperCommand();
       f->Args = this->Args;
@@ -219,9 +193,8 @@ IsFunctionBlocked(const cmListFileFunction& lff, cmMakefile &mf,
         }
 
       std::string newName = "_" + this->Args[0];
-      mf.GetCMakeInstance()->RenameCommand(this->Args[0],
-                                           newName);
-      mf.AddCommand(f);
+      mf.GetState()->RenameCommand(this->Args[0], newName);
+      mf.GetState()->AddCommand(f);
 
       // remove the function blocker now that the function is defined
       mf.RemoveFunctionBlocker(this, lff);

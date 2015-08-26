@@ -18,7 +18,6 @@
 #include "cmGlobalGenerator.h"
 #include <cmsys/Process.h>
 #include "cmCTestTestHandler.h"
-#include "cmCacheManager.h"
 
 //----------------------------------------------------------------------
 cmCTestBuildAndTestHandler::cmCTestBuildAndTestHandler()
@@ -32,8 +31,7 @@ cmCTestBuildAndTestHandler::cmCTestBuildAndTestHandler()
 //----------------------------------------------------------------------
 void cmCTestBuildAndTestHandler::Initialize()
 {
-  this->BuildTargets.erase(
-    this->BuildTargets.begin(), this->BuildTargets.end());
+  this->BuildTargets.clear();
   this->Superclass::Initialize();
 }
 
@@ -206,6 +204,8 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
     }
 
   cmake cm;
+  cm.SetHomeDirectory("");
+  cm.SetHomeOutputDirectory("");
   std::string cmakeOutString;
   cmCTestBuildAndTestCaptureRAII captureRAII(cm, cmakeOutString);
   static_cast<void>(captureRAII);
@@ -256,7 +256,7 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
     cm.SetGeneratorToolset(this->BuildGeneratorToolset);
 
     // Load the cache to make CMAKE_MAKE_PROGRAM available.
-    cm.GetCacheManager()->LoadCache(this->BinaryDir);
+    cm.LoadCache(this->BinaryDir);
     }
   else
     {
@@ -311,7 +311,7 @@ int cmCTestBuildAndTestHandler::RunCMakeAndTest(std::string* outstring)
       output, this->BuildMakeProgram,
       config,
       !this->BuildNoClean,
-      false, remainingTime);
+      false, false, remainingTime);
     out << output;
     // if the build failed then return
     if (retVal)

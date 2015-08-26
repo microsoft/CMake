@@ -65,9 +65,10 @@ void cmGraphVizWriter::ReadSettings(const char* settingsFileName,
                                     const char* fallbackSettingsFileName)
 {
   cmake cm;
-  cmGlobalGenerator ggi;
-  ggi.SetCMakeInstance(&cm);
-  cmsys::auto_ptr<cmLocalGenerator> lg(ggi.CreateLocalGenerator());
+  cm.SetHomeDirectory("");
+  cm.SetHomeOutputDirectory("");
+  cmGlobalGenerator ggi(&cm);
+  cmsys::auto_ptr<cmLocalGenerator> lg(ggi.MakeLocalGenerator());
   cmMakefile *mf = lg->GetMakefile();
 
   const char* inFileName = settingsFileName;
@@ -81,7 +82,7 @@ void cmGraphVizWriter::ReadSettings(const char* settingsFileName,
       }
     }
 
-  if ( !mf->ReadListFile(0, inFileName) )
+  if ( !mf->ReadListFile(inFileName) )
     {
     cmSystemTools::Error("Problem opening GraphViz options file: ",
                          inFileName);

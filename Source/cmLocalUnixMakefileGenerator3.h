@@ -34,7 +34,9 @@ class cmSourceFile;
 class cmLocalUnixMakefileGenerator3 : public cmLocalGenerator
 {
 public:
-  cmLocalUnixMakefileGenerator3();
+  cmLocalUnixMakefileGenerator3(cmGlobalGenerator* gg,
+                                cmLocalGenerator* parent,
+                                cmState::Snapshot snapshot);
   virtual ~cmLocalUnixMakefileGenerator3();
 
   /**
@@ -66,79 +68,9 @@ public:
   void WriteMakeVariables(std::ostream& makefileStream);
 
   /**
-   * If true, then explicitly pass MAKEFLAGS on the make all target for makes
-   * that do not use environment variables.
-   *
-   */
-  void SetPassMakeflags(bool s){this->PassMakeflags = s;}
-  bool GetPassMakeflags() { return this->PassMakeflags; }
-
-  /**
-   * Set the flag used to keep the make program silent.
-   */
-  void SetMakeSilentFlag(const std::string& s) { this->MakeSilentFlag = s; }
-  std::string &GetMakeSilentFlag() { return this->MakeSilentFlag; }
-
-  /**
-   * Set to true if the shell being used is the windows shell.
-   * This controls if statements in the makefile and the SHELL variable.
-   * The default is false.
-   */
-  void SetWindowsShell(bool v)  {this->WindowsShell = v;}
-
-  /**
-   * Set to true if the make tool being used is Watcom WMake.
-   */
-  void SetWatcomWMake(bool v)  {this->WatcomWMake = v;}
-
-  /**
-   * Set to true if the make tool being used is MinGW Make.
-   */
-  void SetMinGWMake(bool v)  {this->MinGWMake = v;}
-
-  /**
-   * Set to true if the make tool being used is NMake.
-   */
-  void SetNMake(bool v)  {this->NMake = v;}
-
-  /**
-   * Set to true if the shell being used is the MSYS shell.
-   * This controls if statements in the makefile and the SHELL variable.
-   * The default is false.
-   */
-  void SetMSYSShell(bool v)  {this->MSYSShell = v;}
-
-  /**
-   * If set to true, then NULL is set to nil for non Windows_NT.
-   * This uses make syntax used by nmake and borland.
-   * The default is false.
-   */
-  void SetDefineWindowsNULL(bool v)  {this->DefineWindowsNULL = v;}
-
-  /**
-   * If set to true, cd dir && command is used to
-   * run commands in a different directory.
-   */
-  void SetUnixCD(bool v)  {this->UnixCD = v;}
-
-  /**
-   * Set the string used to include one makefile into another default
-   * is include.
-   */
-  void SetIncludeDirective(const std::string& s)
-    { this->IncludeDirective = s; }
-  const std::string& GetIncludeDirective() { return this->IncludeDirective; }
-
-  /**
    * Set max makefile variable size, default is 0 which means unlimited.
    */
   void SetMakefileVariableSize(int s) { this->MakefileVariableSize = s; }
-
-  /**
-   * If ignore lib prefix is true, then do not strip lib from the name
-   * of a library.
-   */
-  void SetIgnoreLibPrefix(bool s) { this->IgnoreLibPrefix = s; }
 
   /**
    * Set whether passing a make target on a command line requires an
@@ -174,8 +106,9 @@ public:
   // append an echo command
   enum EchoColor { EchoNormal, EchoDepend, EchoBuild, EchoLink,
                    EchoGenerate, EchoGlobal };
-  void AppendEcho(std::vector<std::string>& commands, const char* text,
-                  EchoColor color = EchoNormal);
+  struct EchoProgress { std::string Dir; std::string Arg; };
+  void AppendEcho(std::vector<std::string>& commands, std::string const& text,
+                  EchoColor color = EchoNormal, EchoProgress const* = 0);
 
   /** Get whether the makefile is to have color.  */
   bool GetColorMakefile() const { return this->ColorMakefile; }
@@ -330,12 +263,7 @@ private:
   //==========================================================================
   // Configuration settings.
   int MakefileVariableSize;
-  std::string IncludeDirective;
-  std::string MakeSilentFlag;
   std::string ConfigurationName;
-  bool DefineWindowsNULL;
-  bool UnixCD;
-  bool PassMakeflags;
   bool MakeCommandEscapeTargetTwice;
   bool BorlandMakeCurlyHack;
   //==========================================================================

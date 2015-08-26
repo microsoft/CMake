@@ -72,7 +72,7 @@ public:
   cmLocalGenerator* LocalGenerator;
   cmGlobalGenerator const* GlobalGenerator;
 
-  cmSourceFile const* GetModuleDefinitionFile(const std::string& config) const;
+  std::string GetModuleDefinitionFile(const std::string& config) const;
 
   /** Full path with trailing slash to the top-level directory
       holding object files for this target.  Includes the build
@@ -91,7 +91,7 @@ public:
 
   /** Get the include directories for this target.  */
   std::vector<std::string> GetIncludeDirectories(
-      const std::string& config) const;
+      const std::string& config, const std::string& lang) const;
 
   bool IsSystemIncludeDirectory(const std::string& dir,
                                 const std::string& config) const;
@@ -140,9 +140,9 @@ public:
   };
 
   struct XamlData {
-    mutable std::set<std::string> ExpectedXamlHeaders;
-    mutable std::set<std::string> ExpectedXamlSources;
-    mutable std::vector<cmSourceFile const*> XamlSources;
+    std::set<std::string> ExpectedXamlHeaders;
+    std::set<std::string> ExpectedXamlSources;
+    std::vector<cmSourceFile const*> XamlSources;
   };
 
 private:

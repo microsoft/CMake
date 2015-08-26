@@ -25,7 +25,7 @@ class cmTarget;
 class cmGlobalVisualStudio6Generator : public cmGlobalVisualStudioGenerator
 {
 public:
-  cmGlobalVisualStudio6Generator();
+  cmGlobalVisualStudio6Generator(cmake* cm);
   static cmGlobalGeneratorFactory* NewFactory() {
     return new cmGlobalGeneratorSimpleFactory
       <cmGlobalVisualStudio6Generator>(); }
@@ -39,7 +39,8 @@ public:
   static void GetDocumentation(cmDocumentationEntry& entry);
 
   ///! Create a local generator appropriate to this Global Generator
-  virtual cmLocalGenerator *CreateLocalGenerator();
+  virtual cmLocalGenerator *CreateLocalGenerator(cmLocalGenerator* parent,
+                                                 cmState::Snapshot snapshot);
 
   /**
    * Try to determine system information such as shared library
@@ -59,7 +60,7 @@ public:
     const std::string& projectDir,
     const std::string& targetName,
     const std::string& config,
-    bool fast,
+    bool fast, bool verbose,
     std::vector<std::string> const& makeOptions = std::vector<std::string>()
     );
 

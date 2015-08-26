@@ -14,6 +14,8 @@
 
 #include "cmCTestGlobalVC.h"
 
+#include <list>
+
 /** \class cmCTestSVN
  * \brief Interaction with subversion command-line tool
  *
@@ -82,7 +84,7 @@ private:
   void DoRevisionSVN(Revision const& revision,
                      std::vector<Change> const& changes);
 
-  void WriteXMLGlobal(std::ostream& xml);
+  void WriteXMLGlobal(cmXMLWriter& xml);
 
   // Parsing helper classes.
   class InfoParser;

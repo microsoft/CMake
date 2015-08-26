@@ -31,15 +31,8 @@ public:
 
   struct Property
   {
-    Property()
-    {
-
-    }
-
-    ~Property()
-    {
-      cmDeleteAll(this->ValueExpressions);
-    }
+    Property();
+    ~Property();
 
     ExpressionVectorType ValueExpressions;
   };

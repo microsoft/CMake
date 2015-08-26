@@ -11,6 +11,7 @@
 ============================================================================*/
 
 #include "cmSystemTools.h"
+#include "cmAlgorithms.h"
 #include <ctype.h>
 #include <errno.h>
 #include <time.h>
@@ -28,10 +29,10 @@
 # include "cmArchiveWrite.h"
 # include "cmLocale.h"
 # include <cm_libarchive.h>
-# include <cmsys/Terminal.h>
 #endif
 #include <cmsys/stl/algorithm>
 #include <cmsys/FStream.hxx>
+#include <cmsys/Terminal.h>
 
 #if defined(_WIN32)
 # include <windows.h>
@@ -367,13 +368,17 @@ bool cmSystemTools::IsInternallyOn(const char* val)
     return false;
     }
   std::basic_string<char> v = val;
+  if (v.size() > 4)
+    {
+    return false;
+    }
 
   for(std::basic_string<char>::iterator c = v.begin();
       c != v.end(); c++)
     {
     *c = static_cast<char>(toupper(*c));
     }
-  return (v == "I_ON" || v == "i_on");
+  return v == "I_ON";
 }
 
 bool cmSystemTools::IsOn(const char* val)
@@ -654,7 +659,8 @@ std::vector<std::string> cmSystemTools::ParseArguments(const char* command)
 
 
 bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
-                                     std::string* output ,
+                                     std::string* captureStdOut,
+                                     std::string* captureStdErr,
                                      int* retVal , const char* dir ,
                                      OutputOption outputflag ,
                                      double timeout )
@@ -666,9 +672,13 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
     argv.push_back(a->c_str());
     }
   argv.push_back(0);
-  if ( output )
+  if ( captureStdOut )
     {
-    *output = "";
+    *captureStdOut = "";
+    }
+  if (captureStdErr && captureStdErr != captureStdOut)
+    {
+    *captureStdErr = "";
     }
 
   cmsysProcess* cp = cmsysProcess_New();
@@ -688,15 +698,17 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
   cmsysProcess_SetTimeout(cp, timeout);
   cmsysProcess_Execute(cp);
 
-  std::vector<char> tempOutput;
+  std::vector<char> tempStdOut;
+  std::vector<char> tempStdErr;
   char* data;
   int length;
   int pipe;
-  if(outputflag != OUTPUT_PASSTHROUGH && (output || outputflag != OUTPUT_NONE))
+  if(outputflag != OUTPUT_PASSTHROUGH &&
+     (captureStdOut || captureStdErr || outputflag != OUTPUT_NONE))
     {
     while((pipe = cmsysProcess_WaitForData(cp, &data, &length, 0)) > 0)
       {
-      if(output || outputflag != OUTPUT_NONE)
+      if(captureStdOut || captureStdErr || outputflag != OUTPUT_NONE)
         {
         // Translate NULL characters in the output into valid text.
         // Visual Studio 7 puts these characters in the output of its
@@ -709,9 +721,21 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
             }
           }
         }
-      if ( output )
+      if(pipe == cmsysProcess_Pipe_STDOUT ||
+         (pipe == cmsysProcess_Pipe_STDERR &&
+          captureStdOut == captureStdErr))
         {
-        tempOutput.insert(tempOutput.end(), data, data+length);
+        if (captureStdOut)
+          {
+          tempStdOut.insert(tempStdOut.end(), data, data+length);
+          }
+        }
+      else if(pipe == cmsysProcess_Pipe_STDERR)
+        {
+        if (captureStdErr)
+          {
+          tempStdErr.insert(tempStdErr.end(), data, data+length);
+          }
         }
       if(outputflag != OUTPUT_NONE)
         {
@@ -735,9 +759,14 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
     }
 
   cmsysProcess_WaitForExit(cp, 0);
-  if ( output && tempOutput.begin() != tempOutput.end())
+  if ( captureStdOut && tempStdOut.begin() != tempStdOut.end())
     {
-    output->append(&*tempOutput.begin(), tempOutput.size());
+    captureStdOut->append(&*tempStdOut.begin(), tempStdOut.size());
+    }
+  if ( captureStdErr && captureStdErr != captureStdOut &&
+       tempStdErr.begin() != tempStdErr.end())
+    {
+    captureStdErr->append(&*tempStdErr.begin(), tempStdErr.size());
     }
 
   bool result = true;
@@ -762,9 +791,9 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
       {
       std::cerr << exception_str << std::endl;
       }
-    if ( output )
+    if ( captureStdErr )
       {
-      output->append(exception_str, strlen(exception_str));
+      captureStdErr->append(exception_str, strlen(exception_str));
       }
     result = false;
     }
@@ -775,9 +804,9 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
       {
       std::cerr << error_str << std::endl;
       }
-    if ( output )
+    if ( captureStdErr )
       {
-      output->append(error_str, strlen(error_str));
+      captureStdErr->append(error_str, strlen(error_str));
       }
     result = false;
     }
@@ -788,9 +817,9 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
       {
       std::cerr << error_str << std::endl;
       }
-    if ( output )
+    if ( captureStdErr )
       {
-      output->append(error_str, strlen(error_str));
+      captureStdErr->append(error_str, strlen(error_str));
       }
     result = false;
     }
@@ -801,7 +830,8 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string>const& command,
 
 bool cmSystemTools::RunSingleCommand(
   const char* command,
-  std::string* output,
+  std::string* captureStdOut,
+  std::string* captureStdErr,
   int *retVal,
   const char* dir,
   OutputOption outputflag,
@@ -818,8 +848,8 @@ bool cmSystemTools::RunSingleCommand(
     {
     return false;
     }
-  return cmSystemTools::RunSingleCommand(args, output,retVal,
-                                         dir, outputflag, timeout);
+  return cmSystemTools::RunSingleCommand(args, captureStdOut, captureStdErr,
+                                         retVal, dir, outputflag, timeout);
 }
 
 std::string
@@ -830,7 +860,7 @@ cmSystemTools::PrintSingleCommand(std::vector<std::string> const& command)
     return std::string();
     }
 
-  return "\"" + cmJoin(command, "\" \"") + "\"";
+  return cmWrap('"', command, '"', " ");
 }
 
 bool cmSystemTools::DoesFileExistWithExtensions(
@@ -997,6 +1027,92 @@ std::string cmSystemTools::ComputeStringMD5(const std::string& input)
   cmSystemTools::Message("md5sum not supported in bootstrapping mode","Error");
   return "";
 #endif
+}
+
+//----------------------------------------------------------------------------
+std::string cmSystemTools::ComputeCertificateThumbprint(
+  const std::string& source)
+{
+  std::string thumbprint;
+
+#ifdef _WIN32
+  BYTE* certData = NULL;
+  CRYPT_INTEGER_BLOB cryptBlob;
+  HCERTSTORE certStore = NULL;
+  PCCERT_CONTEXT certContext = NULL;
+
+  HANDLE certFile = CreateFile(cmsys::Encoding::ToWide(source.c_str()).c_str(),
+    GENERIC_READ,
+    FILE_SHARE_READ,
+    NULL,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_NORMAL,
+    NULL);
+
+  if (certFile != INVALID_HANDLE_VALUE && certFile != NULL)
+    {
+    DWORD fileSize = GetFileSize(certFile, NULL);
+    if (fileSize != INVALID_FILE_SIZE)
+      {
+      certData = new BYTE[fileSize];
+      if (certData != NULL)
+        {
+        DWORD dwRead = NULL;
+        if (ReadFile(certFile, certData, fileSize, &dwRead, NULL))
+          {
+          cryptBlob.cbData = fileSize;
+          cryptBlob.pbData = certData;
+
+          // Verify that this is a valid cert
+          if (PFXIsPFXBlob(&cryptBlob))
+            {
+            // Open the certificate as a store
+            certStore = PFXImportCertStore(
+              &cryptBlob, NULL, CRYPT_EXPORTABLE);
+            if (certStore != NULL)
+              {
+              // There should only be 1 cert.
+              certContext = CertEnumCertificatesInStore(certStore, certContext);
+              if (certContext != NULL)
+                {
+                // The hash is 20 bytes
+                BYTE hashData[20];
+                DWORD hashLength = 20;
+
+                // Buffer to print the hash. Each byte takes 2 chars + terminating
+                char hashPrint[41];
+                char *pHashPrint = hashPrint;
+                // Get the hash property from the certificate
+                if (CertGetCertificateContextProperty(certContext,
+                  CERT_HASH_PROP_ID, hashData, &hashLength))
+                  {
+                  for (DWORD i = 0; i < hashLength; i++)
+                    {
+                    // Convert each byte to hexadecimal
+                    sprintf(pHashPrint, "%02X", hashData[i]);
+                    pHashPrint += 2;
+                    }
+                  *pHashPrint = '\0';
+                  thumbprint = hashPrint;
+                  }
+                CertFreeCertificateContext(certContext);
+                }
+              CertCloseStore(certStore, 0);
+              }
+            }
+          }
+        delete[] certData;
+        }
+      }
+    CloseHandle(certFile);
+    }
+#else
+  (void)source;
+  cmSystemTools::Message("ComputeCertificateThumbprint is not implemented",
+    "Error");
+#endif
+
+  return thumbprint;
 }
 
 void cmSystemTools::Glob(const std::string& directory,
@@ -1456,21 +1572,15 @@ void cmSystemTools::EnableVSConsoleOutput()
 
 bool cmSystemTools::IsPathToFramework(const char* path)
 {
-  if(cmSystemTools::FileIsFullPath(path))
-    {
-    std::string libname = path;
-    if(libname.find(".framework") == libname.size()+1-sizeof(".framework"))
-      {
-      return true;
-      }
-    }
-  return false;
+  return (cmSystemTools::FileIsFullPath(path) &&
+          cmHasLiteralSuffix(path, ".framework"));
 }
 
 bool cmSystemTools::CreateTar(const char* outFileName,
                               const std::vector<std::string>& files,
                               cmTarCompression compressType,
-                              bool verbose, std::string const& mtime)
+                              bool verbose, std::string const& mtime,
+                              std::string const& format)
 {
 #if defined(CMAKE_BUILD_WITH_CMAKE)
   std::string cwd = cmSystemTools::GetCurrentWorkingDirectory();
@@ -1500,8 +1610,10 @@ bool cmSystemTools::CreateTar(const char* outFileName,
       compress = cmArchiveWrite::CompressNone;
       break;
     }
+
   cmArchiveWrite a(fout, compress,
-                   cmArchiveWrite::TypeTAR);
+    format.empty() ? "paxr" : format);
+
   a.SetMTime(mtime);
   a.SetVerbose(verbose);
   for(std::vector<std::string>::const_iterator i = files.begin();
@@ -2287,7 +2399,6 @@ std::string const& cmSystemTools::GetCMakeRoot()
 }
 
 //----------------------------------------------------------------------------
-#if defined(CMAKE_BUILD_WITH_CMAKE)
 void cmSystemTools::MakefileColorEcho(int color, const char* message,
                                       bool newline, bool enabled)
 {
@@ -2308,16 +2419,21 @@ void cmSystemTools::MakefileColorEcho(int color, const char* message,
 
   if(enabled)
     {
-    cmsysTerminal_cfprintf(color | assumeTTY, stdout, "%s%s",
-                           message, newline? "\n" : "");
+    // Print with color.  Delay the newline until later so that
+    // all color restore sequences appear before it.
+    cmsysTerminal_cfprintf(color | assumeTTY, stdout, "%s", message);
     }
   else
     {
     // Color is disabled.  Print without color.
-    fprintf(stdout, "%s%s", message, newline? "\n" : "");
+    fprintf(stdout, "%s", message);
+    }
+
+  if(newline)
+    {
+    fprintf(stdout, "\n");
     }
 }
-#endif
 
 //----------------------------------------------------------------------------
 bool cmSystemTools::GuessLibrarySOName(std::string const& fullPath,
@@ -2698,7 +2814,7 @@ bool cmSystemTools::RemoveRPath(std::string const& file, std::string* emsg,
     }
   if(se_count == 2 && se[1]->IndexInSection < se[0]->IndexInSection)
     {
-    cmsys_stl::swap(se[0], se[1]);
+    std::swap(se[0], se[1]);
     }
 
   // Get the size of the dynamic section header.
