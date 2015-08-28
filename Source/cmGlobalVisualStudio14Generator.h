@@ -32,6 +32,14 @@ public:
 protected:
   virtual bool InitializeWindowsStore(cmMakefile* mf);
   virtual bool SelectWindowsStoreToolset(std::string& toolset) const;
+  virtual bool IsWindowsDesktopToolsetInstalled() const;
+
+  // These aren't virtual because we need to check if the selected version
+  // of the toolset is installed. The desktop version is virtual since we
+  // want the desktop to match the generator that we are using
+  bool IsWindowsStoreToolsetInstalled() const;
+  std::string GetWindows10SDKVersion();
+
   virtual const char* GetIDEVersion() { return "14.0"; }
 private:
   class Factory;

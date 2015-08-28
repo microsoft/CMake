@@ -3026,9 +3026,15 @@ void cmVisualStudio10TargetGenerator::WriteApplicationTypeSettings()
     }
   else if (isWindowsStore && v == "10.0")
     {
+    // Default to the latest version of the Windows SDK that is installed
+    targetPlatformVersion =
+      this->Makefile->GetDefinition("VS_DEFAULT_TARGET_PLATFORM_VERSION");
+    if (targetPlatformVersion)
+      {
       this->WriteString("<WindowsTargetPlatformVersion>", 2);
-      (*this->BuildFileStream) << cmVS10EscapeXML("10.0.10240.0") <<
+      (*this->BuildFileStream) << cmVS10EscapeXML(targetPlatformVersion) <<
         "</WindowsTargetPlatformVersion>\n";
+      }
     }
   const char* targetPlatformMinVersion =
       this->Target->GetProperty("VS_TARGET_PLATFORM_MIN_VERSION");
@@ -3039,11 +3045,15 @@ void cmVisualStudio10TargetGenerator::WriteApplicationTypeSettings()
       "</WindowsTargetPlatformMinVersion>\n";
     }
   else if (isWindowsStore && v == "10.0")
-  {
-    this->WriteString("<WindowsTargetPlatformMinVersion>", 2);
-    (*this->BuildFileStream) << cmVS10EscapeXML("10.0.10240.0") <<
-      "</WindowsTargetPlatformMinVersion>\n";
-  }
+    {
+    // If the min version is not set, then use the TargetPlatformVersion
+    if (targetPlatformVersion)
+      {
+      this->WriteString("<WindowsTargetPlatformMinVersion>", 2);
+      (*this->BuildFileStream) << cmVS10EscapeXML(targetPlatformVersion) <<
+        "</WindowsTargetPlatformMinVersion>\n";
+      }
+    }
 }
 
 void cmVisualStudio10TargetGenerator::VerifyNecessaryFiles()
