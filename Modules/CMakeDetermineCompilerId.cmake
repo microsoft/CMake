@@ -192,7 +192,7 @@ Id flags: ${testflags}
     if(id_system AND CMAKE_SYSTEM_VERSION)
       set(id_system_version "<ApplicationTypeRevision>${CMAKE_SYSTEM_VERSION}</ApplicationTypeRevision>")
       if(CMAKE_SYSTEM_VERSION STREQUAL "10.0" AND CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
-        set(id_WindowsTargetPlatformVersion "<WindowsTargetPlatformVersion>${VS_DEFAULT_TARGET_PLATFORM_VERSION}</WindowsTargetPlatformVersion>")
+        set(id_WindowsTargetPlatformVersion "<WindowsTargetPlatformVersion>${CMAKE_VS_TARGET_PLATFORM_VERSION}</WindowsTargetPlatformVersion>")
       endif()
     else()
       set(id_system_version "")

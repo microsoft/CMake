@@ -28,7 +28,7 @@
         Description="@SHORT_NAME@"
         BackgroundColor="#336699"
         Square150x150Logo="Assets/Logo.png"
-        Square44x44Logo="Assets/SmallLogo.png">
+        Square44x44Logo="Assets/SmallLogo44x44.png">
         <uap:SplashScreen Image="Assets/SplashScreen.png" />
       </uap:VisualElements>
     </Application>

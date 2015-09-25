@@ -92,6 +92,7 @@ elseif (NOT "${PLATFORM}" STREQUAL "DESKTOP")
     set(ASSET_FILES ${ASSET_FILES}
     Direct3DApp1/Assets/Logo.png
     Direct3DApp1/Assets/SmallLogo.png
+    Direct3DApp1/Assets/SmallLogo44x44.png
     Direct3DApp1/Assets/SplashScreen.png
     Direct3DApp1/Assets/StoreLogo.png
     )

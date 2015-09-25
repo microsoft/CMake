@@ -489,6 +489,11 @@ if (WIN32)
       cmGhsMultiGpj.cxx
       cmGhsMultiGpj.h
       )
+
+    # Add a manifest file to executables on Windows to allow for GetVersion
+    # to work properly on Windows 8 and above
+    set(MANIFEST_FILE cmake.version.manifest)
+
   endif()
 endif ()
 
@@ -518,7 +523,7 @@ set(SRCS ${SRCS}
 
 if(WIN32 AND NOT CYGWIN)
   set_source_files_properties(cmcldeps.cxx PROPERTIES COMPILE_DEFINITIONS _WIN32_WINNT=0x0501)
-  add_executable(cmcldeps cmcldeps.cxx)
+  add_executable(cmcldeps cmcldeps.cxx ${MANIFEST_FILE})
   target_link_libraries(cmcldeps CMakeLib)
   install(TARGETS cmcldeps DESTINATION bin)
 endif()
@@ -706,15 +711,15 @@ if(APPLE)
 endif()
 
 # Build CMake executable
-add_executable(cmake cmakemain.cxx cmcmd.cxx cmcmd.h)
+add_executable(cmake cmakemain.cxx cmcmd.cxx cmcmd.h ${MANIFEST_FILE})
 target_link_libraries(cmake CMakeLib)
 
 # Build CTest executable
-add_executable(ctest ctest.cxx)
+add_executable(ctest ctest.cxx ${MANIFEST_FILE})
 target_link_libraries(ctest CTestLib)
 
 # Build CPack executable
-add_executable(cpack CPack/cpack.cxx)
+add_executable(cpack CPack/cpack.cxx ${MANIFEST_FILE})
 target_link_libraries(cpack CPackLib)
 
 # Curses GUI

@@ -4811,11 +4811,11 @@ kwsys_stl::string SystemTools::GetOperatingSystemNameAndVersion()
 #  pragma warning (disable:4996)
 # endif
 #endif
-  bOsVersionInfoEx = GetVersionEx((OSVERSIONINFO *)&osvi);
+  bOsVersionInfoEx = GetVersionExA((OSVERSIONINFOA *)&osvi);
   if (!bOsVersionInfoEx)
     {
-    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-    if (!GetVersionEx((OSVERSIONINFO *)&osvi))
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
+    if (!GetVersionExA((OSVERSIONINFOA *)&osvi))
       {
       return 0;
       }
@@ -4831,10 +4831,56 @@ kwsys_stl::string SystemTools::GetOperatingSystemNameAndVersion()
     case VER_PLATFORM_WIN32_NT:
 
       // Test for the specific product family.
+      if (osvi.dwMajorVersion == 10 && osvi.dwMinorVersion == 0)
+      {
+        if (osvi.wProductType == VER_NT_WORKSTATION)
+        {
+          res += "Microsoft Windows 10";
+        }
+        else
+        {
+          res += "Microsoft Windows Server 2016 family";
+        }
+      }
+
+      if (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion == 3)
+      {
+        if (osvi.wProductType == VER_NT_WORKSTATION)
+        {
+          res += "Microsoft Windows 8.1";
+        }
+        else
+        {
+          res += "Microsoft Windows Server 2012 R2 family";
+        }
+      }
+
+      if (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion == 2)
+      {
+        if (osvi.wProductType == VER_NT_WORKSTATION)
+        {
+          res += "Microsoft Windows 8";
+        }
+        else
+        {
+          res += "Microsoft Windows Server 2012 family";
+        }
+      }
+
+      if (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion == 1)
+      {
+        if (osvi.wProductType == VER_NT_WORKSTATION)
+        {
+          res += "Microsoft Windows 7";
+        }
+        else
+        {
+          res += "Microsoft Windows Server 2008 R2 family";
+        }
+      }
 
       if (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion == 0)
         {
-#if (_MSC_VER >= 1300)
         if (osvi.wProductType == VER_NT_WORKSTATION)
           {
           res += "Microsoft Windows Vista";
@@ -4843,9 +4889,6 @@ kwsys_stl::string SystemTools::GetOperatingSystemNameAndVersion()
           {
           res += "Microsoft Windows Server 2008 family";
           }
-#else
-        res += "Microsoft Windows Vista or Windows Server 2008";
-#endif
         }
 
       if (osvi.dwMajorVersion == 5 && osvi.dwMinorVersion == 2)
@@ -4874,7 +4917,6 @@ kwsys_stl::string SystemTools::GetOperatingSystemNameAndVersion()
         {
         // Test for the workstation type.
 
-#if (_MSC_VER >= 1300)
         if (osvi.wProductType == VER_NT_WORKSTATION)
           {
           if (osvi.dwMajorVersion == 4)
@@ -4946,7 +4988,6 @@ kwsys_stl::string SystemTools::GetOperatingSystemNameAndVersion()
               }
             }
           }
-#endif // Visual Studio 7 and up
         }
 
       // Test for specific product on Windows NT 4.0 SP5 and earlier

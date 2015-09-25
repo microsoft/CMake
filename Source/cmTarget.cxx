@@ -341,6 +341,7 @@ void cmTarget::SetMakefile(cmMakefile* mf)
     this->SetPropertyDefault("CXX_STANDARD", 0);
     this->SetPropertyDefault("CXX_STANDARD_REQUIRED", 0);
     this->SetPropertyDefault("CXX_EXTENSIONS", 0);
+    this->SetPropertyDefault("VS_TARGET_PLATFORM_VERSION", 0);
     }
 
   // Collect the set of configuration types.
