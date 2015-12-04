@@ -23,6 +23,7 @@ These commands may be used freely in CMake projects.
    /command/add_executable
    /command/add_library
    /command/add_subdirectory
+   /command/add_target_vs_extension_sdk
    /command/add_test
    /command/aux_source_directory
    /command/break
