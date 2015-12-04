@@ -132,6 +132,7 @@ private:
   void WritePlatformExtensions();
   void WriteSinglePlatformExtension(std::string const& extension,
                                     std::string const& version);
+  void WriteSDKReferenceDirectoryRoot();
   void WriteSDKReferences();
   void WriteSingleSDKReference(std::string const& extension,
                                std::string const& version);

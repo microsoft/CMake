@@ -497,6 +497,7 @@ void cmVisualStudio10TargetGenerator::Generate()
   this->WriteWinRTReferences();
   this->WriteProjectReferences();
   this->WriteSDKReferences();
+  this->WriteSDKReferenceDirectoryRoot();
   this->WriteString(
     "<Import Project=\"$(VCTargetsPath)\\Microsoft.Cpp.targets\""
     " />\n", 1);
@@ -3076,6 +3077,21 @@ void cmVisualStudio10TargetGenerator::WriteSinglePlatformExtension(
     << "$(ExtensionSDKDirectoryRoot), null))"
     << "\\DesignTime\\CommonConfiguration\\Neutral\\"
     << extension << ".props')\" />\n";
+}
+
+void cmVisualStudio10TargetGenerator::WriteSDKReferenceDirectoryRoot()
+{
+    const char* sdkReferenceDirectoryRoot =
+        this->Target->GetProperty("VS_SDK_REFERENCE_DIRECTORY_ROOT");
+
+    if (sdkReferenceDirectoryRoot)
+    {
+        this->WriteString("<PropertyGroup>\n", 1);
+        this->WriteString("<SDKReferenceDirectoryRoot>", 2);
+        (*this->BuildFileStream) << sdkReferenceDirectoryRoot
+            << ";$(SDKReferenceDirectoryRoot)</SDKReferenceDirectoryRoot>\n";
+        this->WriteString("</PropertyGroup>\n", 1);
+    }
 }
 
 void cmVisualStudio10TargetGenerator::WriteSDKReferences()
