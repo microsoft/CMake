@@ -380,6 +380,7 @@ set_property(SOURCE cmTargetPropCommandBase.cxx PROPERTY HEADER_FILE_ONLY ON)
 set(NEW_COMMANDS "")
 foreach(command_file
     cmAddCompileOptionsCommand
+    cmAddTargetVsExtensionSdkCommand
     cmAuxSourceDirectoryCommand
     cmBuildNameCommand
     cmCMakeHostSystemInformationCommand

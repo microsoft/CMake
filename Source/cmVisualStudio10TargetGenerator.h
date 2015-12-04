@@ -134,6 +134,7 @@ private:
                                     std::string const& version);
   void WriteSDKReferenceDirectoryRoot();
   void WriteSDKReferences();
+  void WriteVsExtensionSdkReferencesItems(const char* references_value);
   void WriteSingleSDKReference(std::string const& extension,
                                std::string const& version);
   void WriteCommonMissingFiles(const std::string& manifestFile);

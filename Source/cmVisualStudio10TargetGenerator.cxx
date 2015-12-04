@@ -3096,38 +3096,61 @@ void cmVisualStudio10TargetGenerator::WriteSDKReferenceDirectoryRoot()
 
 void cmVisualStudio10TargetGenerator::WriteSDKReferences()
 {
+  const char* desktopExtensionsVersion = NULL;
+  const char* mobileExtensionsVersion = NULL;
+  const char* iotExtensionsVersion = NULL;
+  const char* vsSdkReferences =
+      this->Target->GetProperty("VS_EXTENSION_SDK_REFERENCES");
+
   // This only applies to Windows 10 apps
   if (this->GlobalGenerator->TargetsWindowsStore() &&
       cmHasLiteralPrefix(this->GlobalGenerator->GetSystemVersion(), "10.0"))
     {
-    const char* desktopExtensionsVersion =
+    desktopExtensionsVersion =
       this->Target->GetProperty("VS_DESKTOP_EXTENSIONS_VERSION");
-    const char* mobileExtensionsVersion =
+    mobileExtensionsVersion =
       this->Target->GetProperty("VS_MOBILE_EXTENSIONS_VERSION");
-    const char* iotExtensionsVersion =
+    iotExtensionsVersion =
       this->Target->GetProperty("VS_IOT_EXTENSIONS_VERSION");
+    }
 
-    if(desktopExtensionsVersion || mobileExtensionsVersion ||
-       iotExtensionsVersion)
+  if(desktopExtensionsVersion || mobileExtensionsVersion ||
+     iotExtensionsVersion || vsSdkReferences)
+    {
+    this->WriteString("<ItemGroup>\n", 1);
+    if(desktopExtensionsVersion)
       {
-      this->WriteString("<ItemGroup>\n", 1);
-      if(desktopExtensionsVersion)
-        {
-        this->WriteSingleSDKReference("WindowsDesktop",
-                                      desktopExtensionsVersion);
-        }
-      if(mobileExtensionsVersion)
-        {
-        this->WriteSingleSDKReference("WindowsMobile",
-                                      mobileExtensionsVersion);
-        }
-      if(iotExtensionsVersion)
-        {
-        this->WriteSingleSDKReference("WindowsIoT",
-                                      iotExtensionsVersion);
-        }
-      this->WriteString("</ItemGroup>\n", 1);
+      this->WriteSingleSDKReference("WindowsDesktop",
+                                    desktopExtensionsVersion);
       }
+    if(mobileExtensionsVersion)
+      {
+      this->WriteSingleSDKReference("WindowsMobile",
+                                    mobileExtensionsVersion);
+      }
+    if(iotExtensionsVersion)
+      {
+      this->WriteSingleSDKReference("WindowsIoT",
+                                    iotExtensionsVersion);
+      }
+    if (vsSdkReferences)
+      {
+      this->WriteVsExtensionSdkReferencesItems(vsSdkReferences);
+      }
+    
+    this->WriteString("</ItemGroup>\n", 1);
+    }
+}
+
+void cmVisualStudio10TargetGenerator::WriteVsExtensionSdkReferencesItems(const char* references_value)
+{
+    std::vector<std::string> references;
+    cmSystemTools::ExpandListArgument(references_value, references);
+    for (std::vector<std::string>::iterator ri = references.begin();
+    ri != references.end(); ++ri)
+    {
+        this->WriteString("<SDKReference Include=\"", 2);
+        (*this->BuildFileStream) << cmVS10EscapeXML(*ri) << "\" />\n";
     }
 }
 
