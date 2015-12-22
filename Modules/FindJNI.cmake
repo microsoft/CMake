@@ -42,7 +42,11 @@ macro(java_append_library_directories _var)
     # 1.6.0_18 + icedtea patches. However, it would be much better to base the
     # guess on the first part of the GNU config.guess platform triplet.
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+      if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "x86_64-linux-gnux32")
+        set(_java_libarch "x32" "amd64" "i386")
+      else()
         set(_java_libarch "amd64" "i386")
+      endif()
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^i.86$")
         set(_java_libarch "i386")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^alpha")
@@ -53,7 +57,7 @@ macro(java_append_library_directories _var)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^mips")
         # mips* machines are bi-endian mostly so processor does not tell
         # endianess of the underlying system.
-        set(_java_libarch "${CMAKE_SYSTEM_PROCESSOR}" "mips" "mipsel" "mipseb")
+        set(_java_libarch "${CMAKE_SYSTEM_PROCESSOR}" "mips" "mipsel" "mipseb" "mips64" "mips64el" "mipsn32" "mipsn32el")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64le")
         set(_java_libarch "ppc64" "ppc64le")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
@@ -152,6 +156,9 @@ JAVA_APPEND_LIBRARY_DIRECTORIES(JAVA_AWT_LIBRARY_DIRECTORIES
   /usr/local/jre-1.7.0/lib/{libarch}
   /usr/local/jdk-1.6.0/jre/lib/{libarch}
   /usr/local/jre-1.6.0/lib/{libarch}
+  # SuSE specific paths for default JVM
+  /usr/lib64/jvm/java/jre/lib/{libarch}
+  /usr/lib64/jvm/jre/lib/{libarch}
   )
 
 set(JAVA_JVM_LIBRARY_DIRECTORIES)
@@ -160,6 +167,9 @@ foreach(dir ${JAVA_AWT_LIBRARY_DIRECTORIES})
     "${dir}"
     "${dir}/client"
     "${dir}/server"
+    # IBM SDK, Java Technology Edition, specific paths
+    "${dir}/j9vm"
+    "${dir}/default"
     )
 endforeach()
 
@@ -189,6 +199,8 @@ list(APPEND JAVA_AWT_INCLUDE_DIRECTORIES
   # OpenBSD specific path for default JVM
   /usr/local/jdk-1.7.0/include
   /usr/local/jdk-1.6.0/include
+  # SuSE specific paths for default JVM
+  /usr/lib64/jvm/java/include
   )
 
 foreach(JAVA_PROG "${JAVA_RUNTIME}" "${JAVA_COMPILE}" "${JAVA_ARCHIVE}")

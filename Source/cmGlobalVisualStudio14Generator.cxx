@@ -9,10 +9,6 @@
   implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
   See the License for more information.
 ============================================================================*/
-#if defined(_WIN32) && !defined(__CYGWIN__)
-#include "windows.h" // For Windows 10 SDK detection
-#endif
-
 #include "cmGlobalVisualStudio14Generator.h"
 #include "cmLocalVisualStudio10Generator.h"
 #include "cmMakefile.h"
@@ -115,6 +111,16 @@ cmGlobalVisualStudio14Generator::MatchesGeneratorName(
 }
 
 //----------------------------------------------------------------------------
+bool cmGlobalVisualStudio14Generator::InitializeWindows(cmMakefile* mf)
+{
+  if (cmHasLiteralPrefix(this->SystemVersion, "10.0"))
+    {
+    return this->SelectWindows10SDK(mf);
+    }
+  return true;
+}
+
+//----------------------------------------------------------------------------
 bool cmGlobalVisualStudio14Generator::InitializeWindowsStore(cmMakefile* mf)
 {
   std::ostringstream  e;
@@ -135,21 +141,28 @@ bool cmGlobalVisualStudio14Generator::InitializeWindowsStore(cmMakefile* mf)
     mf->IssueMessage(cmake::FATAL_ERROR, e.str());
     return false;
     }
-  if (this->SystemVersion == "10.0")
+  if (cmHasLiteralPrefix(this->SystemVersion, "10.0"))
     {
-    // Find the default version of the Windows 10 SDK and set
-    // a default CMAKE_VS_TARGET_PLATFORM_VERSION
-    std::string sdkVersion = GetWindows10SDKVersion();
-    if(sdkVersion.empty())
-      {
-      e << "Could not find an appropriate version of the Windows 10 SDK"
-        << "installed on this machine";
-      mf->IssueMessage(cmake::FATAL_ERROR, e.str());
-      return false;
-      }
-    mf->AddDefinition("CMAKE_VS_TARGET_PLATFORM_VERSION",
-      sdkVersion.c_str());
+    return this->SelectWindows10SDK(mf);
     }
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool cmGlobalVisualStudio14Generator::SelectWindows10SDK(cmMakefile* mf)
+{
+  // Find the default version of the Windows 10 SDK.
+  this->WindowsTargetPlatformVersion = this->GetWindows10SDKVersion();
+  if (this->WindowsTargetPlatformVersion.empty())
+    {
+    std::ostringstream  e;
+    e << "Could not find an appropriate version of the Windows 10 SDK"
+      << " installed on this machine";
+    mf->IssueMessage(cmake::FATAL_ERROR, e.str());
+    return false;
+    }
+  mf->AddDefinition("CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION",
+                    this->WindowsTargetPlatformVersion.c_str());
   return true;
 }
 
@@ -158,7 +171,7 @@ bool
 cmGlobalVisualStudio14Generator::SelectWindowsStoreToolset(
   std::string& toolset) const
 {
-  if(this->SystemVersion == "10.0")
+  if (cmHasLiteralPrefix(this->SystemVersion, "10.0"))
     {
     if (this->IsWindowsStoreToolsetInstalled() &&
         this->IsWindowsDesktopToolsetInstalled())
@@ -189,6 +202,7 @@ void cmGlobalVisualStudio14Generator::WriteSLNHeader(std::ostream& fout)
     fout << "# Visual Studio 14\n";
     }
 }
+
 //----------------------------------------------------------------------------
 bool
 cmGlobalVisualStudio14Generator::IsWindowsDesktopToolsetInstalled() const
@@ -220,18 +234,18 @@ std::string cmGlobalVisualStudio14Generator::GetWindows10SDKVersion()
 {
 #if defined(_WIN32) && !defined(__CYGWIN__)
   // This logic is taken from the vcvarsqueryregistry.bat file from VS2015
+  // Try HKLM and then HKCU.
   std::string win10Root;
   if (!cmSystemTools::ReadRegistryValue(
-    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots;"
-    "KitsRoot10", win10Root, cmSystemTools::KeyWOW64_32))
+        "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\"
+        "Windows Kits\\Installed Roots;KitsRoot10", win10Root,
+        cmSystemTools::KeyWOW64_32) &&
+      !cmSystemTools::ReadRegistryValue(
+        "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\"
+        "Windows Kits\\Installed Roots;KitsRoot10", win10Root,
+        cmSystemTools::KeyWOW64_32))
     {
-    // If we can't find the root in HKLM try HKCU
-    if (!cmSystemTools::ReadRegistryValue(
-      "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots;"
-      "KitsRoot10", win10Root, cmSystemTools::KeyWOW64_32))
-      {
-      return std::string();
-      }
+    return std::string();
     }
 
   std::vector<std::string> sdks;
@@ -240,39 +254,33 @@ std::string cmGlobalVisualStudio14Generator::GetWindows10SDKVersion()
   cmSystemTools::GlobDirs(path, sdks);
   if (!sdks.empty())
     {
-    // Each component of the comparison mask needs to be done seperately
-    ULONGLONG dwlConditionMask = 0;
-    dwlConditionMask = VerSetConditionMask(dwlConditionMask,
-      VER_MAJORVERSION, VER_GREATER_EQUAL);
-    dwlConditionMask = VerSetConditionMask(dwlConditionMask,
-      VER_MINORVERSION, VER_GREATER_EQUAL);
-    dwlConditionMask = VerSetConditionMask(dwlConditionMask,
-      VER_BUILDNUMBER, VER_GREATER_EQUAL);
+    // Only use the filename, which will be the SDK version.
+    for (std::vector<std::string>::iterator i = sdks.begin();
+         i != sdks.end(); ++i)
+      {
+      *i = cmSystemTools::GetFilenameName(*i);
+      }
 
     // Sort the results to make sure we select the most recent one that
     // has a version less or equal to our version of the operating system
-    std::sort(sdks.begin(), sdks.end(), std::greater<std::string>());
-    for(std::vector<std::string>::iterator i = sdks.begin();
-        i != sdks.end(); ++i)
+    std::sort(sdks.begin(), sdks.end(), cmSystemTools::VersionCompareGreater);
+
+    // Select a suitable SDK version.
+    if (this->SystemVersion == "10.0")
       {
-      // Get the SDK version in the form 10.0.10240.0 and split into tokens
-      std::string sdkVersion = cmSystemTools::GetFilenameName(*i);
-      std::vector<std::string> tokens =
-        cmSystemTools::tokenize(sdkVersion, ".");
-      if (tokens.size()>=3)
+      // Use the latest Windows 10 SDK since no build version was given.
+      return sdks.at(0);
+      }
+    else
+      {
+      // Find the SDK less or equal to our specified version
+      for (std::vector<std::string>::iterator i = sdks.begin();
+           i != sdks.end(); ++i)
         {
-        OSVERSIONINFOEX osviex;
-        ZeroMemory(&osviex, sizeof(osviex));
-        osviex.dwOSVersionInfoSize = sizeof(osviex);
-        osviex.dwMajorVersion = atoi(tokens[0].c_str());
-        osviex.dwMinorVersion = atoi(tokens[1].c_str());
-        osviex.dwBuildNumber = atoi(tokens[2].c_str());
-        if (VerifyVersionInfo(&osviex,
-          VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER,
-          dwlConditionMask))
+        if (!cmSystemTools::VersionCompareGreater(*i, this->SystemVersion))
           {
           // This is the most recent SDK that we can run safely
-          return sdkVersion;
+          return *i;
           }
         }
       }

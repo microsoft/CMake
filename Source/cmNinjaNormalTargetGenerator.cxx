@@ -32,7 +32,7 @@
 
 cmNinjaNormalTargetGenerator::
 cmNinjaNormalTargetGenerator(cmGeneratorTarget* target)
-  : cmNinjaTargetGenerator(target->Target)
+  : cmNinjaTargetGenerator(target)
   , TargetNameOut()
   , TargetNameSO()
   , TargetNameReal()
@@ -40,16 +40,15 @@ cmNinjaNormalTargetGenerator(cmGeneratorTarget* target)
   , TargetNamePDB()
   , TargetLinkLanguage("")
 {
-  this->TargetLinkLanguage = target->Target
-                                   ->GetLinkerLanguage(this->GetConfigName());
+  this->TargetLinkLanguage = target->GetLinkerLanguage(this->GetConfigName());
   if (target->GetType() == cmTarget::EXECUTABLE)
-    target->Target->GetExecutableNames(this->TargetNameOut,
+    this->GetGeneratorTarget()->GetExecutableNames(this->TargetNameOut,
                                this->TargetNameReal,
                                this->TargetNameImport,
                                this->TargetNamePDB,
                                GetLocalGenerator()->GetConfigName());
   else
-    target->Target->GetLibraryNames(this->TargetNameOut,
+    this->GetGeneratorTarget()->GetLibraryNames(this->TargetNameOut,
                             this->TargetNameSO,
                             this->TargetNameReal,
                             this->TargetNameImport,
@@ -238,6 +237,7 @@ cmNinjaNormalTargetGenerator
 
     vars.Flags = "$FLAGS";
     vars.LinkFlags = "$LINK_FLAGS";
+    vars.Manifests = "$MANIFESTS";
 
     std::string langFlags;
     if (targetType != cmTarget::EXECUTABLE)
@@ -398,15 +398,16 @@ static int calculateCommandLineLengthLimit(int linkRuleLength)
 void cmNinjaNormalTargetGenerator::WriteLinkStatement()
 {
   cmTarget& target = *this->GetTarget();
+  cmGeneratorTarget& gt = *this->GetGeneratorTarget();
   const std::string cfgName = this->GetConfigName();
   std::string targetOutput = ConvertToNinjaPath(
-                               target.GetFullPath(cfgName));
+                               gt.GetFullPath(cfgName));
   std::string targetOutputReal = ConvertToNinjaPath(
-                                   target.GetFullPath(cfgName,
+                                   gt.GetFullPath(cfgName,
                                       /*implib=*/false,
                                       /*realpath=*/true));
   std::string targetOutputImplib = ConvertToNinjaPath(
-                                     target.GetFullPath(cfgName,
+                                     gt.GetFullPath(cfgName,
                                        /*implib=*/true));
 
   if (target.IsAppBundleOnApple())
@@ -486,12 +487,30 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
                           linkPath,
                           &genTarget,
                           useWatcomQuote);
+  if(this->GetMakefile()->IsOn("CMAKE_SUPPORT_WINDOWS_EXPORT_ALL_SYMBOLS")
+     && target.GetType() == cmTarget::SHARED_LIBRARY)
+    {
+    if(target.GetPropertyAsBool("WINDOWS_EXPORT_ALL_SYMBOLS"))
+      {
+      std::string dllname = targetOutput;
+      std::string name_of_def_file
+        = target.GetSupportDirectory();
+      name_of_def_file += "/" + target.GetName();
+      name_of_def_file += ".def ";
+      vars["LINK_FLAGS"] += " /DEF:";
+      vars["LINK_FLAGS"] += this->GetLocalGenerator()
+        ->ConvertToOutputFormat(name_of_def_file.c_str(),
+                                cmLocalGenerator::SHELL);
+      }
+    }
 
   this->addPoolNinjaVariable("JOB_POOL_LINK", &target, vars);
 
   this->AddModuleDefinitionFlag(vars["LINK_FLAGS"]);
   vars["LINK_FLAGS"] = cmGlobalNinjaGenerator
                         ::EncodeLiteral(vars["LINK_FLAGS"]);
+
+  vars["MANIFESTS"] = this->GetManifests();
 
   vars["LINK_PATH"] = frameworkPath + linkPath;
 
@@ -514,13 +533,14 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
     vars["LANGUAGE_COMPILE_FLAGS"] = t;
     }
 
-  if (target.HasSOName(cfgName))
+  if (this->GetGeneratorTarget()->HasSOName(cfgName))
     {
     vars["SONAME_FLAG"] = mf->GetSONameFlag(this->TargetLinkLanguage);
     vars["SONAME"] = this->TargetNameSO;
     if (targetType == cmTarget::SHARED_LIBRARY)
       {
-      std::string install_dir = target.GetInstallNameDirForBuildTree(cfgName);
+      std::string install_dir =
+          this->GetGeneratorTarget()->GetInstallNameDirForBuildTree(cfgName);
       if (!install_dir.empty())
         {
         vars["INSTALLNAME_DIR"] = localGen.Convert(install_dir,
@@ -529,6 +549,8 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
         }
       }
     }
+
+  cmNinjaDeps byproducts;
 
   if (!this->TargetNameImport.empty())
     {
@@ -539,7 +561,7 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
     EnsureParentDirectoryExists(impLibPath);
     if(target.HasImportLibrary())
       {
-      outputs.push_back(targetOutputImplib);
+      byproducts.push_back(targetOutputImplib);
       }
     }
 
@@ -550,7 +572,7 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
     std::string prefix;
     std::string base;
     std::string suffix;
-    target.GetFullNameComponents(prefix, base, suffix);
+    this->GetGeneratorTarget()->GetFullNameComponents(prefix, base, suffix);
     std::string dbg_suffix = ".dbg";
     // TODO: Where to document?
     if (mf->GetDefinition("CMAKE_DEBUG_SYMBOL_SUFFIX"))
@@ -560,11 +582,14 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
     vars["TARGET_PDB"] = base + suffix + dbg_suffix;
     }
 
+  const std::string objPath = GetTarget()->GetSupportDirectory();
+  vars["OBJECT_DIR"] =
+    this->GetLocalGenerator()->ConvertToOutputFormat(
+      this->ConvertToNinjaPath(objPath), cmLocalGenerator::SHELL);
+  EnsureDirectoryExists(objPath);
+
   if (this->GetGlobalGenerator()->IsGCCOnWindows())
     {
-    const std::string objPath = GetTarget()->GetSupportDirectory();
-    vars["OBJECT_DIR"] = ConvertToNinjaPath(objPath);
-    EnsureDirectoryExists(objPath);
     // ar.exe can't handle backslashes in rsp files (implicitly used by gcc)
     std::string& linkLibraries = vars["LINK_LIBRARIES"];
     std::replace(linkLibraries.begin(), linkLibraries.end(), '\\', '/');
@@ -585,14 +610,13 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
     &postBuildCmdLines
   };
 
-  cmNinjaDeps byproducts;
   for (unsigned i = 0; i != 3; ++i)
     {
     for (std::vector<cmCustomCommand>::const_iterator
          ci = cmdLists[i]->begin();
          ci != cmdLists[i]->end(); ++ci)
       {
-      cmCustomCommandGenerator ccg(*ci, cfgName, mf);
+      cmCustomCommandGenerator ccg(*ci, cfgName, this->GetLocalGenerator());
       localGen.AppendCustomCommandLines(ccg, *cmdLineLists[i]);
       std::vector<std::string> const& ccByproducts = ccg.GetByproducts();
       std::transform(ccByproducts.begin(), ccByproducts.end(),
@@ -600,6 +624,43 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
       }
     }
 
+  // maybe create .def file from list of objects
+  if (target.GetType() == cmTarget::SHARED_LIBRARY &&
+      this->GetMakefile()->IsOn("CMAKE_SUPPORT_WINDOWS_EXPORT_ALL_SYMBOLS"))
+    {
+    if(target.GetPropertyAsBool("WINDOWS_EXPORT_ALL_SYMBOLS"))
+      {
+      std::string cmakeCommand =
+      this->GetLocalGenerator()->ConvertToOutputFormat(
+        cmSystemTools::GetCMakeCommand(), cmLocalGenerator::SHELL);
+      std::string name_of_def_file
+        = target.GetSupportDirectory();
+      name_of_def_file += "/" + target.GetName();
+      name_of_def_file += ".def";
+      std::string cmd = cmakeCommand;
+      cmd += " -E __create_def ";
+      cmd += this->GetLocalGenerator()
+        ->ConvertToOutputFormat(name_of_def_file.c_str(),
+                                cmLocalGenerator::SHELL);
+      cmd += " ";
+      cmNinjaDeps objs = this->GetObjects();
+      std::string obj_list_file = name_of_def_file;
+      obj_list_file += ".objs";
+      cmd += this->GetLocalGenerator()
+        ->ConvertToOutputFormat(obj_list_file.c_str(),
+                                cmLocalGenerator::SHELL);
+      preLinkCmdLines.push_back(cmd);
+      // create a list of obj files for the -E __create_def to read
+      cmGeneratedFileStream fout(obj_list_file.c_str());
+      for(cmNinjaDeps::iterator i=objs.begin(); i != objs.end(); ++i)
+        {
+        if(cmHasLiteralSuffix(*i, ".obj"))
+          {
+          fout << *i << "\n";
+          }
+        }
+      }
+    }
   // If we have any PRE_LINK commands, we need to go back to HOME_OUTPUT for
   // the link commands.
   if (!preLinkCmdLines.empty())

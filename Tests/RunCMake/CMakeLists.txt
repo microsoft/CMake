@@ -26,6 +26,43 @@ macro(add_RunCMake_test test)
     )
 endmacro()
 
+function(add_RunCMake_test_group test types)
+  # create directory for common content
+  set(TEST_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/${test}/conf")
+  file(REMOVE_RECURSE "${TEST_CONFIG_DIR}")
+  file(MAKE_DIRECTORY "${TEST_CONFIG_DIR}")
+
+  foreach(type IN LISTS types)
+    # generate prerequirements config file in cmake as ctest doesn't have as
+    # much system information so it is easier to set programs and environment
+    # values here
+    unset(${test}_${type}_FOUND_PREREQUIREMENTS)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/${test}/${type}/Prerequirements.cmake")
+    get_test_prerequirements("${test}_${type}_FOUND_PREREQUIREMENTS"
+        "${TEST_CONFIG_DIR}/${type}_config.cmake")
+
+    # only add the test if prerequirements are met
+    if(${test}_${type}_FOUND_PREREQUIREMENTS)
+      add_test(NAME RunCMake.${test}_${type} COMMAND ${CMAKE_CMAKE_COMMAND}
+        -DTEST_TYPE=${type}
+        -DCMAKE_MODULE_PATH=${CMAKE_CURRENT_SOURCE_DIR}
+        -DRunCMake_GENERATOR=${CMAKE_GENERATOR}
+        -DRunCMake_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}
+        -DRunCMake_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}
+        -DRunCMake_MAKE_PROGRAM=${CMake_TEST_EXPLICIT_MAKE_PROGRAM}
+        -DRunCMake_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/${test}
+        -DRunCMake_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/${type}/${test}
+        -Dconfig_file=${TEST_CONFIG_DIR}/${type}_config.cmake
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/${test}/RunCMakeTest.cmake"
+        )
+    endif()
+  endforeach()
+endfunction()
+
+if(XCODE_VERSION AND "${XCODE_VERSION}" VERSION_LESS 6.1)
+  set(Swift_ARGS -DXCODE_BELOW_6_1=1)
+endif()
+
 if(XCODE_VERSION AND "${XCODE_VERSION}" VERSION_LESS 3)
   set(GeneratorToolset_ARGS -DXCODE_BELOW_3=1)
 endif()
@@ -66,6 +103,17 @@ add_RunCMake_test(CMP0055)
 add_RunCMake_test(CMP0057)
 add_RunCMake_test(CMP0059)
 add_RunCMake_test(CMP0060)
+add_RunCMake_test(CMP0064)
+
+# The test for Policy 65 requires the use of the
+# CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS variable, which both the VS and Xcode
+# generators ignore.  The policy will have no effect on those generators.
+if(NOT CMAKE_GENERATOR MATCHES "Visual Studio|Xcode")
+  add_RunCMake_test(CMP0065)
+endif()
+if(CMAKE_GENERATOR MATCHES "Make")
+  add_RunCMake_test(Make)
+endif()
 if(CMAKE_GENERATOR STREQUAL "Ninja")
   add_RunCMake_test(Ninja)
 endif()
@@ -83,6 +131,7 @@ if(NOT CMake_TEST_EXTERNAL_CMAKE)
     )
 endif()
 
+add_RunCMake_test(BuildDepends)
 if(UNIX AND "${CMAKE_GENERATOR}" MATCHES "Unix Makefiles|Ninja")
   add_RunCMake_test(CompilerChange)
 endif()
@@ -95,13 +144,18 @@ add_RunCMake_test(FPHSA)
 add_RunCMake_test(GeneratorExpression)
 add_RunCMake_test(GeneratorPlatform)
 add_RunCMake_test(GeneratorToolset)
+add_RunCMake_test(GNUInstallDirs)
 add_RunCMake_test(TargetPropertyGeneratorExpressions)
 add_RunCMake_test(Languages)
+add_RunCMake_test(LinkStatic)
 add_RunCMake_test(ObjectLibrary)
+add_RunCMake_test(Swift)
 add_RunCMake_test(TargetObjects)
 add_RunCMake_test(TargetSources)
 add_RunCMake_test(find_dependency)
+add_RunCMake_test(CompileDefinitions)
 add_RunCMake_test(CompileFeatures)
+add_RunCMake_test(PolicyScope)
 add_RunCMake_test(WriteCompilerDetectionHeader)
 if(NOT WIN32)
   add_RunCMake_test(PositionIndependentCode)
@@ -138,6 +192,7 @@ add_RunCMake_test(find_file)
 add_RunCMake_test(find_library)
 add_RunCMake_test(find_package)
 add_RunCMake_test(find_path)
+add_RunCMake_test(find_program -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME})
 add_RunCMake_test(get_filename_component)
 add_RunCMake_test(get_property)
 add_RunCMake_test(if)
@@ -153,6 +208,7 @@ add_RunCMake_test(try_compile)
 add_RunCMake_test(try_run)
 add_RunCMake_test(set)
 add_RunCMake_test(variable_watch)
+add_RunCMake_test(while)
 add_RunCMake_test(CMP0004)
 add_RunCMake_test(TargetPolicies)
 add_RunCMake_test(alias_targets)
@@ -193,6 +249,7 @@ add_RunCMake_test(CommandLine)
 add_RunCMake_test(CommandLineTar)
 
 add_RunCMake_test(install)
+add_RunCMake_test(CPackConfig)
 add_RunCMake_test(CPackInstallProperties)
 add_RunCMake_test(ExternalProject)
 add_RunCMake_test(CTestCommandLine)
@@ -207,10 +264,6 @@ add_RunCMake_test(IfacePaths_INCLUDE_DIRECTORIES TEST_DIR IfacePaths)
 
 set(IfacePaths_SOURCES_ARGS -DTEST_PROP=SOURCES)
 add_RunCMake_test(IfacePaths_SOURCES TEST_DIR IfacePaths)
-
-if(RPMBUILD_EXECUTABLE)
-  add_RunCMake_test(CPackRPM)
-endif()
 
 add_RunCMake_test(COMPILE_LANGUAGE-genex)
 
@@ -234,4 +287,10 @@ endif()
 if("${CMAKE_GENERATOR}" MATCHES "Make|Ninja")
   add_executable(pseudo_iwyu pseudo_iwyu.c)
   add_RunCMake_test(IncludeWhatYouUse -DPSEUDO_IWYU=$<TARGET_FILE:pseudo_iwyu>)
+  add_RunCMake_test(CompilerLauncher)
 endif()
+
+add_RunCMake_test_group(CPack "DEB;RPM;TGZ")
+# add a test to make sure symbols are exported from a shared library
+# for MSVC compilers CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS property is used
+add_RunCMake_test(AutoExportDll)

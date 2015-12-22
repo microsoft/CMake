@@ -34,12 +34,19 @@ function(CMAKE_DETERMINE_COMPILER_ID lang flagvar src)
 
   # Try building with no extra flags and then try each set
   # of helper flags.  Stop when the compiler is identified.
-  foreach(flags "" ${CMAKE_${lang}_COMPILER_ID_TEST_FLAGS})
-    if(NOT CMAKE_${lang}_COMPILER_ID)
-      CMAKE_DETERMINE_COMPILER_ID_BUILD("${lang}" "${flags}" "${src}")
-      foreach(file ${COMPILER_${lang}_PRODUCED_FILES})
-        CMAKE_DETERMINE_COMPILER_ID_CHECK("${lang}" "${CMAKE_${lang}_COMPILER_ID_DIR}/${file}" "${src}")
-      endforeach()
+  foreach(flags ${CMAKE_${lang}_COMPILER_ID_TEST_FLAGS_FIRST}
+                ""
+                ${CMAKE_${lang}_COMPILER_ID_TEST_FLAGS})
+    CMAKE_DETERMINE_COMPILER_ID_BUILD("${lang}" "${flags}" "${src}")
+    CMAKE_DETERMINE_COMPILER_ID_MATCH_VENDOR("${lang}" "${COMPILER_${lang}_PRODUCED_OUTPUT}")
+    if(CMAKE_${lang}_COMPILER_ID)
+      break()
+    endif()
+    foreach(file ${COMPILER_${lang}_PRODUCED_FILES})
+      CMAKE_DETERMINE_COMPILER_ID_CHECK("${lang}" "${CMAKE_${lang}_COMPILER_ID_DIR}/${file}" "${src}")
+    endforeach()
+    if(CMAKE_${lang}_COMPILER_ID)
+      break()
     endif()
   endforeach()
 
@@ -68,6 +75,12 @@ function(CMAKE_DETERMINE_COMPILER_ID lang flagvar src)
     set(CMAKE_EXECUTABLE_FORMAT "Unknown" CACHE INTERNAL "Executable file format")
   endif()
 
+  if(CMAKE_GENERATOR STREQUAL "Ninja" AND MSVC_${lang}_ARCHITECTURE_ID)
+    CMAKE_DETERMINE_MSVC_SHOWINCLUDES_PREFIX(${lang})
+  else()
+    set(CMAKE_${lang}_CL_SHOWINCLUDES_PREFIX "")
+  endif()
+
   # Display the final identification result.
   if(CMAKE_${lang}_COMPILER_ID)
     if(CMAKE_${lang}_COMPILER_VERSION)
@@ -92,9 +105,12 @@ function(CMAKE_DETERMINE_COMPILER_ID lang flagvar src)
   set(CMAKE_${lang}_PLATFORM_ID "${CMAKE_${lang}_PLATFORM_ID}" PARENT_SCOPE)
   set(MSVC_${lang}_ARCHITECTURE_ID "${MSVC_${lang}_ARCHITECTURE_ID}"
     PARENT_SCOPE)
+  set(CMAKE_${lang}_CL_SHOWINCLUDES_PREFIX "${CMAKE_${lang}_CL_SHOWINCLUDES_PREFIX}" PARENT_SCOPE)
+  set(CMAKE_${lang}_COMPILER_LINKS_STATICALLY "${CMAKE_${lang}_COMPILER_LINKS_STATICALLY}" PARENT_SCOPE)
   set(CMAKE_${lang}_COMPILER_VERSION "${CMAKE_${lang}_COMPILER_VERSION}" PARENT_SCOPE)
   set(CMAKE_${lang}_SIMULATE_ID "${CMAKE_${lang}_SIMULATE_ID}" PARENT_SCOPE)
   set(CMAKE_${lang}_SIMULATE_VERSION "${CMAKE_${lang}_SIMULATE_VERSION}" PARENT_SCOPE)
+  set(CMAKE_${lang}_STANDARD_COMPUTED_DEFAULT "${CMAKE_${lang}_STANDARD_COMPUTED_DEFAULT}" PARENT_SCOPE)
 endfunction()
 
 include(CMakeCompilerIdDetection)
@@ -191,11 +207,11 @@ Id flags: ${testflags}
     endif()
     if(id_system AND CMAKE_SYSTEM_VERSION)
       set(id_system_version "<ApplicationTypeRevision>${CMAKE_SYSTEM_VERSION}</ApplicationTypeRevision>")
-      if(CMAKE_SYSTEM_VERSION STREQUAL "10.0" AND CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
-        set(id_WindowsTargetPlatformVersion "<WindowsTargetPlatformVersion>${CMAKE_VS_TARGET_PLATFORM_VERSION}</WindowsTargetPlatformVersion>")
-      endif()
     else()
       set(id_system_version "")
+    endif()
+    if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+      set(id_WindowsTargetPlatformVersion "<WindowsTargetPlatformVersion>${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}</WindowsTargetPlatformVersion>")
     endif()
     if(id_platform STREQUAL ARM)
       set(id_WindowsSDKDesktopARMSupport "<WindowsSDKDesktopARMSupport>true</WindowsSDKDesktopARMSupport>")
@@ -213,7 +229,7 @@ Id flags: ${testflags}
       set(id_subsystem 1)
     endif()
     set(id_dir ${CMAKE_${lang}_COMPILER_ID_DIR})
-    get_filename_component(id_src "${src}" NAME)
+    set(id_src "${src}")
     configure_file(${CMAKE_ROOT}/Modules/CompilerId/VS-${v}.${ext}.in
       ${id_dir}/CompilerId${lang}.${ext} @ONLY)
     if(CMAKE_VS_MSBUILD_COMMAND AND NOT lang STREQUAL "Fortran")
@@ -252,7 +268,7 @@ Id flags: ${testflags}
     set(id_lang "${lang}")
     set(id_type ${CMAKE_${lang}_COMPILER_XCODE_TYPE})
     set(id_dir ${CMAKE_${lang}_COMPILER_ID_DIR})
-    get_filename_component(id_src "${src}" NAME)
+    set(id_src "${src}")
     if(CMAKE_XCODE_PLATFORM_TOOLSET)
       set(id_toolset "GCC_VERSION = ${CMAKE_XCODE_PLATFORM_TOOLSET};")
     else()
@@ -300,41 +316,26 @@ Id flags: ${testflags}
       set(ENV{MACOSX_DEPLOYMENT_TARGET} "${_ENV_MACOSX_DEPLOYMENT_TARGET}")
     endif()
 
-    # Match the link line from xcodebuild output of the form
-    #  Ld ...
-    #      ...
-    #      /path/to/cc ...CompilerId${lang}/...
-    # to extract the compiler front-end for the language.
-    if("${CMAKE_${lang}_COMPILER_ID_OUTPUT}" MATCHES "\nLd[^\n]*(\n[ \t]+[^\n]*)*\n[ \t]+([^ \t\r\n]+)[^\r\n]*-o[^\r\n]*CompilerId${lang}/(\\./)?(CompilerId${lang}.xctest/)?CompilerId${lang}[ \t\n\\\"]")
-      set(_comp "${CMAKE_MATCH_2}")
-      if(EXISTS "${_comp}")
-        set(CMAKE_${lang}_COMPILER_ID_TOOL "${_comp}" PARENT_SCOPE)
+    if(DEFINED CMAKE_${lang}_COMPILER_ID_TOOL_MATCH_REGEX)
+      if("${CMAKE_${lang}_COMPILER_ID_OUTPUT}" MATCHES "${CMAKE_${lang}_COMPILER_ID_TOOL_MATCH_REGEX}")
+        set(_comp "${CMAKE_MATCH_${CMAKE_${lang}_COMPILER_ID_TOOL_MATCH_INDEX}}")
+        if(EXISTS "${_comp}")
+          set(CMAKE_${lang}_COMPILER_ID_TOOL "${_comp}" PARENT_SCOPE)
+        endif()
       endif()
     endif()
   else()
-    if(COMMAND EXECUTE_PROCESS)
-      execute_process(
-        COMMAND "${CMAKE_${lang}_COMPILER}"
-                ${CMAKE_${lang}_COMPILER_ID_ARG1}
-                ${CMAKE_${lang}_COMPILER_ID_FLAGS_LIST}
-                ${testflags}
-                "${src}"
-        WORKING_DIRECTORY ${CMAKE_${lang}_COMPILER_ID_DIR}
-        OUTPUT_VARIABLE CMAKE_${lang}_COMPILER_ID_OUTPUT
-        ERROR_VARIABLE CMAKE_${lang}_COMPILER_ID_OUTPUT
-        RESULT_VARIABLE CMAKE_${lang}_COMPILER_ID_RESULT
-        )
-    else()
-      exec_program(
-        "${CMAKE_${lang}_COMPILER}" ${CMAKE_${lang}_COMPILER_ID_DIR}
-        ARGS ${CMAKE_${lang}_COMPILER_ID_ARG1}
-             ${CMAKE_${lang}_COMPILER_ID_FLAGS_LIST}
-             ${testflags}
-             \"${src}\"
-        OUTPUT_VARIABLE CMAKE_${lang}_COMPILER_ID_OUTPUT
-        RETURN_VALUE CMAKE_${lang}_COMPILER_ID_RESULT
-        )
-    endif()
+    execute_process(
+      COMMAND "${CMAKE_${lang}_COMPILER}"
+              ${CMAKE_${lang}_COMPILER_ID_ARG1}
+              ${CMAKE_${lang}_COMPILER_ID_FLAGS_LIST}
+              ${testflags}
+              "${src}"
+      WORKING_DIRECTORY ${CMAKE_${lang}_COMPILER_ID_DIR}
+      OUTPUT_VARIABLE CMAKE_${lang}_COMPILER_ID_OUTPUT
+      ERROR_VARIABLE CMAKE_${lang}_COMPILER_ID_OUTPUT
+      RESULT_VARIABLE CMAKE_${lang}_COMPILER_ID_RESULT
+      )
   endif()
 
   # Check the result of compilation.
@@ -358,6 +359,7 @@ ${CMAKE_${lang}_COMPILER_ID_OUTPUT}
 
     # No output files should be inspected.
     set(COMPILER_${lang}_PRODUCED_FILES)
+    set(COMPILER_${lang}_PRODUCED_OUTPUT)
   else()
     # Compilation succeeded.
     file(APPEND ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeOutput.log
@@ -398,10 +400,24 @@ ${CMAKE_${lang}_COMPILER_ID_OUTPUT}
         "${src}\" did not produce an executable in \""
         "${CMAKE_${lang}_COMPILER_ID_DIR}\".\n\n")
     endif()
+
+    set(COMPILER_${lang}_PRODUCED_OUTPUT "${CMAKE_${lang}_COMPILER_ID_OUTPUT}")
   endif()
 
   # Return the files produced by the compilation.
   set(COMPILER_${lang}_PRODUCED_FILES "${COMPILER_${lang}_PRODUCED_FILES}" PARENT_SCOPE)
+  set(COMPILER_${lang}_PRODUCED_OUTPUT "${COMPILER_${lang}_PRODUCED_OUTPUT}" PARENT_SCOPE)
+endfunction()
+
+#-----------------------------------------------------------------------------
+# Function to extract the compiler id from compiler output.
+function(CMAKE_DETERMINE_COMPILER_ID_MATCH_VENDOR lang output)
+  foreach(vendor ${CMAKE_${lang}_COMPILER_ID_MATCH_VENDORS})
+    if(output MATCHES "${CMAKE_${lang}_COMPILER_ID_MATCH_VENDOR_REGEX_${vendor}}")
+      set(CMAKE_${lang}_COMPILER_ID "${vendor}")
+    endif()
+  endforeach()
+  set(CMAKE_${lang}_COMPILER_ID "${CMAKE_${lang}_COMPILER_ID}" PARENT_SCOPE)
 endfunction()
 
 #-----------------------------------------------------------------------------
@@ -471,6 +487,9 @@ function(CMAKE_DETERMINE_COMPILER_ID_CHECK lang file)
       if("${info}" MATCHES "INFO:qnxnto\\[\\]")
         set(COMPILER_QNXNTO 1)
       endif()
+      if("${info}" MATCHES "INFO:dialect_default\\[([^]\"]*)\\]")
+        set(CMAKE_${lang}_STANDARD_COMPUTED_DEFAULT "${CMAKE_MATCH_1}")
+      endif()
     endforeach()
 
     # Construct compiler version from components if needed.
@@ -511,6 +530,13 @@ function(CMAKE_DETERMINE_COMPILER_ID_CHECK lang file)
         set(ARCHITECTURE_ID "SH4")
       elseif(peheader STREQUAL "50450000a801")
         set(ARCHITECTURE_ID "SH5")
+      endif()
+    endif()
+
+    if(UNIX)
+      execute_process(COMMAND file "${file}" OUTPUT_VARIABLE out ERROR_VARIABLE out)
+      if(out MATCHES "statically linked")
+        set(CMAKE_${lang}_COMPILER_LINKS_STATICALLY 1 PARENT_SCOPE)
       endif()
     endif()
 
@@ -574,6 +600,7 @@ function(CMAKE_DETERMINE_COMPILER_ID_CHECK lang file)
   set(CMAKE_${lang}_SIMULATE_VERSION "${CMAKE_${lang}_SIMULATE_VERSION}" PARENT_SCOPE)
   set(CMAKE_EXECUTABLE_FORMAT "${CMAKE_EXECUTABLE_FORMAT}" PARENT_SCOPE)
   set(COMPILER_QNXNTO "${COMPILER_QNXNTO}" PARENT_SCOPE)
+  set(CMAKE_${lang}_STANDARD_COMPUTED_DEFAULT "${CMAKE_${lang}_STANDARD_COMPUTED_DEFAULT}" PARENT_SCOPE)
 endfunction()
 
 #-----------------------------------------------------------------------------
@@ -628,4 +655,28 @@ function(CMAKE_DETERMINE_COMPILER_ID_VENDOR lang)
        endif()
     endif()
   endforeach()
+endfunction()
+
+function(CMAKE_DETERMINE_MSVC_SHOWINCLUDES_PREFIX lang)
+  # Run this MSVC-compatible compiler to detect what the /showIncludes
+  # option displays.  We can use a C source even with the C++ compiler
+  # because MSVC-compatible compilers handle both and show the same output.
+  set(showdir ${CMAKE_BINARY_DIR}/CMakeFiles/ShowIncludes)
+  file(WRITE ${showdir}/foo.h "\n")
+  file(WRITE ${showdir}/main.c "#include \"foo.h\" \nint main(){}\n")
+  execute_process(
+    COMMAND "${CMAKE_${lang}_COMPILER}"
+            ${CMAKE_${lang}_COMPILER_ID_ARG1}
+            ${CMAKE_${lang}_COMPILER_ID_FLAGS_LIST}
+            /nologo /showIncludes /c main.c
+    WORKING_DIRECTORY ${showdir}
+    OUTPUT_VARIABLE out
+    ERROR_VARIABLE err
+    RESULT_VARIABLE res
+    )
+  if(res EQUAL 0 AND "${out}" MATCHES "\n([^:]*:[^:]*:[ \t]*)")
+    set(CMAKE_${lang}_CL_SHOWINCLUDES_PREFIX "${CMAKE_MATCH_1}" PARENT_SCOPE)
+  else()
+    set(CMAKE_${lang}_CL_SHOWINCLUDES_PREFIX "" PARENT_SCOPE)
+  endif()
 endfunction()

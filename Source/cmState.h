@@ -15,49 +15,191 @@
 #include "cmStandardIncludes.h"
 #include "cmPropertyDefinitionMap.h"
 #include "cmPropertyMap.h"
+#include "cmLinkedTree.h"
+#include "cmAlgorithms.h"
+#include "cmPolicies.h"
 
 class cmake;
 class cmCommand;
+class cmDefinitions;
+class cmListFileBacktrace;
 
 class cmState
 {
-  typedef std::vector<std::string>::size_type PositionType;
+  struct SnapshotDataType;
+  struct PolicyStackEntry;
+  struct BuildsystemDirectoryStateType;
+  typedef cmLinkedTree<SnapshotDataType>::iterator PositionType;
   friend class Snapshot;
 public:
   cmState(cmake* cm);
   ~cmState();
 
+  enum SnapshotType
+  {
+    BaseType,
+    BuildsystemDirectoryType,
+    FunctionCallType,
+    MacroCallType,
+    CallStackType,
+    InlineListFileType,
+    PolicyScopeType,
+    VariableScopeType
+  };
+
+  class Directory;
+
   class Snapshot {
   public:
-    Snapshot(cmState* state = 0, PositionType position = 0);
+    Snapshot(cmState* state = 0);
+    Snapshot(cmState* state, PositionType position);
 
-    const char* GetCurrentSourceDirectory() const;
-    void SetCurrentSourceDirectory(std::string const& dir);
-    const char* GetCurrentBinaryDirectory() const;
-    void SetCurrentBinaryDirectory(std::string const& dir);
+    const char* GetDefinition(std::string const& name) const;
+    bool IsInitialized(std::string const& name) const;
+    void SetDefinition(std::string const& name, std::string const& value);
+    void RemoveDefinition(std::string const& name);
+    std::vector<std::string> UnusedKeys() const;
+    std::vector<std::string> ClosureKeys() const;
+    bool RaiseScope(std::string const& var, const char* varDef);
 
-    std::vector<std::string> const& GetCurrentSourceDirectoryComponents();
-    std::vector<std::string> const& GetCurrentBinaryDirectoryComponents();
+    void SetListFile(std::string const& listfile);
+
+    std::string GetExecutionListFile() const;
+
+    std::vector<Snapshot> GetChildren();
+    std::string GetEntryPointCommand() const;
+    long GetEntryPointLine() const;
+
+    bool IsValid() const;
+    Snapshot GetBuildsystemDirectoryParent() const;
+    Snapshot GetCallStackParent() const;
+    SnapshotType GetType() const;
+
+    void InitializeFromParent();
+
+    void SetPolicy(cmPolicies::PolicyID id, cmPolicies::PolicyStatus status);
+    cmPolicies::PolicyStatus GetPolicy(cmPolicies::PolicyID id) const;
+    bool HasDefinedPolicyCMP0011();
+    void PushPolicy(cmPolicies::PolicyMap entry, bool weak);
+    bool PopPolicy();
+    bool CanPopPolicyScope();
+
+    cmState* GetState() const;
+
+    Directory GetDirectory() const;
+
+    void SetProjectName(std::string const& name);
+    std::string GetProjectName() const;
+
+    struct StrictWeakOrder
+    {
+      bool operator()(const cmState::Snapshot& lhs,
+                      const cmState::Snapshot& rhs) const;
+    };
+
+  private:
+    friend bool operator==(const cmState::Snapshot& lhs,
+                           const cmState::Snapshot& rhs);
+    friend bool operator!=(const cmState::Snapshot& lhs,
+                           const cmState::Snapshot& rhs);
+    friend class cmState;
+    friend class Directory;
+    friend struct StrictWeakOrder;
+    cmState* State;
+    cmState::PositionType Position;
+  };
+
+  class Directory
+  {
+    Directory(cmLinkedTree<BuildsystemDirectoryStateType>::iterator iter,
+              Snapshot const& snapshot);
+  public:
+    const char* GetCurrentSource() const;
+    void SetCurrentSource(std::string const& dir);
+    const char* GetCurrentBinary() const;
+    void SetCurrentBinary(std::string const& dir);
+
+    std::vector<std::string> const&
+    GetCurrentSourceComponents() const;
+    std::vector<std::string> const&
+    GetCurrentBinaryComponents() const;
 
     const char* GetRelativePathTopSource() const;
     const char* GetRelativePathTopBinary() const;
     void SetRelativePathTopSource(const char* dir);
     void SetRelativePathTopBinary(const char* dir);
 
-    bool IsValid() const;
-    Snapshot GetParent() const;
+    cmStringRange GetIncludeDirectoriesEntries() const;
+    cmBacktraceRange GetIncludeDirectoriesEntryBacktraces() const;
+    void AppendIncludeDirectoriesEntry(std::string const& vec,
+                                       cmListFileBacktrace const& lfbt);
+    void PrependIncludeDirectoriesEntry(std::string const& vec,
+                                        cmListFileBacktrace const& lfbt);
+    void SetIncludeDirectories(std::string const& vec,
+                               cmListFileBacktrace const& lfbt);
+    void ClearIncludeDirectories();
+
+    cmStringRange GetCompileDefinitionsEntries() const;
+    cmBacktraceRange GetCompileDefinitionsEntryBacktraces() const;
+    void AppendCompileDefinitionsEntry(std::string const& vec,
+                                       cmListFileBacktrace const& lfbt);
+    void SetCompileDefinitions(std::string const& vec,
+                               cmListFileBacktrace const& lfbt);
+    void ClearCompileDefinitions();
+
+    cmStringRange GetCompileOptionsEntries() const;
+    cmBacktraceRange GetCompileOptionsEntryBacktraces() const;
+    void AppendCompileOptionsEntry(std::string const& vec,
+                                       cmListFileBacktrace const& lfbt);
+    void SetCompileOptions(std::string const& vec,
+                               cmListFileBacktrace const& lfbt);
+    void ClearCompileOptions();
+
+    void SetProperty(const std::string& prop, const char *value,
+                     cmListFileBacktrace lfbt);
+    void AppendProperty(const std::string& prop, const char *value,
+                        bool asString, cmListFileBacktrace lfbt);
+    const char *GetProperty(const std::string& prop) const;
+    const char *GetProperty(const std::string& prop, bool chain) const;
+    bool GetPropertyAsBool(const std::string& prop) const;
+    std::vector<std::string> GetPropertyKeys() const;
 
   private:
     void ComputeRelativePathTopSource();
     void ComputeRelativePathTopBinary();
 
   private:
-    friend class cmState;
-    cmState* State;
-    cmState::PositionType Position;
+    cmLinkedTree<BuildsystemDirectoryStateType>::iterator DirectoryState;
+    Snapshot Snapshot_;
+    friend class Snapshot;
   };
 
-  Snapshot CreateSnapshot(Snapshot originSnapshot);
+  Snapshot CreateBaseSnapshot();
+  Snapshot
+  CreateBuildsystemDirectorySnapshot(Snapshot originSnapshot,
+                                     std::string const& entryPointCommand,
+                                     long entryPointLine);
+  Snapshot CreateFunctionCallSnapshot(Snapshot originSnapshot,
+                                      std::string const& entryPointCommand,
+                                      long entryPointLine,
+                                      std::string const& fileName);
+  Snapshot CreateMacroCallSnapshot(Snapshot originSnapshot,
+                                   std::string const& entryPointCommand,
+                                   long entryPointLine,
+                                   std::string const& fileName);
+  Snapshot CreateCallStackSnapshot(Snapshot originSnapshot,
+                                   std::string const& entryPointCommand,
+                                   long entryPointLine,
+                                   std::string const& fileName);
+  Snapshot CreateVariableScopeSnapshot(Snapshot originSnapshot,
+                                       std::string const& entryPointCommand,
+                                       long entryPointLine);
+  Snapshot CreateInlineListFileSnapshot(Snapshot originSnapshot,
+                                        const std::string& entryPointCommand,
+                                        long entryPointLine,
+                                        std::string const& fileName);
+  Snapshot CreatePolicyScopeSnapshot(Snapshot originSnapshot);
+  Snapshot Pop(Snapshot originSnapshot);
 
   enum CacheEntryType{ BOOL=0, PATH, FILEPATH, STRING, INTERNAL,STATIC,
                        UNINITIALIZED };
@@ -93,7 +235,7 @@ public:
   void RemoveCacheEntryProperty(std::string const& key,
                                 std::string const& propertyName);
 
-  void Reset();
+  Snapshot Reset();
   // Define a property
   void DefineProperty(const std::string& name, cmProperty::ScopeType scope,
                       const char *ShortDescription,
@@ -101,12 +243,14 @@ public:
                       bool chain = false);
 
   // get property definition
-  cmPropertyDefinition *GetPropertyDefinition
-  (const std::string& name, cmProperty::ScopeType scope);
+  cmPropertyDefinition const* GetPropertyDefinition
+  (const std::string& name, cmProperty::ScopeType scope) const;
 
   // Is a property defined?
-  bool IsPropertyDefined(const std::string& name, cmProperty::ScopeType scope);
-  bool IsPropertyChained(const std::string& name, cmProperty::ScopeType scope);
+  bool IsPropertyDefined(const std::string& name,
+                         cmProperty::ScopeType scope) const;
+  bool IsPropertyChained(const std::string& name,
+                         cmProperty::ScopeType scope) const;
 
   void SetLanguageEnabled(std::string const& l);
   bool GetLanguageEnabled(std::string const& l) const;
@@ -157,19 +301,14 @@ private:
   std::map<std::string, cmCommand*> Commands;
   cmPropertyMap GlobalProperties;
   cmake* CMakeInstance;
-  std::vector<std::string> Locations;
-  std::vector<std::string> OutputLocations;
-  std::vector<PositionType> ParentPositions;
 
-  std::vector<std::vector<std::string> > CurrentSourceDirectoryComponents;
-  std::vector<std::vector<std::string> > CurrentBinaryDirectoryComponents;
-  // The top-most directories for relative path conversion.  Both the
-  // source and destination location of a relative path conversion
-  // must be underneath one of these directories (both under source or
-  // both under binary) in order for the relative path to be evaluated
-  // safely by the build tools.
-  std::vector<std::string> RelativePathTopSource;
-  std::vector<std::string> RelativePathTopBinary;
+  cmLinkedTree<BuildsystemDirectoryStateType> BuildsystemDirectory;
+
+  cmLinkedTree<std::string> ExecutionListFiles;
+
+  cmLinkedTree<PolicyStackEntry> PolicyStack;
+  cmLinkedTree<SnapshotDataType> SnapshotData;
+  cmLinkedTree<cmDefinitions> VarTree;
 
   std::vector<std::string> SourceDirectoryComponents;
   std::vector<std::string> BinaryDirectoryComponents;
@@ -183,5 +322,8 @@ private:
   bool NMake;
   bool MSYSShell;
 };
+
+bool operator==(const cmState::Snapshot& lhs, const cmState::Snapshot& rhs);
+bool operator!=(const cmState::Snapshot& lhs, const cmState::Snapshot& rhs);
 
 #endif

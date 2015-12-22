@@ -74,6 +74,10 @@ if(CMAKE_CXX_SIZEOF_DATA_PTR)
   unset(CMAKE_CXX_ABI_FILES)
 endif()
 
+if(CMAKE_CXX_COMPILER_LINKS_STATICALLY)
+  set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS FALSE)
+endif()
+
 # This should be included before the _INIT variables are
 # used to initialize the cache.  Since the rule variables
 # have if blocks on them, users can still define them here.
@@ -266,7 +270,7 @@ endif()
 # Create a static archive incrementally for large object file counts.
 # If CMAKE_CXX_CREATE_STATIC_LIBRARY is set it will override these.
 if(NOT DEFINED CMAKE_CXX_ARCHIVE_CREATE)
-  set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> cq <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> qc <TARGET> <LINK_FLAGS> <OBJECTS>")
 endif()
 if(NOT DEFINED CMAKE_CXX_ARCHIVE_APPEND)
   set(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> q  <TARGET> <LINK_FLAGS> <OBJECTS>")
@@ -278,7 +282,7 @@ endif()
 # compile a C++ file into an object file
 if(NOT CMAKE_CXX_COMPILE_OBJECT)
   set(CMAKE_CXX_COMPILE_OBJECT
-    "<CMAKE_CXX_COMPILER>  <DEFINES> <FLAGS> -o <OBJECT> -c <SOURCE>")
+    "<CMAKE_CXX_COMPILER>  <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
 endif()
 
 if(NOT CMAKE_CXX_LINK_EXECUTABLE)

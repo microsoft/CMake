@@ -80,6 +80,43 @@ set(CPACK_COMPONENT_HEADERS_DESCRIPTION
 # depend on the libraries component.
 set(CPACK_COMPONENT_HEADERS_DEPENDS libraries)
 
+# creates preinst/prerm scripts with specific permissions. Those permissions
+# (especially executable) should be in the final archive
+find_program(CHMOD_PROG chmod)
+if(CHMOD_PROG)
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/preinst "echo default_preinst")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/prerm "echo default_prerm")
+
+  # Those should have 755 permission normally. We mess it up to see if
+  # CPACK_DEBIAN_APPLICATIONS_PACKAGE_CONTROL_STRICT_PERMISSION is able to fix
+  # it.
+  execute_process(COMMAND ${CHMOD_PROG} 640 ${CMAKE_CURRENT_BINARY_DIR}/preinst)
+  execute_process(COMMAND ${CHMOD_PROG} 640 ${CMAKE_CURRENT_BINARY_DIR}/prerm)
+
+  set(CPACK_DEBIAN_APPLICATIONS_PACKAGE_CONTROL_EXTRA
+      "${CMAKE_CURRENT_BINARY_DIR}/preinst;${CMAKE_CURRENT_BINARY_DIR}/prerm")
+
+  set(CPACK_DEBIAN_APPLICATIONS_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)
+endif()
+
+# creates a symbolic link and a directory. Those should not be hashed.
+# warning: relocation of the symlink is not supported (symlinks with relative
+# paths)
+execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink mylibapp symtest)
+install(FILES ${CPackComponentsDEB_BINARY_DIR}/symtest
+        DESTINATION bin
+        COMPONENT applications)
+
+if(EXISTS "./dirtest")
+  execute_process(COMMAND ${CMAKE_COMMAND} -E remove_directory ./dirtest)
+endif()
+# NOTE: directory left empty on purpose
+execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ./dirtest)
+# NOTE: we should not add the trailing "/" to dirtest
+install(DIRECTORY ${CPackComponentsDEB_BINARY_DIR}/dirtest
+        DESTINATION bin/
+        COMPONENT applications)
+
 # We may use the CPack specific config file in order
 # to tailor CPack behavior on a CPack generator specific way
 # (Behavior would be different for RPM or TGZ or DEB ...)

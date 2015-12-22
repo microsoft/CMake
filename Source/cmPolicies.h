@@ -12,7 +12,7 @@
 #ifndef cmPolicies_h
 #define cmPolicies_h
 
-#include "cmCustomCommand.h"
+#include "cmStandardIncludes.h"
 
 #include <bitset>
 
@@ -217,7 +217,14 @@ class cmPolicy;
     3, 3, 0, cmPolicies::WARN) \
   SELECT(POLICY, CMP0063, \
     "Honor visibility properties for all target types.", \
-    3, 3, 0, cmPolicies::WARN)
+    3, 3, 0, cmPolicies::WARN) \
+  SELECT(POLICY, CMP0064, \
+    "Support new TEST if() operator.", \
+    3, 4, 0, cmPolicies::WARN) \
+  SELECT(POLICY, CMP0065, \
+    "Do not add flags to export symbols from executables without " \
+    "the ENABLE_EXPORTS target property.", \
+    3, 4, 0, cmPolicies::WARN)
 
 #define CM_SELECT_ID(F, A1, A2, A3, A4, A5, A6) F(A1)
 #define CM_FOR_EACH_POLICY_ID(POLICY) \
@@ -228,7 +235,7 @@ class cmPolicy;
  * \brief Handles changes in CMake behavior and policies
  *
  * See the cmake wiki section on
- * <a href="http://www.cmake.org/Wiki/CMake/Policies">policies</a>
+ * <a href="https://cmake.org/Wiki/CMake/Policies">policies</a>
  * for an overview of this class's purpose
  */
 class cmPolicies
@@ -281,18 +288,14 @@ public:
   /** Represent a set of policy values.  */
   struct PolicyMap
   {
-    PolicyMap();
     PolicyStatus Get(PolicyID id) const;
     void Set(PolicyID id, PolicyStatus status);
     bool IsDefined(PolicyID id) const;
     bool IsEmpty() const;
 
   private:
-    std::bitset<cmPolicies::CMPCOUNT> UNDEFINED;
-    std::bitset<cmPolicies::CMPCOUNT> OLD;
-    std::bitset<cmPolicies::CMPCOUNT> NEW;
-    std::bitset<cmPolicies::CMPCOUNT> REQUIRED_IF_USED;
-    std::bitset<cmPolicies::CMPCOUNT> REQUIRED_ALWAYS;
+#define POLICY_STATUS_COUNT 3
+    std::bitset<cmPolicies::CMPCOUNT * POLICY_STATUS_COUNT> Status;
   };
 };
 

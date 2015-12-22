@@ -34,8 +34,8 @@ else()
   include_directories(${Qt5Widgets_INCLUDE_DIRS})
   set(QT_LIBRARIES Qt5::Widgets)
 
-  if(Qt5_POSITION_INDEPENDENT_CODE)
-    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+  if(Qt5_POSITION_INDEPENDENT_CODE AND CMAKE_CXX_COMPILE_OPTIONS_PIC)
+    add_definitions(${CMAKE_CXX_COMPILE_OPTIONS_PIC})
   endif()
 
   macro(qtx_wrap_cpp)
@@ -101,7 +101,14 @@ add_executable(QtAutogen main.cpp calwidget.cpp second_widget.cpp foo.cpp blub.c
 )
 set_property(TARGET QtAutogen APPEND PROPERTY AUTOGEN_TARGET_DEPENDS generate_moc_input "${CMAKE_CURRENT_BINARY_DIR}/myotherinterface.h")
 
-set_target_properties(QtAutogen codeeditorLib privateSlot PROPERTIES AUTOMOC TRUE)
+add_executable(targetObjectsTest targetObjectsTest.cpp $<TARGET_OBJECTS:privateSlot>)
+target_link_libraries(targetObjectsTest ${QT_LIBRARIES})
+
+set_target_properties(
+  QtAutogen codeeditorLib privateSlot targetObjectsTest
+  PROPERTIES
+  AUTOMOC TRUE
+)
 
 include(GenerateExportHeader)
 # The order is relevant here. B depends on A, and B headers depend on A
@@ -166,4 +173,27 @@ file(TIMESTAMP "${qrc_file1}" file1_step1 "${timeformat}")
 
 if (NOT file1_step1 GREATER file1_before)
   message(SEND_ERROR "file1 (${qrc_file1}) should have changed in the first step!")
+endif()
+
+#-----------------------------------------------------------------------------
+try_compile(MOC_RERUN
+  "${CMAKE_CURRENT_BINARY_DIR}/automoc_rerun"
+  "${CMAKE_CURRENT_SOURCE_DIR}/automoc_rerun"
+  automoc_rerun
+  CMAKE_FLAGS "-DQT_QMAKE_EXECUTABLE:FILEPATH=${QT_QMAKE_EXECUTABLE}" "-DQT_TEST_VERSION=${QT_TEST_VERSION}"
+              "-DCMAKE_PREFIX_PATH=${Qt_PREFIX_DIR}"
+  OUTPUT_VARIABLE output
+)
+if (NOT MOC_RERUN)
+  message(SEND_ERROR "Initial build of automoc_rerun failed. Output: ${output}")
+endif()
+
+configure_file(automoc_rerun/test1.h.in2 automoc_rerun/test1.h COPYONLY)
+
+execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/automoc_rerun"
+  RESULT_VARIABLE automoc_rerun_result
+  )
+if (automoc_rerun_result)
+  message(SEND_ERROR "Second build of automoc_rerun failed.")
 endif()

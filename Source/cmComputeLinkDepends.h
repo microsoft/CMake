@@ -22,6 +22,7 @@
 class cmComputeComponentGraph;
 class cmGlobalGenerator;
 class cmMakefile;
+class cmGeneratorTarget;
 class cmTarget;
 class cmake;
 
@@ -31,7 +32,8 @@ class cmake;
 class cmComputeLinkDepends
 {
 public:
-  cmComputeLinkDepends(cmTarget const* target, const std::string& config);
+  cmComputeLinkDepends(cmGeneratorTarget const* target,
+                       const std::string& config);
   ~cmComputeLinkDepends();
 
   // Basic information about each link item.
@@ -57,18 +59,11 @@ public:
 private:
 
   // Context information.
-  cmTarget const* Target;
+  cmGeneratorTarget const* Target;
   cmMakefile* Makefile;
   cmGlobalGenerator const* GlobalGenerator;
   cmake* CMakeInstance;
-  bool DebugMode;
-
-  // Configuration information.
-  bool HasConfig;
   std::string Config;
-  cmTarget::LinkLibraryType LinkType;
-
-  // Output information.
   EntryVector FinalLinkEntries;
 
   typedef cmTarget::LinkLibraryVectorType LinkLibraryVectorType;
@@ -107,7 +102,7 @@ private:
   std::queue<SharedDepEntry> SharedDepQueue;
   std::set<int> SharedDepFollowed;
   void FollowSharedDeps(int depender_index,
-                        cmTarget::LinkInterface const* iface,
+                        cmLinkInterface const* iface,
                         bool follow_interface = false);
   void QueueSharedDependencies(int depender_index,
                                std::vector<cmLinkItem> const& deps);
@@ -131,7 +126,7 @@ private:
   void OrderLinkEntires();
   std::vector<char> ComponentVisited;
   std::vector<int> ComponentOrder;
-  int ComponentOrderId;
+
   struct PendingComponent
   {
     // The real component id.  Needed because the map is indexed by
@@ -158,11 +153,14 @@ private:
 
   // Record of the original link line.
   std::vector<int> OriginalEntries;
-
-  // Compatibility help.
-  bool OldLinkDirMode;
-  void CheckWrongConfigItem(cmLinkItem const& item);
   std::set<cmTarget const*> OldWrongConfigItems;
+  void CheckWrongConfigItem(cmLinkItem const& item);
+
+  int ComponentOrderId;
+  cmTarget::LinkLibraryType LinkType;
+  bool HasConfig;
+  bool DebugMode;
+  bool OldLinkDirMode;
 };
 
 #endif

@@ -13,6 +13,9 @@ cmake_minimum_required(VERSION 2.8.4 FATAL_ERROR)
 if(POLICY CMP0025)
   cmake_policy(SET CMP0025 NEW)
 endif()
+if(POLICY CMP0053)
+  cmake_policy(SET CMP0053 NEW)
+endif()
 project(CMake)
 
 if(CMAKE_BOOTSTRAP)
@@ -38,7 +41,12 @@ endif()
 
 # Use most-recent available language dialects with GNU and Clang
 if(NOT DEFINED CMAKE_C_STANDARD AND NOT CMake_NO_C_STANDARD)
-  set(CMAKE_C_STANDARD 11)
+  include(${CMake_SOURCE_DIR}/Source/Checks/cm_c11_thread_local.cmake)
+  if(NOT CMake_C11_THREAD_LOCAL_BROKEN)
+    set(CMAKE_C_STANDARD 11)
+  else()
+    set(CMAKE_C_STANDARD 99)
+  endif()
 endif()
 if(NOT DEFINED CMAKE_CXX_STANDARD AND NOT CMake_NO_CXX_STANDARD)
   include(${CMake_SOURCE_DIR}/Source/Checks/cm_cxx14_cstdio.cmake)
@@ -58,6 +66,22 @@ mark_as_advanced(CMAKE_ENCODING_UTF8)
 if(CMAKE_ENCODING_UTF8)
   set(KWSYS_ENCODING_DEFAULT_CODEPAGE CP_UTF8)
 endif()
+
+# option to use COMPONENT with install command
+option(CMake_INSTALL_COMPONENTS "Using components when installing" OFF)
+mark_as_advanced(CMake_INSTALL_COMPONENTS)
+macro(CMake_OPTIONAL_COMPONENT NAME)
+  if(CMake_INSTALL_COMPONENTS)
+    set(COMPONENT COMPONENT ${NAME})
+  else()
+    set(COMPONENT)
+  endif()
+endmacro()
+
+# option to disable installing 3rd-party dependencies
+option(CMake_INSTALL_DEPENDENCIES
+  "Whether to install 3rd-party runtime dependencies" OFF)
+mark_as_advanced(CMake_INSTALL_DEPENDENCIES)
 
 #-----------------------------------------------------------------------
 # a macro to deal with system libraries, implemented as a macro
@@ -127,17 +151,6 @@ macro(CMAKE_HANDLE_SYSTEM_LIBRARIES)
     @ONLY)
 
 endmacro()
-
-
-
-
-if(NOT CMake_TEST_EXTERNAL_CMAKE)
-  set(CMAKE_BUILD_ON_VISUAL_STUDIO 0)
-  if(WIN32 AND NOT UNIX AND NOT MINGW)
-    set(CMAKE_BUILD_ON_VISUAL_STUDIO 1)
-  endif()
-endif()
-
 
 #-----------------------------------------------------------------------
 # a macro to determine the generator and ctest executable to use

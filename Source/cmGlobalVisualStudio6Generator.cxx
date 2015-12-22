@@ -173,10 +173,9 @@ cmGlobalVisualStudio6Generator::GenerateBuildCommand(
 
 ///! Create a local generator appropriate to this Global Generator
 cmLocalGenerator *
-cmGlobalVisualStudio6Generator::CreateLocalGenerator(cmLocalGenerator* parent,
-                                                   cmState::Snapshot snapshot)
+cmGlobalVisualStudio6Generator::CreateLocalGenerator(cmMakefile* mf)
 {
-  return new cmLocalVisualStudio6Generator(this, parent, snapshot);
+  return new cmLocalVisualStudio6Generator(this, mf);
 }
 
 
@@ -218,13 +217,13 @@ void cmGlobalVisualStudio6Generator
   TargetDependSet projectTargets;
   TargetDependSet originalTargets;
   this->GetTargetSets(projectTargets, originalTargets, root, generators);
-  OrderedTargetDependSet orderedProjectTargets(projectTargets);
+  OrderedTargetDependSet orderedProjectTargets(projectTargets, "ALL_BUILD");
 
   for(OrderedTargetDependSet::const_iterator
         tt = orderedProjectTargets.begin();
       tt != orderedProjectTargets.end(); ++tt)
     {
-    cmTarget const* target = *tt;
+    cmTarget const* target = (*tt)->Target;
     if(target->GetType() == cmTarget::INTERFACE_LIBRARY)
       {
       continue;
@@ -255,7 +254,7 @@ void cmGlobalVisualStudio6Generator
 ::OutputDSWFile(cmLocalGenerator* root,
                 std::vector<cmLocalGenerator*>& generators)
 {
-  if(generators.size() == 0)
+  if(generators.empty())
     {
     return;
     }

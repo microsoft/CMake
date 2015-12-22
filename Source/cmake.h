@@ -27,7 +27,6 @@ class cmVariableWatch;
 class cmFileTimeComparison;
 class cmExternalMakefileProjectGenerator;
 class cmDocumentationSection;
-class cmPolicies;
 class cmTarget;
 class cmGeneratedFileStream;
 
@@ -222,9 +221,6 @@ class cmake
   ///! this is called by generators to update the progress
   void UpdateProgress(const char *msg, float prog);
 
-  ///!  get the cmake policies instance
-  cmPolicies *GetPolicies() {return this->Policies;}
-
   ///! Get the variable watch object
   cmVariableWatch* GetVariableWatch() { return this->VariableWatch; }
 
@@ -273,6 +269,8 @@ class cmake
   // Do we want trace output during the cmake run.
   bool GetTrace() { return this->Trace;}
   void SetTrace(bool b) {  this->Trace = b;}
+  bool GetTraceExpand() { return this->TraceExpand;}
+  void SetTraceExpand(bool b) {  this->TraceExpand = b;}
   bool GetWarnUninitialized() { return this->WarnUninitialized;}
   void SetWarnUninitialized(bool b) {  this->WarnUninitialized = b;}
   bool GetWarnUnused() { return this->WarnUnused;}
@@ -301,7 +299,7 @@ class cmake
 
   /** Display a message to the user.  */
   void IssueMessage(cmake::MessageType t, std::string const& text,
-        cmListFileBacktrace const& backtrace = cmListFileBacktrace(NULL));
+        cmListFileBacktrace const& backtrace = cmListFileBacktrace());
   void IssueMessage(cmake::MessageType t, std::string const& text,
         cmListFileContext const& lfc);
 
@@ -339,7 +337,6 @@ protected:
   void AddExtraGenerator(const std::string& name,
                          CreateExtraGeneratorFunctionType newFunction);
 
-  cmPolicies *Policies;
   cmGlobalGenerator *GlobalGenerator;
   cmCacheManager *CacheManager;
   bool SuppressDevWarnings;
@@ -381,6 +378,7 @@ private:
   WorkingMode CurrentWorkingMode;
   bool DebugOutput;
   bool Trace;
+  bool TraceExpand;
   bool WarnUninitialized;
   bool WarnUnused;
   bool WarnUnusedCli;

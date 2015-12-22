@@ -40,6 +40,7 @@ Properties of Global Scope
    /prop_gbl/RULE_LAUNCH_LINK
    /prop_gbl/RULE_MESSAGES
    /prop_gbl/TARGET_ARCHIVES_MAY_BE_SHARED_LIBS
+   /prop_gbl/TARGET_MESSAGES
    /prop_gbl/TARGET_SUPPORTS_SHARED_LIBS
    /prop_gbl/USE_FOLDERS
 
@@ -85,9 +86,23 @@ Properties on Targets
    :maxdepth: 1
 
    /prop_tgt/ALIASED_TARGET
+   /prop_tgt/ANDROID_ANT_ADDITIONAL_OPTIONS
    /prop_tgt/ANDROID_API
    /prop_tgt/ANDROID_API_MIN
+   /prop_tgt/ANDROID_ARCH
+   /prop_tgt/ANDROID_ASSETS_DIRECTORIES
    /prop_tgt/ANDROID_GUI
+   /prop_tgt/ANDROID_JAR_DEPENDENCIES
+   /prop_tgt/ANDROID_JAR_DIRECTORIES
+   /prop_tgt/ANDROID_JAVA_SOURCE_DIR
+   /prop_tgt/ANDROID_NATIVE_LIB_DEPENDENCIES
+   /prop_tgt/ANDROID_NATIVE_LIB_DIRECTORIES
+   /prop_tgt/ANDROID_PROCESS_MAX
+   /prop_tgt/ANDROID_PROGUARD
+   /prop_tgt/ANDROID_PROGUARD_CONFIG_PATH
+   /prop_tgt/ANDROID_SECURE_PROPS_PATH
+   /prop_tgt/ANDROID_SKIP_ANT_STEP
+   /prop_tgt/ANDROID_STL_TYPE
    /prop_tgt/ARCHIVE_OUTPUT_DIRECTORY_CONFIG
    /prop_tgt/ARCHIVE_OUTPUT_DIRECTORY
    /prop_tgt/ARCHIVE_OUTPUT_NAME_CONFIG
@@ -99,6 +114,7 @@ Properties on Targets
    /prop_tgt/AUTOUIC_OPTIONS
    /prop_tgt/AUTORCC
    /prop_tgt/AUTORCC_OPTIONS
+   /prop_tgt/BINARY_DIR
    /prop_tgt/BUILD_WITH_INSTALL_RPATH
    /prop_tgt/BUNDLE_EXTENSION
    /prop_tgt/BUNDLE
@@ -135,6 +151,7 @@ Properties on Targets
    /prop_tgt/Fortran_FORMAT
    /prop_tgt/Fortran_MODULE_DIRECTORY
    /prop_tgt/FRAMEWORK
+   /prop_tgt/FRAMEWORK_VERSION
    /prop_tgt/GENERATOR_FILE_NAME
    /prop_tgt/GNUtoMS
    /prop_tgt/HAS_CXX
@@ -177,6 +194,7 @@ Properties on Targets
    /prop_tgt/JOB_POOL_COMPILE
    /prop_tgt/JOB_POOL_LINK
    /prop_tgt/LABELS
+   /prop_tgt/LANG_COMPILER_LAUNCHER
    /prop_tgt/LANG_INCLUDE_WHAT_YOU_USE
    /prop_tgt/LANG_VISIBILITY_PRESET
    /prop_tgt/LIBRARY_OUTPUT_DIRECTORY_CONFIG
@@ -227,6 +245,7 @@ Properties on Targets
    /prop_tgt/RUNTIME_OUTPUT_NAME_CONFIG
    /prop_tgt/RUNTIME_OUTPUT_NAME
    /prop_tgt/SKIP_BUILD_RPATH
+   /prop_tgt/SOURCE_DIR
    /prop_tgt/SOURCES
    /prop_tgt/SOVERSION
    /prop_tgt/STATIC_LIBRARY_FLAGS_CONFIG
@@ -250,12 +269,12 @@ Properties on Targets
    /prop_tgt/VS_SCC_LOCALPATH
    /prop_tgt/VS_SCC_PROJECTNAME
    /prop_tgt/VS_SCC_PROVIDER
-   /prop_tgt/VS_TARGET_PLATFORM_MIN_VERSION
-   /prop_tgt/VS_TARGET_PLATFORM_VERSION
+   /prop_tgt/VS_WINDOWS_TARGET_PLATFORM_MIN_VERSION
    /prop_tgt/VS_WINRT_COMPONENT
    /prop_tgt/VS_WINRT_EXTENSIONS
    /prop_tgt/VS_WINRT_REFERENCES
    /prop_tgt/WIN32_EXECUTABLE
+   /prop_tgt/WINDOWS_EXPORT_ALL_SYMBOLS
    /prop_tgt/XCODE_ATTRIBUTE_an-attribute
    /prop_tgt/XCTEST
 

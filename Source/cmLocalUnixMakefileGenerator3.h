@@ -12,7 +12,7 @@
 #ifndef cmLocalUnixMakefileGenerator3_h
 #define cmLocalUnixMakefileGenerator3_h
 
-#include "cmLocalGenerator.h"
+#include "cmLocalCommonGenerator.h"
 
 // for cmDepends::DependencyVector
 #include "cmDepends.h"
@@ -31,25 +31,18 @@ class cmSourceFile;
  * cmLocalUnixMakefileGenerator3 produces a LocalUnix makefile from its
  * member Makefile.
  */
-class cmLocalUnixMakefileGenerator3 : public cmLocalGenerator
+class cmLocalUnixMakefileGenerator3 : public cmLocalCommonGenerator
 {
 public:
-  cmLocalUnixMakefileGenerator3(cmGlobalGenerator* gg,
-                                cmLocalGenerator* parent,
-                                cmState::Snapshot snapshot);
+  cmLocalUnixMakefileGenerator3(cmGlobalGenerator* gg, cmMakefile* mf);
   virtual ~cmLocalUnixMakefileGenerator3();
 
-  /**
-   * Process the CMakeLists files for this directory to fill in the
-   * Makefile ivar
-   */
-  virtual void Configure();
+  virtual void ComputeHomeRelativeOutputPath();
 
   /**
    * Generate the makefile for this directory.
    */
   virtual void Generate();
-
 
   // this returns the relative path between the HomeOutputDirectory and this
   // local generators StartOutputDirectory
@@ -152,9 +145,6 @@ public:
 
   void AddImplicitDepends(cmTarget const& tgt, const std::string& lang,
                           const char* obj, const char* src);
-
-  void AppendGlobalTargetDepends(std::vector<std::string>& depends,
-                                 cmTarget& target);
 
   // write the target rules for the local Makefile into the stream
   void WriteLocalAllRules(std::ostream& ruleFileStream);
@@ -260,25 +250,7 @@ private:
 
   ImplicitDependTargetMap ImplicitDepends;
 
-  //==========================================================================
-  // Configuration settings.
-  int MakefileVariableSize;
-  std::string ConfigurationName;
-  bool MakeCommandEscapeTargetTwice;
-  bool BorlandMakeCurlyHack;
-  //==========================================================================
-
   std::string HomeRelativeOutputPath;
-
-  /* Copy the setting of CMAKE_COLOR_MAKEFILE from the makefile at the
-     beginning of generation to avoid many duplicate lookups.  */
-  bool ColorMakefile;
-
-  /* Copy the setting of CMAKE_SKIP_PREPROCESSED_SOURCE_RULES and
-     CMAKE_SKIP_ASSEMBLY_SOURCE_RULES at the beginning of generation to
-     avoid many duplicate lookups.  */
-  bool SkipPreprocessedSourceRules;
-  bool SkipAssemblySourceRules;
 
   struct LocalObjectEntry
   {
@@ -308,6 +280,13 @@ private:
   /* does the work for each target */
   std::map<std::string, std::string> MakeVariableMap;
   std::map<std::string, std::string> ShortMakeVariableMap;
+
+  int MakefileVariableSize;
+  bool MakeCommandEscapeTargetTwice;
+  bool BorlandMakeCurlyHack;
+  bool ColorMakefile;
+  bool SkipPreprocessedSourceRules;
+  bool SkipAssemblySourceRules;
 };
 
 #endif

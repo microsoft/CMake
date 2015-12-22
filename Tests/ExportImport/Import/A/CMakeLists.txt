@@ -19,11 +19,17 @@ add_custom_command(
   COMMAND exp_testExe3 ${Import_BINARY_DIR}/exp_generated3.c
   DEPENDS exp_testExe3
   )
+add_custom_command(
+  OUTPUT ${Import_BINARY_DIR}/exp_generated4.c
+  COMMAND exp_testExe4 ${Import_BINARY_DIR}/exp_generated4.c
+  DEPENDS exp_testExe4
+  )
 
 add_executable(imp_testExe1
   imp_testExe1.c
   ${Import_BINARY_DIR}/exp_generated.c
   ${Import_BINARY_DIR}/exp_generated3.c
+  ${Import_BINARY_DIR}/exp_generated4.c
   )
 
 # Try linking to a library imported from the install tree.
@@ -33,6 +39,7 @@ target_link_libraries(imp_testExe1
   exp_testLib4
   exp_testLib5
   exp_testLib6
+  exp_testLib7
   exp_testLibCycleA
   exp_testLibPerConfigDest
   )
@@ -52,11 +59,17 @@ add_custom_command(
   COMMAND bld_testExe3 ${Import_BINARY_DIR}/bld_generated3.c
   DEPENDS bld_testExe3
   )
+add_custom_command(
+  OUTPUT ${Import_BINARY_DIR}/bld_generated4.c
+  COMMAND bld_testExe4 ${Import_BINARY_DIR}/bld_generated4.c
+  DEPENDS bld_testExe4
+  )
 
 add_executable(imp_testExe1b
   imp_testExe1.c
   ${Import_BINARY_DIR}/bld_generated.c
   ${Import_BINARY_DIR}/bld_generated3.c
+  ${Import_BINARY_DIR}/bld_generated4.c
   )
 
 # Try linking to a library imported from the build tree.
@@ -66,6 +79,7 @@ target_link_libraries(imp_testExe1b
   bld_testLib4
   bld_testLib5
   bld_testLib6
+  bld_testLib7
   bld_testLibCycleA
   bld_testLibPerConfigDest
   )
@@ -75,6 +89,50 @@ add_custom_target(check_testLib1_genex ALL
                            -Dprefix=${CMAKE_INSTALL_PREFIX}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/check_testLib1_genex.cmake
   )
+
+if(CMAKE_SHARED_LIBRARY_SONAME_C_FLAG AND
+    "${CMAKE_C_CREATE_SHARED_MODULE}" MATCHES "SONAME_FLAG")
+  foreach(ns exp bld)
+    get_property(configs TARGET ${ns}_testLib5 PROPERTY IMPORTED_CONFIGURATIONS)
+    foreach(c ${configs})
+      string(TOUPPER "${c}" CONFIG)
+      get_property(soname TARGET ${ns}_testLib5 PROPERTY IMPORTED_NO_SONAME_${CONFIG})
+      if(soname)
+        message(SEND_ERROR "${ns}_testLib5 has IMPORTED_NO_SONAME_${CONFIG} but should:\n  ${soname}")
+      else()
+        message(STATUS "${ns}_testLib5 does not have IMPORTED_NO_SONAME_${CONFIG} as expected")
+      endif()
+    endforeach()
+
+    get_property(configs TARGET ${ns}_testLibNoSONAME PROPERTY IMPORTED_CONFIGURATIONS)
+    foreach(c ${configs})
+      string(TOUPPER "${c}" CONFIG)
+      get_property(soname TARGET ${ns}_testLibNoSONAME PROPERTY IMPORTED_NO_SONAME_${CONFIG})
+      if(soname)
+        message(STATUS "${ns}_testLibNoSONAME has IMPORTED_NO_SONAME_${CONFIG} as expected")
+      else()
+        message(SEND_ERROR "${ns}_testLibNoSONAME does not have IMPORTED_NO_SONAME_${CONFIG} but should")
+      endif()
+    endforeach()
+
+    # Parse the binary to check for SONAME if possible.
+    if("${CMAKE_EXECUTABLE_FORMAT}" MATCHES "ELF")
+      find_program(READELF_EXE readelf)
+      if(READELF_EXE)
+        add_custom_target(check_${ns}_testLib5_soname ALL COMMAND
+          ${CMAKE_COMMAND} -Dreadelf=${READELF_EXE}
+          -Dlib=$<TARGET_FILE:${ns}_testLib5>
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/check_lib_soname.cmake
+          )
+        add_custom_target(check_${ns}_testLibNoSONAME_soname ALL COMMAND
+          ${CMAKE_COMMAND} -Dreadelf=${READELF_EXE}
+          -Dlib=$<TARGET_FILE:${ns}_testLibNoSONAME>
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/check_lib_nosoname.cmake
+          )
+      endif()
+    endif()
+  endforeach()
+endif()
 
 add_executable(cmp0022OLD_test cmp0022OLD_test_vs6_1.cpp)
 target_link_libraries(cmp0022OLD_test bld_cmp0022OLD)

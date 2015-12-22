@@ -19,7 +19,7 @@
 class cmGlobalGenerator;
 class cmOrderDirectoriesConstraint;
 class cmOrderDirectoriesConstraintLibrary;
-class cmTarget;
+class cmGeneratorTarget;
 
 /** \class cmOrderDirectories
  * \brief Compute a safe runtime path order for a set of shared libraries.
@@ -27,7 +27,7 @@ class cmTarget;
 class cmOrderDirectories
 {
 public:
-  cmOrderDirectories(cmGlobalGenerator* gg, cmTarget const* target,
+  cmOrderDirectories(cmGlobalGenerator* gg, cmGeneratorTarget const* target,
                      const char* purpose);
   ~cmOrderDirectories();
   void AddRuntimeLibrary(std::string const& fullPath, const char* soname = 0);
@@ -41,10 +41,8 @@ public:
   std::vector<std::string> const& GetOrderedDirectories();
 private:
   cmGlobalGenerator* GlobalGenerator;
-  cmTarget const* Target;
+  cmGeneratorTarget const* Target;
   std::string Purpose;
-
-  bool Computed;
 
   std::vector<std::string> OrderedDirectories;
 
@@ -68,8 +66,9 @@ private:
   void OrderDirectories();
   void VisitDirectory(unsigned int i);
   void DiagnoseCycle();
-  bool CycleDiagnosed;
   int WalkId;
+  bool CycleDiagnosed;
+  bool Computed;
 
   // Adjacency-list representation of runtime path ordering graph.
   // This maps from directory to those that must come *before* it.

@@ -13,7 +13,7 @@
 #ifndef cmLocalNinjaGenerator_h
 #  define cmLocalNinjaGenerator_h
 
-#  include "cmLocalGenerator.h"
+#  include "cmLocalCommonGenerator.h"
 #  include "cmNinjaTypes.h"
 
 class cmCustomCommandGenerator;
@@ -28,17 +28,14 @@ class cmake;
  * cmLocalNinjaGenerator produces a local build.ninja file from its
  * member Makefile.
  */
-class cmLocalNinjaGenerator : public cmLocalGenerator
+class cmLocalNinjaGenerator : public cmLocalCommonGenerator
 {
 public:
-  cmLocalNinjaGenerator(cmGlobalGenerator* gg, cmLocalGenerator* parent,
-                        cmState::Snapshot snapshot);
+  cmLocalNinjaGenerator(cmGlobalGenerator* gg, cmMakefile* mf);
 
   virtual ~cmLocalNinjaGenerator();
 
   virtual void Generate();
-
-  virtual void Configure();
 
   virtual std::string GetTargetDirectory(cmTarget const& target) const;
 
@@ -48,28 +45,10 @@ public:
   const cmake* GetCMakeInstance() const;
   cmake* GetCMakeInstance();
 
-  std::string const& GetConfigName() const
-  { return this->ConfigName; }
-
   /// @returns the relative path between the HomeOutputDirectory and this
   /// local generators StartOutputDirectory.
   std::string GetHomeRelativeOutputPath() const
   { return this->HomeRelativeOutputPath; }
-
-  std::string ConvertToNinjaPath(const std::string& path);
-
-  struct map_to_ninja_path {
-    cmLocalNinjaGenerator *LocalGenerator;
-    map_to_ninja_path(cmLocalNinjaGenerator *LocalGen)
-      : LocalGenerator(LocalGen) {}
-    std::string operator()(const std::string &path) {
-      return LocalGenerator->ConvertToNinjaPath(path);
-    }
-  };
-
-  map_to_ninja_path MapToNinjaPath() {
-    return map_to_ninja_path(this);
-  }
 
   void ExpandRuleVariables(std::string& string,
                            const RuleVariables& replaceValues) {
@@ -112,8 +91,6 @@ private:
   void WriteProcessedMakefile(std::ostream& os);
   void WritePools(std::ostream& os);
 
-  void SetConfigName();
-
   void WriteCustomCommandRule();
   void WriteCustomCommandBuildStatement(cmCustomCommand const *cc,
                                         const cmNinjaDeps& orderOnlyDeps);
@@ -122,7 +99,6 @@ private:
 
   std::string MakeCustomLauncher(cmCustomCommandGenerator const& ccg);
 
-  std::string ConfigName;
   std::string HomeRelativeOutputPath;
 
   typedef std::map<cmCustomCommand const*, std::set<cmTarget*> >

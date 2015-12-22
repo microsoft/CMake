@@ -293,6 +293,7 @@ cmCTest::cmCTest()
   this->LabelSummary           = true;
   this->ParallelLevel          = 1;
   this->ParallelLevelSetInCli  = false;
+  this->TestLoad               = 0;
   this->SubmitIndex            = 0;
   this->Failover               = false;
   this->BatchJobs              = false;
@@ -390,6 +391,11 @@ cmCTest::~cmCTest()
 void cmCTest::SetParallelLevel(int level)
 {
   this->ParallelLevel = level < 1 ? 1 : level;
+}
+
+void cmCTest::SetTestLoad(unsigned long load)
+{
+  this->TestLoad = load;
 }
 
 //----------------------------------------------------------------------------
@@ -513,9 +519,10 @@ int cmCTest::Initialize(const char* binary_dir, cmCTestStartCommand* command)
   cm.SetHomeDirectory("");
   cm.SetHomeOutputDirectory("");
   cmGlobalGenerator gg(&cm);
-  cmsys::auto_ptr<cmLocalGenerator> lg(gg.MakeLocalGenerator());
-  cmMakefile *mf = lg->GetMakefile();
-  if ( !this->ReadCustomConfigurationFileTree(this->BinaryDir.c_str(), mf) )
+  cmsys::auto_ptr<cmMakefile> mf(new cmMakefile(&gg, cm.GetCurrentSnapshot()));
+  cmsys::auto_ptr<cmLocalGenerator> lg(gg.CreateLocalGenerator(mf.get()));
+  if ( !this->ReadCustomConfigurationFileTree(this->BinaryDir.c_str(),
+                                              mf.get()) )
     {
     cmCTestOptionalLog(this, DEBUG,
       "Cannot find custom configuration file tree" << std::endl, quiet);
@@ -819,6 +826,20 @@ bool cmCTest::UpdateCTestConfiguration()
     cmSystemTools::ChangeDirectory(this->BinaryDir);
     }
   this->TimeOut = atoi(this->GetCTestConfiguration("TimeOut").c_str());
+  std::string const& testLoad = this->GetCTestConfiguration("TestLoad");
+  if (!testLoad.empty())
+    {
+    unsigned long load;
+    if (cmSystemTools::StringToULong(testLoad.c_str(), &load))
+      {
+      this->SetTestLoad(load);
+      }
+    else
+      {
+      cmCTestLog(this, WARNING, "Invalid value for 'Test Load' : "
+          << testLoad << std::endl);
+      }
+    }
   if ( this->ProduceXML )
     {
     this->CompressXMLFiles = cmSystemTools::IsOn(
@@ -1199,7 +1220,7 @@ int cmCTest::RunMakeCommand(const char* command, std::string& output,
 
   char* data;
   int length;
-  cmCTestLog(this, HANDLER_OUTPUT,
+  cmCTestLog(this, HANDLER_PROGRESS_OUTPUT,
     "   Each . represents " << tick_len << " bytes of output" << std::endl
     << "    " << std::flush);
   while(cmsysProcess_WaitForData(cp, &data, &length, 0))
@@ -1215,10 +1236,10 @@ int cmCTest::RunMakeCommand(const char* command, std::string& output,
     while ( output.size() > (tick * tick_len) )
       {
       tick ++;
-      cmCTestLog(this, HANDLER_OUTPUT, "." << std::flush);
+      cmCTestLog(this, HANDLER_PROGRESS_OUTPUT, "." << std::flush);
       if ( tick % tick_line_len == 0 && tick > 0 )
         {
-        cmCTestLog(this, HANDLER_OUTPUT,
+        cmCTestLog(this, HANDLER_PROGRESS_OUTPUT,
                    "  Size: "
                    << int((double(output.size()) / 1024.0) + 1)
                    << "K" << std::endl
@@ -1231,7 +1252,7 @@ int cmCTest::RunMakeCommand(const char* command, std::string& output,
       ofs << cmCTestLogWrite(data, length);
       }
     }
-  cmCTestLog(this, OUTPUT, " Size of output: "
+  cmCTestLog(this, HANDLER_PROGRESS_OUTPUT, " Size of output: "
     << int(double(output.size()) / 1024.0) << "K" << std::endl);
 
   cmsysProcess_WaitForExit(cp, 0);
@@ -1523,9 +1544,8 @@ void cmCTest::StartXML(cmXMLWriter& xml, bool append)
     xml.Attribute("Append", "true");
     }
   xml.Attribute("CompilerName", this->GetCTestConfiguration("Compiler"));
-#ifdef _COMPILER_VERSION
-  xml.Attribute("CompilerVersion", _COMPILER_VERSION);
-#endif
+  xml.Attribute("CompilerVersion",
+    this->GetCTestConfiguration("CompilerVersion"));
   xml.Attribute("OSName", info.GetOSName());
   xml.Attribute("Hostname", info.GetHostname());
   xml.Attribute("OSRelease", info.GetOSRelease());
@@ -1544,6 +1564,13 @@ void cmCTest::StartXML(cmXMLWriter& xml, bool append)
   xml.Attribute("LogicalProcessorsPerPhysical",
                      info.GetLogicalProcessorsPerPhysical());
   xml.Attribute("ProcessorClockFrequency", info.GetProcessorClockFrequency());
+
+  std::string changeId = this->GetCTestConfiguration("ChangeId");
+  if(!changeId.empty())
+    {
+    xml.Attribute("ChangeId", changeId);
+    }
+
   this->AddSiteProperties(xml);
 }
 
@@ -2048,6 +2075,21 @@ bool cmCTest::HandleCommandLineArguments(size_t &i,
       }
     }
 
+  if(this->CheckArgument(arg, "--test-load") && i < args.size() - 1)
+    {
+    i++;
+    unsigned long load;
+    if (cmSystemTools::StringToULong(args[i].c_str(), &load))
+      {
+      this->SetTestLoad(load);
+      }
+    else
+      {
+      cmCTestLog(this, WARNING,
+                 "Invalid value for 'Test Load' : " << args[i] << std::endl);
+      }
+    }
+
   if(this->CheckArgument(arg, "--no-compress-output"))
     {
     this->CompressTestOutput = false;
@@ -2123,7 +2165,46 @@ bool cmCTest::HandleCommandLineArguments(size_t &i,
     {
     this->OutputTestOutputOnTestFailure = true;
     }
-
+  if (this->CheckArgument(arg, "--test-output-size-passed") &&
+      i < args.size() - 1)
+    {
+    i++;
+    long outputSize;
+    if (cmSystemTools::StringToLong(args[i].c_str(), &outputSize))
+      {
+      if (cmCTestTestHandler *pCTestTestHandler =
+          static_cast<cmCTestTestHandler*>(this->TestingHandlers["test"]))
+        {
+        pCTestTestHandler->SetTestOutputSizePassed(int(outputSize));
+        }
+      }
+    else
+      {
+      cmCTestLog(this, WARNING,
+                 "Invalid value for '--test-output-size-passed': " <<
+                 args[i] << "\n");
+      }
+    }
+  if (this->CheckArgument(arg, "--test-output-size-failed") &&
+      i < args.size() - 1)
+    {
+    i++;
+    long outputSize;
+    if (cmSystemTools::StringToLong(args[i].c_str(), &outputSize))
+      {
+      if (cmCTestTestHandler *pCTestTestHandler =
+          static_cast<cmCTestTestHandler*>(this->TestingHandlers["test"]))
+        {
+        pCTestTestHandler->SetTestOutputSizeFailed(int(outputSize));
+        }
+      }
+    else
+      {
+      cmCTestLog(this, WARNING,
+                 "Invalid value for '--test-output-size-failed': " <<
+                 args[i] << "\n");
+      }
+    }
   if(this->CheckArgument(arg, "-N", "--show-only"))
     {
     this->ShowOnly = true;
@@ -3063,6 +3144,7 @@ static const char* cmCTestStringLogType[] =
   "DEBUG",
   "OUTPUT",
   "HANDLER_OUTPUT",
+  "HANDLER_PROGRESS_OUTPUT",
   "HANDLER_VERBOSE_OUTPUT",
   "WARNING",
   "ERROR_MESSAGE",
@@ -3098,6 +3180,11 @@ void cmCTest::Log(int logType, const char* file, int line, const char* msg,
     return;
     }
   if ( suppress && logType != cmCTest::ERROR_MESSAGE )
+    {
+    return;
+    }
+  if ( logType == cmCTest::HANDLER_PROGRESS_OUTPUT &&
+      ( this->Debug || this->ExtraVerbose ) )
     {
     return;
     }

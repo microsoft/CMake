@@ -74,6 +74,10 @@ bool cmStringCommand
     {
     return this->HandleLengthCommand(args);
     }
+  else if(subCommand == "APPEND")
+    {
+    return this->HandleAppendCommand(args);
+    }
   else if(subCommand == "CONCAT")
     {
     return this->HandleConcatCommand(args);
@@ -315,7 +319,7 @@ bool cmStringCommand::RegexMatch(std::vector<std::string> const& args)
     }
 
   // Concatenate all the last arguments together.
-  std::string input = cmJoin(cmRange(args).advance(4), std::string());
+  std::string input = cmJoin(cmMakeRange(args).advance(4), std::string());
 
   // Scan through the input for all matches.
   std::string output;
@@ -361,7 +365,7 @@ bool cmStringCommand::RegexMatchAll(std::vector<std::string> const& args)
     }
 
   // Concatenate all the last arguments together.
-  std::string input = cmJoin(cmRange(args).advance(4), std::string());
+  std::string input = cmJoin(cmMakeRange(args).advance(4), std::string());
 
   // Scan through the input for all matches.
   std::string output;
@@ -461,7 +465,7 @@ bool cmStringCommand::RegexReplace(std::vector<std::string> const& args)
     }
 
   // Concatenate all the last arguments together.
-  std::string input = cmJoin(cmRange(args).advance(5), std::string());
+  std::string input = cmJoin(cmMakeRange(args).advance(5), std::string());
 
   // Scan through the input for all matches.
   std::string output;
@@ -661,7 +665,7 @@ bool cmStringCommand::HandleReplaceCommand(std::vector<std::string> const&
   const std::string& replaceExpression = args[2];
   const std::string& variableName = args[3];
 
-  std::string input = cmJoin(cmRange(args).advance(4), std::string());
+  std::string input = cmJoin(cmMakeRange(args).advance(4), std::string());
 
   cmsys::SystemTools::ReplaceString(input, matchExpression.c_str(),
                                     replaceExpression.c_str());
@@ -730,6 +734,34 @@ bool cmStringCommand
 }
 
 //----------------------------------------------------------------------------
+bool cmStringCommand::HandleAppendCommand(std::vector<std::string> const& args)
+{
+  if(args.size() < 2)
+    {
+    this->SetError("sub-command APPEND requires at least one argument.");
+    return false;
+    }
+
+  // Skip if nothing to append.
+  if(args.size() < 3)
+    {
+    return true;
+    }
+
+  const std::string& variable = args[1];
+
+  std::string value;
+  const char* oldValue = this->Makefile->GetDefinition(variable);
+  if(oldValue)
+    {
+    value = oldValue;
+    }
+  value += cmJoin(cmMakeRange(args).advance(2), std::string());
+  this->Makefile->AddDefinition(variable, value.c_str());
+  return true;
+}
+
+//----------------------------------------------------------------------------
 bool cmStringCommand
 ::HandleConcatCommand(std::vector<std::string> const& args)
 {
@@ -740,7 +772,7 @@ bool cmStringCommand
     }
 
   std::string const& variableName = args[1];
-  std::string value = cmJoin(cmRange(args).advance(2), std::string());
+  std::string value = cmJoin(cmMakeRange(args).advance(2), std::string());
 
   this->Makefile->AddDefinition(variableName, value.c_str());
   return true;

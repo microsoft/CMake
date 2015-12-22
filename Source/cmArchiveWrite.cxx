@@ -13,7 +13,6 @@
 
 #include "cmSystemTools.h"
 #include "cmLocale.h"
-#include <cmsys/ios/iostream>
 #include <cmsys/Directory.hxx>
 #include <cmsys/FStream.hxx>
 #include <cm_libarchive.h>
@@ -67,7 +66,7 @@ struct cmArchiveWrite::Callback
     {
     cmArchiveWrite* self = static_cast<cmArchiveWrite*>(cd);
     if(self->Stream.write(static_cast<const char*>(b),
-                          static_cast<cmsys_ios::streamsize>(n)))
+                          static_cast<std::streamsize>(n)))
       {
       return static_cast<__LA_SSIZE_T>(n);
       }
@@ -84,54 +83,55 @@ cmArchiveWrite::cmArchiveWrite(
     Stream(os),
     Archive(archive_write_new()),
     Disk(archive_read_disk_new()),
-    Verbose(false)
+    Verbose(false),
+    Format(format)
 {
   switch (c)
     {
     case CompressNone:
-      if(archive_write_set_compression_none(this->Archive) != ARCHIVE_OK)
+      if(archive_write_add_filter_none(this->Archive) != ARCHIVE_OK)
         {
-        this->Error = "archive_write_set_compression_none: ";
+        this->Error = "archive_write_add_filter_none: ";
         this->Error += cm_archive_error_string(this->Archive);
         return;
         }
       break;
     case CompressCompress:
-      if(archive_write_set_compression_compress(this->Archive) != ARCHIVE_OK)
+      if(archive_write_add_filter_compress(this->Archive) != ARCHIVE_OK)
         {
-        this->Error = "archive_write_set_compression_compress: ";
+        this->Error = "archive_write_add_filter_compress: ";
         this->Error += cm_archive_error_string(this->Archive);
         return;
         }
       break;
     case CompressGZip:
-      if(archive_write_set_compression_gzip(this->Archive) != ARCHIVE_OK)
+      if(archive_write_add_filter_gzip(this->Archive) != ARCHIVE_OK)
         {
-        this->Error = "archive_write_set_compression_gzip: ";
+        this->Error = "archive_write_add_filter_gzip: ";
         this->Error += cm_archive_error_string(this->Archive);
         return;
         }
       break;
     case CompressBZip2:
-      if(archive_write_set_compression_bzip2(this->Archive) != ARCHIVE_OK)
+      if(archive_write_add_filter_bzip2(this->Archive) != ARCHIVE_OK)
         {
-        this->Error = "archive_write_set_compression_bzip2: ";
+        this->Error = "archive_write_add_filter_bzip2: ";
         this->Error += cm_archive_error_string(this->Archive);
         return;
         }
       break;
     case CompressLZMA:
-      if(archive_write_set_compression_lzma(this->Archive) != ARCHIVE_OK)
+      if(archive_write_add_filter_lzma(this->Archive) != ARCHIVE_OK)
         {
-        this->Error = "archive_write_set_compression_lzma: ";
+        this->Error = "archive_write_add_filter_lzma: ";
         this->Error += cm_archive_error_string(this->Archive);
         return;
         }
       break;
     case CompressXZ:
-      if(archive_write_set_compression_xz(this->Archive) != ARCHIVE_OK)
+      if(archive_write_add_filter_xz(this->Archive) != ARCHIVE_OK)
         {
-        this->Error = "archive_write_set_compression_xz: ";
+        this->Error = "archive_write_add_filter_xz: ";
         this->Error += cm_archive_error_string(this->Archive);
         return;
         }
@@ -176,12 +176,15 @@ cmArchiveWrite::cmArchiveWrite(
 //----------------------------------------------------------------------------
 cmArchiveWrite::~cmArchiveWrite()
 {
-  archive_read_finish(this->Disk);
-  archive_write_finish(this->Archive);
+  archive_read_free(this->Disk);
+  archive_write_free(this->Archive);
 }
 
 //----------------------------------------------------------------------------
-bool cmArchiveWrite::Add(std::string path, size_t skip, const char* prefix)
+bool cmArchiveWrite::Add(std::string path,
+                         size_t skip,
+                         const char* prefix,
+                         bool recursive)
 {
   if(this->Okay())
     {
@@ -189,20 +192,21 @@ bool cmArchiveWrite::Add(std::string path, size_t skip, const char* prefix)
       {
       path.erase(path.size()-1);
       }
-    this->AddPath(path.c_str(), skip, prefix);
+    this->AddPath(path.c_str(), skip, prefix, recursive);
     }
   return this->Okay();
 }
 
 //----------------------------------------------------------------------------
 bool cmArchiveWrite::AddPath(const char* path,
-                             size_t skip, const char* prefix)
+                             size_t skip, const char* prefix,
+                             bool recursive)
 {
   if(!this->AddFile(path, skip, prefix))
     {
     return false;
     }
-  if(!cmSystemTools::FileIsDirectory(path) ||
+  if((!cmSystemTools::FileIsDirectory(path) || !recursive) ||
     cmSystemTools::FileIsSymlink(path))
     {
     return true;
@@ -278,10 +282,45 @@ bool cmArchiveWrite::AddFile(const char* file,
       }
     archive_entry_set_mtime(e, t, 0);
     }
+
+  // manages the uid/guid of the entry (if any)
+  if (this->Uid.IsSet() && this->Gid.IsSet())
+    {
+    archive_entry_set_uid(e, this->Uid.Get());
+    archive_entry_set_gid(e, this->Gid.Get());
+    }
+
+  if (this->Uname.size() && this->Gname.size())
+    {
+    archive_entry_set_uname(e, this->Uname.c_str());
+    archive_entry_set_gname(e, this->Gname.c_str());
+    }
+
+
+  // manages the permissions
+  if (this->Permissions.IsSet())
+    {
+    archive_entry_set_perm(e, this->Permissions.Get());
+    }
+
+  if (this->PermissionsMask.IsSet())
+    {
+    mode_t perm = archive_entry_perm(e);
+    archive_entry_set_perm(e, perm & this->PermissionsMask.Get());
+    }
+
   // Clear acl and xattr fields not useful for distribution.
   archive_entry_acl_clear(e);
   archive_entry_xattr_clear(e);
   archive_entry_set_fflags(e, 0, 0);
+
+  if (this->Format == "pax" || this->Format == "paxr")
+    {
+    // Sparse files are a GNU tar extension.
+    // Do not use them in standard tar files.
+    archive_entry_sparse_clear(e);
+    }
+
   if(archive_write_header(this->Archive, e) != ARCHIVE_OK)
     {
     this->Error = "archive_write_header: ";
@@ -304,7 +343,7 @@ bool cmArchiveWrite::AddFile(const char* file,
 //----------------------------------------------------------------------------
 bool cmArchiveWrite::AddData(const char* file, size_t size)
 {
-  cmsys::ifstream fin(file, std::ios::in | cmsys_ios_binary);
+  cmsys::ifstream fin(file, std::ios::in | std::ios::binary);
   if(!fin)
     {
     this->Error = "Error opening \"";
@@ -318,7 +357,7 @@ bool cmArchiveWrite::AddData(const char* file, size_t size)
   size_t nleft = size;
   while(nleft > 0)
     {
-    typedef cmsys_ios::streamsize ssize_type;
+    typedef std::streamsize ssize_type;
     size_t const nnext = nleft > sizeof(buffer)? sizeof(buffer) : nleft;
     ssize_type const nnext_s = static_cast<ssize_type>(nnext);
     fin.read(buffer, nnext_s);

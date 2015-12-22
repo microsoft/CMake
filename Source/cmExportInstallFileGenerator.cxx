@@ -72,8 +72,8 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
 
   // Set an _IMPORT_PREFIX variable for import location properties
   // to reference if they are relative to the install prefix.
-  std::string installPrefix =
-    this->IEGen->GetMakefile()->GetSafeDefinition("CMAKE_INSTALL_PREFIX");
+  std::string installPrefix = this->IEGen->GetLocalGenerator()
+      ->GetMakefile()->GetSafeDefinition("CMAKE_INSTALL_PREFIX");
   std::string const& expDest = this->IEGen->GetDestination();
   if(cmSystemTools::FileIsFullPath(expDest))
     {
@@ -193,7 +193,11 @@ bool cmExportInstallFileGenerator::GenerateMainFile(std::ostream& os)
 
     this->PopulateInterfaceProperty("INTERFACE_POSITION_INDEPENDENT_CODE",
                                   te, properties);
-    this->PopulateCompatibleInterfaceProperties(te, properties);
+    cmGeneratorTarget *gtgt = te->GetMakefile()
+                                ->GetGlobalGenerator()
+                                ->GetGeneratorTarget(te);
+
+    this->PopulateCompatibleInterfaceProperties(gtgt, properties);
 
     this->GenerateInterfaceProperties(te, os, properties);
     }
@@ -358,12 +362,14 @@ cmExportInstallFileGenerator
     if(!properties.empty())
       {
       // Get the rest of the target details.
+      cmGeneratorTarget *gtgt = te->Target->GetMakefile()
+                    ->GetGlobalGenerator()->GetGeneratorTarget(te->Target);
       this->SetImportDetailProperties(config, suffix,
-                                      te->Target, properties, missingTargets);
+                                      gtgt, properties, missingTargets);
 
       this->SetImportLinkInterface(config, suffix,
                                    cmGeneratorExpression::InstallInterface,
-                                   te->Target, properties, missingTargets);
+                                   gtgt, properties, missingTargets);
 
       // TOOD: PUBLIC_HEADER_LOCATION
       // This should wait until the build feature propagation stuff
@@ -396,7 +402,7 @@ cmExportInstallFileGenerator
     }
 
   // Get the target to be installed.
-  cmTarget* target = itgen->GetTarget();
+  cmTarget* target = itgen->GetTarget()->Target;
 
   // Construct the installed location of the target.
   std::string dest = itgen->GetDestination(config);
@@ -540,12 +546,12 @@ cmExportInstallFileGenerator
 }
 
 std::string
-cmExportInstallFileGenerator::InstallNameDir(cmTarget* target,
+cmExportInstallFileGenerator::InstallNameDir(cmGeneratorTarget* target,
                                              const std::string&)
 {
   std::string install_name_dir;
 
-  cmMakefile* mf = target->GetMakefile();
+  cmMakefile* mf = target->Target->GetMakefile();
   if(mf->IsOn("CMAKE_PLATFORM_HAS_INSTALLNAME"))
     {
     install_name_dir =

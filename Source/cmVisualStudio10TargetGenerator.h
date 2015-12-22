@@ -137,6 +137,8 @@ private:
   cmIDEFlagTable const* GetLinkFlagTable() const;
   cmIDEFlagTable const* GetMasmFlagTable() const;
 
+  bool ForceOld(const std::string& source) const;
+
 private:
   typedef cmVisualStudioGeneratorOptions Options;
   typedef std::map<std::string, Options*> OptionsMap;

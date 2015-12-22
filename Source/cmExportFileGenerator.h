@@ -92,13 +92,15 @@ protected:
   // Collect properties with detailed information about targets beyond
   // their location on disk.
   void SetImportDetailProperties(const std::string& config,
-                                 std::string const& suffix, cmTarget* target,
+                                 std::string const& suffix,
+                                 cmGeneratorTarget* target,
                                  ImportPropertyMap& properties,
                                  std::vector<std::string>& missingTargets);
 
   template <typename T>
   void SetImportLinkProperty(std::string const& suffix,
-                             cmTarget* target, const std::string& propName,
+                             cmGeneratorTarget* target,
+                             const std::string& propName,
                              std::vector<T> const& entries,
                              ImportPropertyMap& properties,
                              std::vector<std::string>& missingTargets);
@@ -130,7 +132,7 @@ protected:
                                  std::vector<std::string> &missingTargets);
   void PopulateInterfaceProperty(const std::string& propName, cmTarget *target,
                                  ImportPropertyMap &properties);
-  void PopulateCompatibleInterfaceProperties(cmTarget *target,
+  void PopulateCompatibleInterfaceProperties(cmGeneratorTarget *target,
                                  ImportPropertyMap &properties);
   void GenerateInterfaceProperties(cmTarget const* target, std::ostream& os,
                                    const ImportPropertyMap &properties);
@@ -148,7 +150,7 @@ protected:
   void SetImportLinkInterface(const std::string& config,
                     std::string const& suffix,
                     cmGeneratorExpression::PreprocessContext preprocessRule,
-                    cmTarget* target, ImportPropertyMap& properties,
+                    cmGeneratorTarget* target, ImportPropertyMap& properties,
                     std::vector<std::string>& missingTargets);
 
   enum FreeTargetsReplace {
@@ -198,7 +200,7 @@ private:
 
   virtual void ReplaceInstallPrefix(std::string &input);
 
-  virtual std::string InstallNameDir(cmTarget* target,
+  virtual std::string InstallNameDir(cmGeneratorTarget* target,
                                      const std::string& config) = 0;
 };
 

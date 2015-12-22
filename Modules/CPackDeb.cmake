@@ -9,7 +9,7 @@
 #
 # CPackDeb may be used to create Deb package using CPack.
 # CPackDeb is a CPack generator thus it uses the CPACK_XXX variables
-# used by CPack : http://www.cmake.org/Wiki/CMake:CPackConfiguration.
+# used by CPack : https://cmake.org/Wiki/CMake:CPackConfiguration.
 # CPackDeb generator should work on any linux host but it will produce
 # better deb package when Debian specific tools 'dpkg-xxx' are usable on
 # the build system.
@@ -23,7 +23,7 @@
 # a component GROUP name.
 #
 # You'll find a detailed usage on the wiki:
-# http://www.cmake.org/Wiki/CMake:CPackPackageGenerators#DEB_.28UNIX_only.29 .
+# https://cmake.org/Wiki/CMake:CPackPackageGenerators#DEB_.28UNIX_only.29 .
 # However as a handy reminder here comes the list of specific variables:
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_NAME
@@ -77,6 +77,7 @@
 #  Example::
 #
 #    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.3.1-6), libc6 (< 2.4)")
+#
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_MAINTAINER
 #
@@ -152,7 +153,7 @@
 #    You may need set :variable:`CMAKE_INSTALL_RPATH` to an appropriate value
 #    if you use this feature, because if you don't :code:`dpkg-shlibdeps`
 #    may fail to find your own shared libs.
-#    See http://www.cmake.org/Wiki/CMake_RPATH_handling.
+#    See https://cmake.org/Wiki/CMake_RPATH_handling.
 #
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_DEBUG
@@ -164,6 +165,7 @@
 #  * Default   : -
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_PREDEPENDS
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_PREDEPENDS
 #
 #  Sets the `Pre-Depends` field of the Debian package.
 #  Like :variable:`Depends <CPACK_DEBIAN_PACKAGE_DEPENDS>`, except that it
@@ -172,11 +174,16 @@
 #  pre-dependency.
 #
 #  * Mandatory : NO
-#  * Default   : -
+#  * Default   :
+#
+#    - An empty string for non-component based installations
+#    - :variable:`CPACK_DEBIAN_PACKAGE_PREDEPENDS` for component-based
+#      installations.
 #
 #  See http://www.debian.org/doc/debian-policy/ch-relationships.html#s-binarydeps
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_ENHANCES
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_ENHANCES
 #
 #  Sets the `Enhances` field of the Debian package.
 #  Similar to :variable:`Suggests <CPACK_DEBIAN_PACKAGE_SUGGESTS>` but works
@@ -184,11 +191,16 @@
 #  functionality of another package.
 #
 #  * Mandatory : NO
-#  * Default   : -
+#  * Default   :
+#
+#    - An empty string for non-component based installations
+#    - :variable:`CPACK_DEBIAN_PACKAGE_ENHANCES` for component-based
+#      installations.
 #
 #  See http://www.debian.org/doc/debian-policy/ch-relationships.html#s-binarydeps
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_BREAKS
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_BREAKS
 #
 #  Sets the `Breaks` field of the Debian package.
 #  When a binary package (P) declares that it breaks other packages (B),
@@ -199,12 +211,17 @@
 #  packages (B) cannot be reconfigured again.
 #
 #  * Mandatory : NO
-#  * Default   : -
+#  * Default   :
+#
+#    - An empty string for non-component based installations
+#    - :variable:`CPACK_DEBIAN_PACKAGE_BREAKS` for component-based
+#      installations.
 #
 #  See https://www.debian.org/doc/debian-policy/ch-relationships.html#s-breaks
 #
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_CONFLICTS
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_CONFLICTS
 #
 #  Sets the `Conflicts` field of the Debian package.
 #  When one binary package declares a conflict with another using a `Conflicts`
@@ -212,7 +229,11 @@
 #  the same time.
 #
 #  * Mandatory : NO
-#  * Default   : -
+#  * Default   :
+#
+#    - An empty string for non-component based installations
+#    - :variable:`CPACK_DEBIAN_PACKAGE_CONFLICTS` for component-based
+#      installations.
 #
 #  See https://www.debian.org/doc/debian-policy/ch-relationships.html#s-conflicts
 #
@@ -225,53 +246,74 @@
 #    time.
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_PROVIDES
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_PROVIDES
 #
 #  Sets the `Provides` field of the Debian package.
 #  A virtual package is one which appears in the `Provides` control field of
 #  another package.
 #
 #  * Mandatory : NO
-#  * Default   : -
+#  * Default   :
+#
+#    - An empty string for non-component based installations
+#    - :variable:`CPACK_DEBIAN_PACKAGE_PROVIDES` for component-based
+#      installations.
 #
 #  See https://www.debian.org/doc/debian-policy/ch-relationships.html#s-virtual
 #
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_REPLACES
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_REPLACES
 #
 #  Sets the `Replaces` field of the Debian package.
 #  Packages can declare in their control file that they should overwrite
 #  files in certain other packages, or completely replace other packages.
 #
 #  * Mandatory : NO
-#  * Default   : -
+#  * Default   :
+#
+#    - An empty string for non-component based installations
+#    - :variable:`CPACK_DEBIAN_PACKAGE_REPLACES` for component-based
+#      installations.
 #
 #  See http://www.debian.org/doc/debian-policy/ch-relationships.html#s-binarydeps
 #
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_RECOMMENDS
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_RECOMMENDS
 #
 #  Sets the `Recommends` field of the Debian package.
 #  Allows packages to declare a strong, but not absolute, dependency on other
 #  packages.
 #
 #  * Mandatory : NO
-#  * Default   : -
+#  * Default   :
+#
+#    - An empty string for non-component based installations
+#    - :variable:`CPACK_DEBIAN_PACKAGE_RECOMMENDS` for component-based
+#      installations.
 #
 #  See http://www.debian.org/doc/debian-policy/ch-relationships.html#s-binarydeps
 #
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_SUGGESTS
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_SUGGESTS
 #
 #  Sets the `Suggests` field of the Debian package.
 #  Allows packages to declare a suggested package install grouping.
 #
 #  * Mandatory : NO
-#  * Default   : -
+#  * Default   :
+#
+#    - An empty string for non-component based installations
+#    - :variable:`CPACK_DEBIAN_PACKAGE_SUGGESTS` for component-based
+#      installations.
 #
 #  See http://www.debian.org/doc/debian-policy/ch-relationships.html#s-binarydeps
 #
 #
 # .. variable:: CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_CONTROL_EXTRA
 #
 #  This variable allow advanced user to add custom script to the
 #  control.tar.gz.
@@ -284,6 +326,34 @@
 #
 #   set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
 #       "${CMAKE_CURRENT_SOURCE_DIR/prerm;${CMAKE_CURRENT_SOURCE_DIR}/postrm")
+#
+#  .. note::
+#
+#    The original permissions of the files will be used in the final
+#    package unless the variable
+#    :variable:`CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION` is set.
+#    In particular, the scripts should have the proper executable
+#    flag prior to the generation of the package.
+#
+# .. variable:: CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION
+#               CPACK_DEBIAN_<COMPONENT>_PACKAGE_CONTROL_STRICT_PERMISSION
+#
+#  This variable indicates if the Debian policy on control files should be
+#  strictly followed.
+#
+#  * Mandatory : NO
+#  * Default   : FALSE
+#
+#  Usage::
+#
+#   set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)
+#
+#  .. note::
+#
+#    This overrides the permissions on the original files, following the rules
+#    set by Debian policy
+#    https://www.debian.org/doc/debian-policy/ch-files.html#s-permissions-owners
+#
 
 
 #=============================================================================
@@ -318,11 +388,6 @@ function(cpack_deb_prepare_package_vars)
   # If specify OFF, only user depends are used
   if(NOT DEFINED CPACK_DEBIAN_PACKAGE_SHLIBDEPS)
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
-  endif()
-
-  find_program(FAKEROOT_EXECUTABLE fakeroot)
-  if(FAKEROOT_EXECUTABLE)
-    set(CPACK_DEBIAN_FAKEROOT_EXECUTABLE ${FAKEROOT_EXECUTABLE})
   endif()
 
   set(WDIR "${CPACK_TOPLEVEL_DIRECTORY}/${CPACK_PACKAGE_FILE_NAME}${CPACK_DEB_PACKAGE_COMPONENT_PART_PATH}")
@@ -495,19 +560,21 @@ function(cpack_deb_prepare_package_vars)
   # You should set: DEBIAN_PACKAGE_DEPENDS
   # TODO: automate 'objdump -p | grep NEEDED'
 
-  # if per-component dependency, overrides the global CPACK_DEBIAN_PACKAGE_DEPENDS
+  # if per-component dependency, overrides the global CPACK_DEBIAN_PACKAGE_${dependency_type_}
   # automatic dependency discovery will be performed afterwards.
   if(CPACK_DEB_PACKAGE_COMPONENT)
-    string(TOUPPER "${CPACK_DEB_PACKAGE_COMPONENT}" _local_component_name)
-    set(_component_depends_var "CPACK_DEBIAN_${_local_component_name}_PACKAGE_DEPENDS")
+    foreach(dependency_type_ DEPENDS RECOMMENDS SUGGESTS PREDEPENDS ENHANCES BREAKS CONFLICTS PROVIDES REPLACES)
+      set(_component_var "CPACK_DEBIAN_${_local_component_name}_PACKAGE_${dependency_type_}")
 
-    # if set, overrides the global dependency
-    if(DEFINED ${_component_depends_var})
-      set(CPACK_DEBIAN_PACKAGE_DEPENDS "${${_component_depends_var}}")
-      if(CPACK_DEBIAN_PACKAGE_DEBUG)
-        message("CPackDeb Debug: component '${_local_component_name}' dependencies set to '${CPACK_DEBIAN_PACKAGE_DEPENDS}'")
+      # if set, overrides the global dependency
+      if(DEFINED ${_component_var})
+        set(CPACK_DEBIAN_PACKAGE_${dependency_type_} "${${_component_var}}")
+        if(CPACK_DEBIAN_PACKAGE_DEBUG)
+          message("CPackDeb Debug: component '${_local_component_name}' ${dependency_type_}"
+            "dependencies set to '${CPACK_DEBIAN_PACKAGE_${dependency_}}'")
+        endif()
       endif()
-    endif()
+    endforeach()
   endif()
 
   # at this point, the CPACK_DEBIAN_PACKAGE_DEPENDS is properly set
@@ -542,7 +609,6 @@ function(cpack_deb_prepare_package_vars)
       set(CPACK_DEBIAN_PACKAGE_DESCRIPTION ${CPACK_PACKAGE_DESCRIPTION_SUMMARY})
     endif()
   else()
-    string(TOUPPER ${CPACK_DEB_PACKAGE_COMPONENT} _local_component_name)
     set(component_description_var CPACK_COMPONENT_${_local_component_name}_DESCRIPTION)
 
     # component description overrides package description
@@ -584,13 +650,20 @@ function(cpack_deb_prepare_package_vars)
   # - conffiles
   # - postinst
   # - postrm
-  # - prerm"
+  # - prerm
   # Usage:
   # set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
   #    "${CMAKE_CURRENT_SOURCE_DIR/prerm;${CMAKE_CURRENT_SOURCE_DIR}/postrm")
 
   # Are we packaging components ?
   if(CPACK_DEB_PACKAGE_COMPONENT)
+    # override values with per component version if set
+    foreach(VAR_NAME_ "PACKAGE_CONTROL_EXTRA" "PACKAGE_CONTROL_STRICT_PERMISSION")
+      if(CPACK_DEBIAN_${_local_component_name}_${VAR_NAME_})
+        set(CPACK_DEBIAN_${VAR_NAME_} "${CPACK_DEBIAN_${_local_component_name}_${VAR_NAME_}}")
+      endif()
+    endforeach()
+
     set(CPACK_DEB_PACKAGE_COMPONENT_PART_NAME "-${CPACK_DEB_PACKAGE_COMPONENT}")
     string(TOLOWER "${CPACK_PACKAGE_NAME}${CPACK_DEB_PACKAGE_COMPONENT_PART_NAME}" CPACK_DEBIAN_PACKAGE_NAME)
   else()
@@ -607,6 +680,7 @@ function(cpack_deb_prepare_package_vars)
      message("CPackDeb:Debug: CPACK_PACKAGE_FILE_NAME           = ${CPACK_PACKAGE_FILE_NAME}")
      message("CPackDeb:Debug: CPACK_PACKAGE_INSTALL_DIRECTORY   = ${CPACK_PACKAGE_INSTALL_DIRECTORY}")
      message("CPackDeb:Debug: CPACK_TEMPORARY_PACKAGE_FILE_NAME = ${CPACK_TEMPORARY_PACKAGE_FILE_NAME}")
+     message("CPackDeb:Debug: CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION = ${CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION}")
   endif()
 
   # For debian source packages:
@@ -632,7 +706,6 @@ function(cpack_deb_prepare_package_vars)
   set(GEN_CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_DEBIAN_PACKAGE_MAINTAINER}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_DESCRIPTION "${CPACK_DEBIAN_PACKAGE_DESCRIPTION}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS}" PARENT_SCOPE)
-  set(GEN_CPACK_DEBIAN_FAKEROOT_EXECUTABLE "${CPACK_DEBIAN_FAKEROOT_EXECUTABLE}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_COMPRESSION_TYPE "${CPACK_DEBIAN_COMPRESSION_TYPE}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_RECOMMENDS "${CPACK_DEBIAN_PACKAGE_RECOMMENDS}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_SUGGESTS "${CPACK_DEBIAN_PACKAGE_SUGGESTS}" PARENT_SCOPE)
@@ -644,6 +717,8 @@ function(cpack_deb_prepare_package_vars)
   set(GEN_CPACK_DEBIAN_PACKAGE_PROVIDES "${CPACK_DEBIAN_PACKAGE_PROVIDES}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_REPLACES "${CPACK_DEBIAN_PACKAGE_REPLACES}" PARENT_SCOPE)
   set(GEN_CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA}" PARENT_SCOPE)
+  set(GEN_CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION
+      "${CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION}" PARENT_SCOPE)
   set(GEN_WDIR "${WDIR}" PARENT_SCOPE)
 endfunction()
 

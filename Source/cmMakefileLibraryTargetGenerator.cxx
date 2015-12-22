@@ -18,16 +18,17 @@
 #include "cmSourceFile.h"
 #include "cmTarget.h"
 #include "cmake.h"
+#include "cmAlgorithms.h"
 
 //----------------------------------------------------------------------------
 cmMakefileLibraryTargetGenerator
 ::cmMakefileLibraryTargetGenerator(cmGeneratorTarget* target):
-  cmMakefileTargetGenerator(target->Target)
+  cmMakefileTargetGenerator(target)
 {
   this->CustomCommandDriver = OnDepends;
   if (this->Target->GetType() != cmTarget::INTERFACE_LIBRARY)
     {
-    this->Target->GetLibraryNames(
+    this->GeneratorTarget->GetLibraryNames(
       this->TargetNameOut, this->TargetNameSO, this->TargetNameReal,
       this->TargetNameImport, this->TargetNamePDB, this->ConfigName);
     }
@@ -68,7 +69,7 @@ void cmMakefileLibraryTargetGenerator::WriteRuleFiles()
       break;
     case cmTarget::SHARED_LIBRARY:
       this->WriteSharedLibraryRules(false);
-      if(this->Target->NeedRelinkBeforeInstall(this->ConfigName))
+      if(this->GeneratorTarget->NeedRelinkBeforeInstall(this->ConfigName))
         {
         // Write rules to link an installable version of the target.
         this->WriteSharedLibraryRules(true);
@@ -76,7 +77,7 @@ void cmMakefileLibraryTargetGenerator::WriteRuleFiles()
       break;
     case cmTarget::MODULE_LIBRARY:
       this->WriteModuleLibraryRules(false);
-      if(this->Target->NeedRelinkBeforeInstall(this->ConfigName))
+      if(this->GeneratorTarget->NeedRelinkBeforeInstall(this->ConfigName))
         {
         // Write rules to link an installable version of the target.
         this->WriteModuleLibraryRules(true);
@@ -132,7 +133,7 @@ void cmMakefileLibraryTargetGenerator::WriteObjectLibraryRules()
 void cmMakefileLibraryTargetGenerator::WriteStaticLibraryRules()
 {
   std::string linkLanguage =
-    this->Target->GetLinkerLanguage(this->ConfigName);
+    this->GeneratorTarget->GetLinkerLanguage(this->ConfigName);
   std::string linkRuleVar = "CMAKE_";
   linkRuleVar += linkLanguage;
   linkRuleVar += "_CREATE_STATIC_LIBRARY";
@@ -158,7 +159,7 @@ void cmMakefileLibraryTargetGenerator::WriteSharedLibraryRules(bool relink)
     return;
     }
   std::string linkLanguage =
-    this->Target->GetLinkerLanguage(this->ConfigName);
+    this->GeneratorTarget->GetLinkerLanguage(this->ConfigName);
   std::string linkRuleVar = "CMAKE_";
   linkRuleVar += linkLanguage;
   linkRuleVar += "_CREATE_SHARED_LIBRARY";
@@ -182,7 +183,7 @@ void cmMakefileLibraryTargetGenerator::WriteSharedLibraryRules(bool relink)
 void cmMakefileLibraryTargetGenerator::WriteModuleLibraryRules(bool relink)
 {
   std::string linkLanguage =
-    this->Target->GetLinkerLanguage(this->ConfigName);
+    this->GeneratorTarget->GetLinkerLanguage(this->ConfigName);
   std::string linkRuleVar = "CMAKE_";
   linkRuleVar += linkLanguage;
   linkRuleVar += "_CREATE_SHARED_MODULE";
@@ -205,7 +206,7 @@ void cmMakefileLibraryTargetGenerator::WriteModuleLibraryRules(bool relink)
 void cmMakefileLibraryTargetGenerator::WriteFrameworkRules(bool relink)
 {
   std::string linkLanguage =
-    this->Target->GetLinkerLanguage(this->ConfigName);
+    this->GeneratorTarget->GetLinkerLanguage(this->ConfigName);
   std::string linkRuleVar = "CMAKE_";
   linkRuleVar += linkLanguage;
   linkRuleVar += "_CREATE_MACOSX_FRAMEWORK";
@@ -237,7 +238,7 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
 
   // Get the language to use for linking this library.
   std::string linkLanguage =
-    this->Target->GetLinkerLanguage(this->ConfigName);
+    this->GeneratorTarget->GetLinkerLanguage(this->ConfigName);
 
   // Make sure we have a link language.
   if(linkLanguage.empty())
@@ -265,7 +266,7 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
   std::string targetNameReal;
   std::string targetNameImport;
   std::string targetNamePDB;
-  this->Target->GetLibraryNames(
+  this->GeneratorTarget->GetLibraryNames(
     targetName, targetNameSO, targetNameReal, targetNameImport, targetNamePDB,
     this->ConfigName);
 
@@ -310,7 +311,7 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
     }
 
   std::string compilePdbOutputPath =
-    this->Target->GetCompilePDBDirectory(this->ConfigName);
+    this->GeneratorTarget->GetCompilePDBDirectory(this->ConfigName);
   cmSystemTools::MakeDirectory(compilePdbOutputPath.c_str());
 
   std::string pdbOutputPath = this->Target->GetPDBDirectory(this->ConfigName);
@@ -563,6 +564,60 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
                           useResponseFileForObjects, buildObjs, depends,
                           useWatcomQuote);
 
+  // maybe create .def file from list of objects
+  if (this->Target->GetType() == cmTarget::SHARED_LIBRARY &&
+      this->Makefile->IsOn("CMAKE_SUPPORT_WINDOWS_EXPORT_ALL_SYMBOLS"))
+    {
+    if(this->Target->GetPropertyAsBool("WINDOWS_EXPORT_ALL_SYMBOLS"))
+      {
+      std::string name_of_def_file =
+        this->Target->GetSupportDirectory();
+      name_of_def_file += std::string("/") +
+        this->Target->GetName();
+      name_of_def_file += ".def";
+      std::string cmd = cmSystemTools::GetCMakeCommand();
+      cmd = this->Convert(cmd, cmLocalGenerator::NONE,
+                          cmLocalGenerator::SHELL);
+      cmd += " -E __create_def ";
+      cmd += this->Convert(name_of_def_file,
+                           cmLocalGenerator::START_OUTPUT,
+                           cmLocalGenerator::SHELL);
+      cmd += " ";
+      std::string objlist_file = name_of_def_file;
+      objlist_file += ".objs";
+      cmd += this->Convert(objlist_file,
+                           cmLocalGenerator::START_OUTPUT,
+                           cmLocalGenerator::SHELL);
+      real_link_commands.push_back(cmd);
+      // create a list of obj files for the -E __create_def to read
+      cmGeneratedFileStream fout(objlist_file.c_str());
+      for(std::vector<std::string>::const_iterator i = this->Objects.begin();
+          i != this->Objects.end(); ++i)
+        {
+        if(cmHasLiteralSuffix(*i, ".obj"))
+          {
+          fout << *i << "\n";
+          }
+        }
+      for(std::vector<std::string>::const_iterator i =
+        this->ExternalObjects.begin();
+          i != this->ExternalObjects.end(); ++i)
+        {
+        fout << *i << "\n";
+        }
+      // now add the def file link flag
+      linkFlags += " ";
+      linkFlags +=
+        this->Makefile->GetSafeDefinition("CMAKE_LINK_DEF_FILE_FLAG");
+      linkFlags += this->Convert(name_of_def_file,
+                                 cmLocalGenerator::START_OUTPUT,
+                                 cmLocalGenerator::SHELL);
+      linkFlags += " ";
+      }
+    }
+
+  std::string manifests = this->GetManifests();
+
   cmLocalGenerator::RuleVariables vars;
   vars.TargetPDB = targetOutPathPDB.c_str();
 
@@ -600,12 +655,14 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
   vars.Target = target.c_str();
   vars.LinkLibraries = linkLibs.c_str();
   vars.ObjectsQuoted = buildObjs.c_str();
-  if (this->Target->HasSOName(this->ConfigName))
+  if (this->GeneratorTarget->HasSOName(this->ConfigName))
     {
     vars.SONameFlag = this->Makefile->GetSONameFlag(linkLanguage);
     vars.TargetSOName= targetNameSO.c_str();
     }
   vars.LinkFlags = linkFlags.c_str();
+
+  vars.Manifests = manifests.c_str();
 
   // Compute the directory portion of the install_name setting.
   std::string install_name_dir;
@@ -613,7 +670,7 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
     {
     // Get the install_name directory for the build tree.
     install_name_dir =
-      this->Target->GetInstallNameDirForBuildTree(this->ConfigName);
+      this->GeneratorTarget->GetInstallNameDirForBuildTree(this->ConfigName);
 
     // Set the rule variable replacement value.
     if(install_name_dir.empty())

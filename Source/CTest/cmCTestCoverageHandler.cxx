@@ -27,8 +27,6 @@
 #include <cmsys/Process.h>
 #include <cmsys/RegularExpression.hxx>
 #include <cmsys/Glob.hxx>
-#include <cmsys/stl/iterator>
-#include <cmsys/stl/algorithm>
 #include <cmsys/FStream.hxx>
 
 #include <stdlib.h>
@@ -446,7 +444,7 @@ int cmCTestCoverageHandler::ProcessHandler()
     }
   std::set<std::string> uncovered = this->FindUncoveredFiles(&cont);
 
-  if ( file_count == 0 )
+  if (file_count == 0 && this->ExtraCoverageGlobs.empty())
     {
     cmCTestOptionalLog(this->CTest, WARNING,
       " Cannot find any coverage files. Ignoring Coverage request."
@@ -1474,7 +1472,12 @@ int cmCTestCoverageHandler::HandleLCovCoverage(
     << std::endl, this->Quiet);
 
   std::vector<std::string> files;
-  this->FindLCovFiles(files);
+  if (!this->FindLCovFiles(files))
+    {
+    cmCTestLog(this->CTest, ERROR_MESSAGE,
+               "Error while finding LCov files.\n");
+    return 0;
+    }
   std::vector<std::string>::iterator it;
 
   if (files.empty())
@@ -1745,18 +1748,28 @@ void cmCTestCoverageHandler::FindGCovFiles(std::vector<std::string>& files)
 }
 
 //----------------------------------------------------------------------------
-void cmCTestCoverageHandler::FindLCovFiles(std::vector<std::string>& files)
+bool cmCTestCoverageHandler::FindLCovFiles(std::vector<std::string>& files)
 {
   cmsys::Glob gl;
   gl.RecurseOff(); // No need of recurse if -prof_dir${BUILD_DIR} flag is
                    // used while compiling.
   gl.RecurseThroughSymlinksOff();
   std::string prevBinaryDir;
-  cmSystemTools::ChangeDirectory(
-    this->CTest->GetCTestConfiguration("BuildDirectory"));
+  std::string buildDir = this->CTest->GetCTestConfiguration("BuildDirectory");
+  if (cmSystemTools::ChangeDirectory(buildDir))
+    {
+    cmCTestLog(this->CTest, ERROR_MESSAGE,
+               "Error changing directory to " << buildDir << std::endl);
+    return false;
+    }
 
   // Run profmerge to merge all *.dyn files into dpi files
-  cmSystemTools::RunSingleCommand("profmerge");
+  if (!cmSystemTools::RunSingleCommand("profmerge"))
+    {
+    cmCTestLog(this->CTest, ERROR_MESSAGE,
+               "Error while running profmerge.\n");
+    return false;
+    }
 
   prevBinaryDir = cmSystemTools::GetCurrentWorkingDirectory().c_str();
 
@@ -1766,10 +1779,16 @@ void cmCTestCoverageHandler::FindLCovFiles(std::vector<std::string>& files)
   daGlob += "/*.dpi";
   cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
     "   looking for dpi files in: " << daGlob << std::endl, this->Quiet);
-  gl.FindFiles(daGlob);
+  if (!gl.FindFiles(daGlob))
+    {
+    cmCTestLog(this->CTest, ERROR_MESSAGE,
+               "Error while finding files matching " << daGlob << std::endl);
+    return false;
+    }
   files.insert(files.end(), gl.GetFiles().begin(), gl.GetFiles().end());
   cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
     "Now searching in: " << daGlob << std::endl, this->Quiet);
+  return true;
 }
 
 //----------------------------------------------------------------------

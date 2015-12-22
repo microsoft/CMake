@@ -13,7 +13,7 @@
 #ifndef cmGlobalNinjaGenerator_h
 #  define cmGlobalNinjaGenerator_h
 
-#  include "cmGlobalGenerator.h"
+#  include "cmGlobalCommonGenerator.h"
 #  include "cmGlobalGeneratorFactory.h"
 #  include "cmNinjaTypes.h"
 
@@ -42,7 +42,7 @@ class cmGeneratorTarget;
  * - We extensively use Ninja variable overloading system to minimize the
  *   number of generated rules.
  */
-class cmGlobalNinjaGenerator : public cmGlobalGenerator
+class cmGlobalNinjaGenerator : public cmGlobalCommonGenerator
 {
 public:
   /// The default name of Ninja's build file. Typically: build.ninja.
@@ -162,33 +162,24 @@ public:
 public:
   cmGlobalNinjaGenerator(cmake* cm);
 
-  /// Convenience method for creating an instance of this class.
   static cmGlobalGeneratorFactory* NewFactory() {
     return new cmGlobalGeneratorSimpleFactory<cmGlobalNinjaGenerator>(); }
 
-  /// Destructor.
   virtual ~cmGlobalNinjaGenerator() { }
 
-  /// Overloaded methods. @see cmGlobalGenerator::CreateLocalGenerator()
-  virtual cmLocalGenerator* CreateLocalGenerator(cmLocalGenerator* parent,
-                                                 cmState::Snapshot snapshot);
+  virtual cmLocalGenerator* CreateLocalGenerator(cmMakefile* mf);
 
-  /// Overloaded methods. @see cmGlobalGenerator::GetName().
   virtual std::string GetName() const {
     return cmGlobalNinjaGenerator::GetActualName(); }
 
-  /// @return the name of this generator.
   static std::string GetActualName() { return "Ninja"; }
 
-  /// Overloaded methods. @see cmGlobalGenerator::GetDocumentation()
   static void GetDocumentation(cmDocumentationEntry& entry);
 
-  /// Overloaded methods. @see cmGlobalGenerator::EnableLanguage()
   virtual void EnableLanguage(std::vector<std::string>const& languages,
                               cmMakefile* mf,
                               bool optional);
 
-  /// Overloaded methods. @see cmGlobalGenerator::GenerateBuildCommand()
   virtual void GenerateBuildCommand(
     std::vector<std::string>& makeCommand,
     const std::string& makeProgram,
@@ -228,6 +219,19 @@ public:
 
   cmGeneratedFileStream* GetRulesFileStream() const {
     return this->RulesFileStream; }
+
+  std::string ConvertToNinjaPath(const std::string& path);
+
+  struct MapToNinjaPathImpl {
+    cmGlobalNinjaGenerator* GG;
+    MapToNinjaPathImpl(cmGlobalNinjaGenerator* gg): GG(gg) {}
+    std::string operator()(std::string const& path) {
+      return this->GG->ConvertToNinjaPath(path);
+    }
+  };
+  MapToNinjaPathImpl MapToNinjaPath() {
+    return MapToNinjaPathImpl(this);
+  }
 
   void AddCXXCompileCommand(const std::string &commandLine,
                             const std::string &sourceFile);
@@ -289,7 +293,7 @@ public:
   const std::vector<cmLocalGenerator*>& GetLocalGenerators() const {
     return LocalGenerators; }
 
-  bool IsExcluded(cmLocalGenerator* root, cmTarget& target) {
+  bool IsExcluded(cmLocalGenerator* root, cmGeneratorTarget* target) {
     return cmGlobalGenerator::IsExcluded(root, target); }
 
   int GetRuleCmdLength(const std::string& name) {
@@ -299,17 +303,16 @@ public:
 
   virtual void ComputeTargetObjectDirectory(cmGeneratorTarget* gt) const;
 
-  std::string ninjaVersion() const;
-
+  std::string CurrentNinjaVersion() const;
+  // Ninja generator uses 'deps' and 'msvc_deps_prefix' introduced in 1.3
+  static std::string RequiredNinjaVersion() { return "1.3"; }
+  static std::string RequiredNinjaVersionForConsolePool() { return "1.5"; }
   bool SupportsConsolePool() const;
 
 protected:
 
-  /// Overloaded methods. @see cmGlobalGenerator::Generate()
   virtual void Generate();
 
-  /// Overloaded methods.
-  /// @see cmGlobalGenerator::CheckALLOW_DUPLICATE_CUSTOM_TARGETS()
   virtual bool CheckALLOW_DUPLICATE_CUSTOM_TARGETS() const { return true; }
 
 

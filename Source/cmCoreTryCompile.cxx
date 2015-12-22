@@ -11,7 +11,7 @@
 ============================================================================*/
 #include "cmCoreTryCompile.h"
 #include "cmake.h"
-#include "cmLocalGenerator.h"
+#include "cmOutputConverter.h"
 #include "cmGlobalGenerator.h"
 #include "cmAlgorithms.h"
 #include "cmExportTryCompileFileGenerator.h"
@@ -29,7 +29,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
   const char* sourceDirectory = argv[2].c_str();
   const char* projectName = 0;
   std::string targetName;
-  std::vector<std::string> cmakeFlags;
+  std::vector<std::string> cmakeFlags(1, "CMAKE_FLAGS"); // fake argv[0]
   std::vector<std::string> compileDefs;
   std::string outputVariable;
   std::string copyFile;
@@ -53,10 +53,6 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     if(argv[i] == "CMAKE_FLAGS")
       {
       doing = DoingCMakeFlags;
-      // CMAKE_FLAGS is the first argument because we need an argv[0] that
-      // is not used, so it matches regular command line parsing which has
-      // the program name as arg 0
-      cmakeFlags.push_back(argv[i]);
       }
     else if(argv[i] == "COMPILE_DEFINITIONS")
       {
@@ -322,7 +318,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       std::string langFlags = "CMAKE_" + *li + "_FLAGS";
       const char* flags = this->Makefile->GetDefinition(langFlags);
       fprintf(fout, "set(CMAKE_%s_FLAGS %s)\n", li->c_str(),
-              cmLocalGenerator::EscapeForCMake(flags?flags:"").c_str());
+              cmOutputConverter::EscapeForCMake(flags?flags:"").c_str());
       fprintf(fout, "set(CMAKE_%s_FLAGS \"${CMAKE_%s_FLAGS}"
               " ${COMPILE_DEFINITIONS}\")\n", li->c_str(), li->c_str());
       }
@@ -355,7 +351,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
         const char* exeLinkFlags =
           this->Makefile->GetDefinition("CMAKE_EXE_LINKER_FLAGS");
         fprintf(fout, "set(CMAKE_EXE_LINKER_FLAGS %s)\n",
-                cmLocalGenerator::EscapeForCMake(
+                cmOutputConverter::EscapeForCMake(
                     exeLinkFlags ? exeLinkFlags : "").c_str());
         } break;
       }
@@ -379,7 +375,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     if (!targets.empty())
       {
       std::string fname = "/" + std::string(targetName) + "Targets.cmake";
-      cmExportTryCompileFileGenerator tcfg;
+      cmExportTryCompileFileGenerator tcfg(gg);
       tcfg.SetExportFile((this->BinaryDirectory + fname).c_str());
       tcfg.SetExports(targets);
       tcfg.SetConfig(this->Makefile->GetSafeDefinition(
@@ -469,6 +465,26 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     if(this->Makefile->GetDefinition("CMAKE_POSITION_INDEPENDENT_CODE")!=0)
       {
       fprintf(fout, "set(CMAKE_POSITION_INDEPENDENT_CODE \"ON\")\n");
+      }
+    if (const char *lssDef = this->Makefile->GetDefinition(
+        "CMAKE_LINK_SEARCH_START_STATIC"))
+      {
+      fprintf(fout, "set(CMAKE_LINK_SEARCH_START_STATIC \"%s\")\n", lssDef);
+      }
+    if (const char *lssDef = this->Makefile->GetDefinition(
+        "CMAKE_LINK_SEARCH_END_STATIC"))
+      {
+      fprintf(fout, "set(CMAKE_LINK_SEARCH_END_STATIC \"%s\")\n", lssDef);
+      }
+
+    /* Set the appropriate policy information for ENABLE_EXPORTS */
+    fprintf(fout, "cmake_policy(SET CMP0065 %s)\n",
+       this->Makefile->GetPolicyStatus(cmPolicies::CMP0065) ==
+         cmPolicies::NEW ? "NEW" : "OLD");
+    if(const char *ee = this->Makefile->GetDefinition(
+        "CMAKE_ENABLE_EXPORTS"))
+      {
+      fprintf(fout, "set(CMAKE_ENABLE_EXPORTS %s)\n", ee);
       }
 
     /* Put the executable at a known location (for COPY_FILE).  */

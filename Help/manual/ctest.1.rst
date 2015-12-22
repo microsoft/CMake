@@ -66,6 +66,13 @@ Options
  number of jobs.  This option can also be set by setting the
  environment variable ``CTEST_PARALLEL_LEVEL``.
 
+``--test-load <level>``
+ While running tests in parallel (e.g. with ``-j``), try not to start
+ tests when they may cause the CPU load to pass above a given threshold.
+
+ When ``ctest`` is run as a `Dashboard Client`_ this sets the
+ ``TestLoad`` option of the `CTest Test Step`_.
+
 ``-Q,--quiet``
  Make ctest quiet.
 
@@ -294,6 +301,12 @@ Options
 
 ``--test-command``
  The test to run with the --build-and-test option.
+
+``--test-output-size-passed <size>``
+ Limit the output for passed tests to <size> bytes.
+
+``--test-output-size-failed <size>``
+ Limit the output for failed tests to <size> bytes.
 
 ``--test-timeout``
  The time limit in seconds, internal use only.
@@ -775,6 +788,13 @@ In a `CTest Script`_, the :command:`ctest_test` command runs this step.
 Arguments to the command may specify some of the step settings.
 
 Configuration settings include:
+
+``TestLoad``
+  While running tests in parallel (e.g. with ``-j``), try not to start
+  tests when they may cause the CPU load to pass above a given threshold.
+
+  * `CTest Script`_ variable: :variable:`CTEST_TEST_LOAD`
+  * :module:`CTest` module variable: ``CTEST_TEST_LOAD``
 
 ``TimeOut``
   The default timeout for each test if not specified by the

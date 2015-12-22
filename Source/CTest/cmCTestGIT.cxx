@@ -16,7 +16,6 @@
 #include "cmAlgorithms.h"
 
 #include <cmsys/RegularExpression.hxx>
-#include <cmsys/ios/sstream>
 #include <cmsys/Process.h>
 #include <cmsys/FStream.hxx>
 

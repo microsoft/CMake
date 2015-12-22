@@ -11,7 +11,6 @@
 ============================================================================*/
 #include "cmFindLibraryCommand.h"
 #include <cmsys/Directory.hxx>
-#include <cmsys/stl/algorithm>
 
 cmFindLibraryCommand::cmFindLibraryCommand()
 {
@@ -204,6 +203,7 @@ struct cmFindLibraryHelper
     }
   bool HasValidSuffix(std::string const& name);
   void AddName(std::string const& name);
+  void SetName(std::string const& name);
   bool CheckDirectory(std::string const& path);
   bool CheckDirectoryForName(std::string const& path, Name& name);
 };
@@ -320,6 +320,13 @@ void cmFindLibraryHelper::AddName(std::string const& name)
   regex += "$";
   entry.Regex.compile(regex.c_str());
   this->Names.push_back(entry);
+}
+
+//----------------------------------------------------------------------------
+void cmFindLibraryHelper::SetName(std::string const& name)
+{
+  this->Names.clear();
+  this->AddName(name);
 }
 
 //----------------------------------------------------------------------------
@@ -460,8 +467,7 @@ std::string cmFindLibraryCommand::FindNormalLibraryDirsPerName()
       ni != this->Names.end() ; ++ni)
     {
     // Switch to searching for this name.
-    std::string const& name = *ni;
-    helper.AddName(name);
+    helper.SetName(*ni);
 
     // Search every directory.
     for(std::vector<std::string>::const_iterator

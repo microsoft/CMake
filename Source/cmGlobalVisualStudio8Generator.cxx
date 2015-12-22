@@ -185,7 +185,6 @@ void cmGlobalVisualStudio8Generator
 void cmGlobalVisualStudio8Generator::Configure()
 {
   this->cmGlobalVisualStudio7Generator::Configure();
-  this->CreateGUID(CMAKE_CHECK_BUILD_SYSTEM_TARGET);
 }
 
 //----------------------------------------------------------------------------
@@ -256,6 +255,9 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
                           no_working_directory, no_depends,
                           noCommandLines);
 
+  cmGeneratorTarget* gt = new cmGeneratorTarget(tgt, lg);
+  mf->AddGeneratorTarget(tgt, gt);
+
   // Organize in the "predefined targets" folder:
   //
   if (this->UseFolderProperty())
@@ -310,14 +312,10 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
   cmCustomCommandLine commandLine;
   commandLine.push_back(cmSystemTools::GetCMakeCommand());
   std::string argH = "-H";
-  argH += lg->Convert(mf->GetHomeDirectory(),
-                      cmLocalGenerator::START_OUTPUT,
-                      cmLocalGenerator::UNCHANGED, true);
+  argH += mf->GetHomeDirectory();
   commandLine.push_back(argH);
   std::string argB = "-B";
-  argB += lg->Convert(mf->GetHomeOutputDirectory(),
-                      cmLocalGenerator::START_OUTPUT,
-                      cmLocalGenerator::UNCHANGED, true);
+  argB += mf->GetHomeOutputDirectory();
   commandLine.push_back(argB);
   commandLine.push_back("--check-stamp-list");
   commandLine.push_back(stampList.c_str());
@@ -350,8 +348,13 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
 }
 
 //----------------------------------------------------------------------------
-void cmGlobalVisualStudio8Generator::Generate()
+bool cmGlobalVisualStudio8Generator::Compute()
 {
+  if (!cmGlobalVisualStudio7Generator::Compute())
+    {
+    return false;
+    }
+
   if(this->AddCheckTarget())
     {
     // All targets depend on the build-system check target.
@@ -365,9 +368,7 @@ void cmGlobalVisualStudio8Generator::Generate()
         }
       }
     }
-
-  // Now perform the main generation.
-  this->cmGlobalVisualStudio7Generator::Generate();
+  return true;
 }
 
 //----------------------------------------------------------------------------
@@ -446,8 +447,9 @@ bool cmGlobalVisualStudio8Generator::ComputeTargetDepends()
 void cmGlobalVisualStudio8Generator::WriteProjectDepends(
   std::ostream& fout, const std::string&, const char*, cmTarget const& t)
 {
-  TargetDependSet const& unordered = this->GetTargetDirectDepends(t);
-  OrderedTargetDependSet depends(unordered);
+  cmGeneratorTarget* gt = this->GetGeneratorTarget(&t);
+  TargetDependSet const& unordered = this->GetTargetDirectDepends(gt);
+  OrderedTargetDependSet depends(unordered, std::string());
   for(OrderedTargetDependSet::const_iterator i = depends.begin();
       i != depends.end(); ++i)
     {

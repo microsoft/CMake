@@ -29,13 +29,10 @@ class cmLocalVisualStudio6Generator : public cmLocalVisualStudioGenerator
 {
 public:
   ///! Set cache only and recurse to false by default.
-  cmLocalVisualStudio6Generator(cmGlobalGenerator* gg,
-                                cmLocalGenerator* parent,
-                                cmState::Snapshot snapshot);
+  cmLocalVisualStudio6Generator(cmGlobalGenerator* gg, cmMakefile* mf);
 
   virtual ~cmLocalVisualStudio6Generator();
 
-  virtual void AddHelperCommands();
   virtual void AddCMakeListsRules();
 
   /**

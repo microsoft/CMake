@@ -48,6 +48,7 @@ cmGraphVizWriter::cmGraphVizWriter(const std::vector<cmLocalGenerator*>&
 ,GraphName("GG")
 ,GraphHeader("node [\n  fontsize = \"12\"\n];")
 ,GraphNodePrefix("node")
+,LocalGenerators(localGenerators)
 ,GenerateForExecutables(true)
 ,GenerateForStaticLibs(true)
 ,GenerateForSharedLibs(true)
@@ -55,7 +56,6 @@ cmGraphVizWriter::cmGraphVizWriter(const std::vector<cmLocalGenerator*>&
 ,GenerateForExternals(true)
 ,GeneratePerTarget(true)
 ,GenerateDependers(true)
-,LocalGenerators(localGenerators)
 ,HaveTargetsAndLibs(false)
 {
 }
@@ -68,8 +68,9 @@ void cmGraphVizWriter::ReadSettings(const char* settingsFileName,
   cm.SetHomeDirectory("");
   cm.SetHomeOutputDirectory("");
   cmGlobalGenerator ggi(&cm);
-  cmsys::auto_ptr<cmLocalGenerator> lg(ggi.MakeLocalGenerator());
-  cmMakefile *mf = lg->GetMakefile();
+  cmsys::auto_ptr<cmMakefile> mf(
+        new cmMakefile(&ggi, cm.GetCurrentSnapshot()));
+  cmsys::auto_ptr<cmLocalGenerator> lg(ggi.CreateLocalGenerator(mf.get()));
 
   const char* inFileName = settingsFileName;
 

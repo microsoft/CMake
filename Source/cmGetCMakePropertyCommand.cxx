@@ -32,17 +32,18 @@ bool cmGetCMakePropertyCommand
 
   if ( args[1] == "VARIABLES" )
     {
-    int cacheonly = 0;
-    std::vector<std::string> vars = this->Makefile->GetDefinitions(cacheonly);
-    if (!vars.empty())
+    if (const char* varsProp = this->Makefile->GetProperty("VARIABLES"))
       {
-      output = cmJoin(vars, ";");
+      output = varsProp;
       }
     }
   else if ( args[1] == "MACROS" )
     {
     output.clear();
-    this->Makefile->GetListOfMacros(output);
+    if (const char* macrosProp = this->Makefile->GetProperty("MACROS"))
+      {
+      output = macrosProp;
+      }
     }
   else if ( args[1] == "COMPONENTS" )
     {
@@ -52,9 +53,11 @@ bool cmGetCMakePropertyCommand
     }
   else
     {
-    const char *prop =
-      this->Makefile->GetState()
-          ->GetGlobalProperty(args[1]);
+    const char *prop = 0;
+    if (!args[1].empty())
+      {
+      prop = this->Makefile->GetState()->GetGlobalProperty(args[1]);
+      }
     if (prop)
       {
       output = prop;

@@ -75,7 +75,9 @@
 # include "cmGlobalWatcomWMakeGenerator.h"
 #endif
 #include "cmGlobalUnixMakefileGenerator3.h"
-#include "cmGlobalNinjaGenerator.h"
+#if defined(CMAKE_BUILD_WITH_CMAKE)
+# include "cmGlobalNinjaGenerator.h"
+#endif
 #include "cmExtraCodeLiteGenerator.h"
 
 #if !defined(CMAKE_BOOT_MINGW)
@@ -121,6 +123,7 @@ void cmWarnUnusedCliWarning(const std::string& variable,
 cmake::cmake()
 {
   this->Trace = false;
+  this->TraceExpand = false;
   this->WarnUninitialized = false;
   this->WarnUnused = false;
   this->WarnUnusedCli = true;
@@ -132,9 +135,8 @@ cmake::cmake()
   this->ClearBuildSystem = false;
   this->FileComparison = new cmFileTimeComparison;
 
-  this->Policies = new cmPolicies();
   this->State = new cmState(this);
-  this->CurrentSnapshot = this->State->CreateSnapshot(cmState::Snapshot());
+  this->CurrentSnapshot = this->State->CreateBaseSnapshot();
 
 #ifdef __APPLE__
   struct rlimit rlp;
@@ -170,7 +172,6 @@ cmake::cmake()
 cmake::~cmake()
 {
   delete this->CacheManager;
-  delete this->Policies;
   delete this->State;
   if (this->GlobalGenerator)
     {
@@ -186,7 +187,7 @@ cmake::~cmake()
 
 void cmake::CleanupCommandsAndMacros()
 {
-  this->State->Reset();
+  this->CurrentSnapshot = this->State->Reset();
   this->State->RemoveUserDefinedCommands();
 }
 
@@ -370,11 +371,14 @@ void cmake::ReadListFile(const std::vector<std::string>& args,
   // read in the list file to fill the cache
   if(path)
     {
+    this->CurrentSnapshot = this->State->Reset();
     std::string homeDir = this->GetHomeDirectory();
     std::string homeOutputDir = this->GetHomeOutputDirectory();
     this->SetHomeDirectory(cmSystemTools::GetCurrentWorkingDirectory());
     this->SetHomeOutputDirectory(cmSystemTools::GetCurrentWorkingDirectory());
-    cmsys::auto_ptr<cmLocalGenerator> lg(gg->MakeLocalGenerator());
+    cmState::Snapshot snapshot = this->GetCurrentSnapshot();
+    cmsys::auto_ptr<cmMakefile> mf(new cmMakefile(gg, snapshot));
+    cmsys::auto_ptr<cmLocalGenerator> lg(gg->CreateLocalGenerator(mf.get()));
     lg->GetMakefile()->SetCurrentBinaryDirectory
       (cmSystemTools::GetCurrentWorkingDirectory());
     lg->GetMakefile()->SetCurrentSourceDirectory
@@ -414,9 +418,10 @@ bool cmake::FindPackage(const std::vector<std::string>& args)
   cmGlobalGenerator *gg = new cmGlobalGenerator(this);
   this->SetGlobalGenerator(gg);
 
+  cmState::Snapshot snapshot = this->GetCurrentSnapshot();
   // read in the list file to fill the cache
-  cmsys::auto_ptr<cmLocalGenerator> lg(gg->MakeLocalGenerator());
-  cmMakefile* mf = lg->GetMakefile();
+  cmsys::auto_ptr<cmMakefile> mf(new cmMakefile(gg, snapshot));
+  cmsys::auto_ptr<cmLocalGenerator> lg(gg->CreateLocalGenerator(mf.get()));
   mf->SetCurrentBinaryDirectory
     (cmSystemTools::GetCurrentWorkingDirectory());
   mf->SetCurrentSourceDirectory
@@ -482,7 +487,7 @@ bool cmake::FindPackage(const std::vector<std::string>& args)
     std::string linkPath;
     std::string flags;
     std::string linkFlags;
-    gg->CreateGeneratorTargets(mf);
+    gg->CreateGeneratorTargets(cmGlobalGenerator::AllTargets, lg.get());
     cmGeneratorTarget *gtgt = gg->GetGeneratorTarget(tgt);
     lg->GetTargetFlags(linkLibs, frameworkPath, linkPath, flags, linkFlags,
                        gtgt, false);
@@ -616,10 +621,17 @@ void cmake::SetArgs(const std::vector<std::string>& args,
       std::cout << "Running with debug output on.\n";
       this->SetDebugOutputOn(true);
       }
+    else if(arg.find("--trace-expand",0) == 0)
+      {
+      std::cout << "Running with expanded trace output on.\n";
+      this->SetTrace(true);
+      this->SetTraceExpand(true);
+      }
     else if(arg.find("--trace",0) == 0)
       {
       std::cout << "Running with trace output on.\n";
       this->SetTrace(true);
+      this->SetTraceExpand(false);
       }
     else if(arg.find("--warn-uninitialized",0) == 0)
       {
@@ -1437,35 +1449,8 @@ int cmake::ActualConfigure()
          cmState::PATH);
       }
     }
-  if(!this->State
-          ->GetInitializedCacheValue("CMAKE_USE_RELATIVE_PATHS"))
-    {
-    this->State->AddCacheEntry
-      ("CMAKE_USE_RELATIVE_PATHS", "OFF",
-       "If true, cmake will use relative paths in makefiles and projects.",
-       cmState::BOOL);
-    if (!this->State->GetCacheEntryProperty("CMAKE_USE_RELATIVE_PATHS",
-                                                    "ADVANCED"))
-      {
-      this->State->SetCacheEntryProperty("CMAKE_USE_RELATIVE_PATHS",
-                                                 "ADVANCED", "1");
-      }
-    }
 
-  if(cmSystemTools::GetFatalErrorOccured())
-    {
-    const char* makeProgram =
-        this->State->GetInitializedCacheValue("CMAKE_MAKE_PROGRAM");
-    if (!makeProgram || cmSystemTools::IsOff(makeProgram))
-      {
-      // We must have a bad generator selection.  Wipe the cache entry so the
-      // user can select another.
-      this->State->RemoveCacheEntry("CMAKE_GENERATOR");
-      this->State->RemoveCacheEntry("CMAKE_EXTRA_GENERATOR");
-      }
-    }
-
-  cmMakefile* mf=this->GlobalGenerator->GetLocalGenerators()[0]->GetMakefile();
+  cmMakefile* mf=this->GlobalGenerator->GetMakefiles()[0];
   if (mf->IsOn("CTEST_USE_LAUNCHERS")
               && !this->State->GetGlobalProperty("RULE_LAUNCH_COMPILE"))
     {
@@ -1625,7 +1610,11 @@ int cmake::Generate()
     {
     return -1;
     }
-  this->GlobalGenerator->DoGenerate();
+  if (!this->GlobalGenerator->Compute())
+    {
+    return -1;
+    }
+  this->GlobalGenerator->Generate();
   if ( !this->GraphVizFile.empty() )
     {
     std::cout << "Generate graphviz: " << this->GraphVizFile << std::endl;
@@ -1714,8 +1703,10 @@ void cmake::AddDefaultGenerators()
 #endif
   this->Generators.push_back(
     cmGlobalUnixMakefileGenerator3::NewFactory());
+#if defined(CMAKE_BUILD_WITH_CMAKE)
   this->Generators.push_back(
     cmGlobalNinjaGenerator::NewFactory());
+#endif
 #if defined(CMAKE_USE_WMAKE)
   this->Generators.push_back(
     cmGlobalWatcomWMakeGenerator::NewFactory());
@@ -1914,8 +1905,8 @@ int cmake::CheckBuildSystem()
   cm.SetHomeDirectory("");
   cm.SetHomeOutputDirectory("");
   cmGlobalGenerator gg(&cm);
-  cmsys::auto_ptr<cmLocalGenerator> lg(gg.MakeLocalGenerator());
-  cmMakefile* mf = lg->GetMakefile();
+  cmsys::auto_ptr<cmMakefile> mf(new cmMakefile(&gg, cm.GetCurrentSnapshot()));
+  cmsys::auto_ptr<cmLocalGenerator> lg(gg.CreateLocalGenerator(mf.get()));
   if(!mf->ReadListFile(this->CheckBuildSystemArgument.c_str()) ||
      cmSystemTools::GetErrorOccuredFlag())
     {
@@ -1944,8 +1935,11 @@ int cmake::CheckBuildSystem()
       ggd(this->CreateGlobalGenerator(genName));
     if(ggd.get())
       {
-      cmsys::auto_ptr<cmLocalGenerator> lgd(ggd->MakeLocalGenerator());
-      lgd->ClearDependencies(mf, verbose);
+      cmsys::auto_ptr<cmMakefile> mfd(new cmMakefile(ggd.get(),
+                                                    cm.GetCurrentSnapshot()));
+      cmsys::auto_ptr<cmLocalGenerator> lgd(
+            ggd->CreateLocalGenerator(mfd.get()));
+      lgd->ClearDependencies(mfd.get(), verbose);
       }
     }
 
@@ -2519,7 +2513,6 @@ void cmake::IssueMessage(cmake::MessageType t, std::string const& text,
                          cmListFileBacktrace const& bt)
 {
   cmListFileBacktrace backtrace = bt;
-  backtrace.MakeRelative();
 
   std::ostringstream msg;
   if (!this->PrintMessagePreamble(t, msg))
@@ -2595,6 +2588,25 @@ int cmake::Build(const std::string& dir,
     }
   std::string cachePath = dir;
   cmSystemTools::ConvertToUnixSlashes(cachePath);
+  std::string cacheFile = cachePath;
+  cacheFile += "/CMakeCache.txt";
+  if(!cmSystemTools::FileExists(cacheFile.c_str()))
+    {
+    // search in parent directories for cache
+    std::string cmakeFiles = cachePath;
+    cmakeFiles += "/CMakeFiles";
+    if(cmSystemTools::FileExists(cmakeFiles.c_str()))
+      {
+      std::string cachePathFound =
+        cmSystemTools::FileExistsInParentDirectories(
+          "CMakeCache.txt", cachePath.c_str(), "/");
+      if(!cachePathFound.empty())
+        {
+        cachePath = cmSystemTools::GetFilenamePath(cachePathFound);
+        }
+      }
+    }
+
   if(!this->LoadCache(cachePath))
     {
     std::cerr << "Error: could not load cache\n";

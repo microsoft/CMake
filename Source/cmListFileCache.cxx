@@ -234,8 +234,7 @@ bool cmListFile::ParseFile(const char* filename,
       {
       cmListFileFunction project;
       project.Name = "PROJECT";
-      cmListFileArgument prj("Project", cmListFileArgument::Unquoted,
-                             filename, 0);
+      cmListFileArgument prj("Project", cmListFileArgument::Unquoted, 0);
       project.Arguments.push_back(prj);
       this->Functions.insert(this->Functions.begin(),project);
       }
@@ -252,7 +251,6 @@ bool cmListFileParser::ParseFunction(const char* name, long line)
 {
   // Inintialize a new function call.
   this->Function = cmListFileFunction();
-  this->Function.FilePath = this->FileName;
   this->Function.Name = name;
   this->Function.Line = line;
 
@@ -375,7 +373,7 @@ bool cmListFileParser::ParseFunction(const char* name, long line)
 bool cmListFileParser::AddArgument(cmListFileLexer_Token* token,
                                    cmListFileArgument::Delimiter delim)
 {
-  cmListFileArgument a(token->text, delim, this->FileName, token->line);
+  cmListFileArgument a(token->text, delim, token->line);
   this->Function.Arguments.push_back(a);
   if(this->Separation == SeparationOkay)
     {
@@ -400,50 +398,50 @@ bool cmListFileParser::AddArgument(cmListFileLexer_Token* token,
     }
 }
 
-void cmListFileBacktrace::Append(cmListFileContext const& context)
+void cmListFileBacktrace::PrintTitle(std::ostream& out) const
 {
-  this->push_back(context);
-}
-
-//----------------------------------------------------------------------------
-void cmListFileBacktrace::MakeRelative()
-{
-  if (this->Relative)
+  if (!this->Snapshot.IsValid())
     {
     return;
     }
-  for (cmListFileBacktrace::iterator i = this->begin();
-       i != this->end(); ++i)
-    {
-    i->FilePath = this->LocalGenerator->Convert(i->FilePath,
-                                                cmLocalGenerator::HOME);
-    }
-  this->Relative = true;
+  cmOutputConverter converter(this->Snapshot);
+  cmListFileContext lfc =
+      cmListFileContext::FromCommandContext(
+        this->Context, this->Snapshot.GetExecutionListFile());
+  lfc.FilePath = converter.Convert(lfc.FilePath, cmOutputConverter::HOME);
+  out << (lfc.Line ? " at " : " in ") << lfc;
 }
 
-void cmListFileBacktrace::PrintTitle(std::ostream& out)
+void cmListFileBacktrace::PrintCallStack(std::ostream& out) const
 {
-  if (this->empty())
+  if (!this->Snapshot.IsValid())
     {
     return;
     }
-  out << (this->front().Line ? " at " : " in ") << this->front();
-}
-
-void cmListFileBacktrace::PrintCallStack(std::ostream& out)
-{
-  if (size() <= 1)
+  cmState::Snapshot parent = this->Snapshot.GetCallStackParent();
+  if (!parent.IsValid() || parent.GetExecutionListFile().empty())
     {
     return;
     }
 
-  const_iterator i = this->begin() + 1;
+  cmOutputConverter converter(this->Snapshot);
+  std::string commandName = this->Snapshot.GetEntryPointCommand();
+  long commandLine = this->Snapshot.GetEntryPointLine();
+
   out << "Call Stack (most recent call first):\n";
-  while(i != this->end())
+  while(parent.IsValid())
     {
-    cmListFileContext const& lfc = *i;
+    cmListFileContext lfc;
+    lfc.Name = commandName;
+    lfc.Line = commandLine;
+
+    lfc.FilePath = converter.Convert(parent.GetExecutionListFile(),
+                                     cmOutputConverter::HOME);
     out << "  " << lfc << "\n";
-    ++i;
+
+    commandName = parent.GetEntryPointCommand();
+    commandLine = parent.GetEntryPointLine();
+    parent = parent.GetCallStackParent();
     }
 }
 

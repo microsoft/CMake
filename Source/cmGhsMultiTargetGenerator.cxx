@@ -21,23 +21,24 @@
 
 std::string const cmGhsMultiTargetGenerator::DDOption("-dynamic");
 
-cmGhsMultiTargetGenerator::cmGhsMultiTargetGenerator(cmTarget *target)
-  : Target(target)
+cmGhsMultiTargetGenerator::cmGhsMultiTargetGenerator(cmGeneratorTarget *target)
+  : Target(target->Target)
+  , GeneratorTarget(target)
   , LocalGenerator(static_cast<cmLocalGhsMultiGenerator *>(
-                     target->GetMakefile()->GetLocalGenerator()))
-  , Makefile(target->GetMakefile())
-  , TargetGroup(DetermineIfTargetGroup(target))
+                     target->GetLocalGenerator()))
+  , Makefile(target->Target->GetMakefile())
+  , TargetGroup(DetermineIfTargetGroup(target->Target))
   , DynamicDownload(false)
 {
-  this->RelBuildFilePath = this->GetRelBuildFilePath(target);
+  this->RelBuildFilePath = this->GetRelBuildFilePath(target->Target);
 
   this->RelOutputFileName =
     this->RelBuildFilePath + this->Target->GetName() + ".a";
 
   this->RelBuildFileName = this->RelBuildFilePath;
-  this->RelBuildFileName += this->GetBuildFileName(target);
+  this->RelBuildFileName += this->GetBuildFileName(target->Target);
 
-  std::string absPathToRoot = this->GetAbsPathToRoot(target);
+  std::string absPathToRoot = this->GetAbsPathToRoot(target->Target);
   absPathToRoot = this->AddSlashIfNeededToPath(absPathToRoot);
   this->AbsBuildFilePath = absPathToRoot + this->RelBuildFilePath;
   this->AbsBuildFileName = absPathToRoot + this->RelBuildFileName;
@@ -127,7 +128,8 @@ void cmGhsMultiTargetGenerator::Generate()
       {
       config = "RELEASE";
       }
-    const std::string language(this->Target->GetLinkerLanguage(config));
+    const std::string language(
+          this->GeneratorTarget->GetLinkerLanguage(config));
     config = cmSystemTools::UpperCase(config);
     this->DynamicDownload = this->DetermineIfDynamicDownload(config, language);
     if (this->DynamicDownload)
@@ -149,10 +151,6 @@ void cmGhsMultiTargetGenerator::Generate()
       this->WriteTargetLinkLibraries();
       }
     this->WriteCustomCommands();
-    if (this->DynamicDownload)
-      {
-      *this->GetFolderBuildStreams() << "    " << this->DDOption << std::endl;
-      }
 
     this->WriteSources(objectSources);
     }
@@ -228,9 +226,11 @@ void cmGhsMultiTargetGenerator::WriteTypeSpecifics(const std::string &config,
       }
     if (this->IsTargetGroup())
       {
-      *this->GetFolderBuildStreams() << "    -non_shared" << std::endl;
-      *this->GetFolderBuildStreams() << "    -o \"" << outputDir
-                                     << outputFilename << ".elf\""
+      *this->GetFolderBuildStreams()
+          << "    {optgroup=GhsCommonOptions} -o \"" << outputDir
+          << outputFilename << ".elf\"" << std::endl;
+      *this->GetFolderBuildStreams() << "    :extraOutputFile=\"" << outputDir
+                                     << outputFilename << ".elf.ael\""
                                      << std::endl;
       }
     else
@@ -328,7 +328,8 @@ void cmGhsMultiTargetGenerator::WriteCompilerDefinitions(
   const std::string &config, const std::string &language)
 {
   std::vector<std::string> compileDefinitions;
-  this->Target->GetCompileDefinitions(compileDefinitions, config, language);
+  this->GeneratorTarget->GetCompileDefinitions(compileDefinitions,
+                                               config, language);
   for (std::vector<std::string>::const_iterator cdI =
          compileDefinitions.begin();
        cdI != compileDefinitions.end(); ++cdI)
@@ -341,7 +342,7 @@ void cmGhsMultiTargetGenerator::WriteIncludes(const std::string &config,
                                               const std::string &language)
 {
   std::vector<std::string> includes =
-    this->Target->GetIncludeDirectories(config, language);
+    this->GeneratorTarget->GetIncludeDirectories(config, language);
   for (std::vector<std::string>::const_iterator includes_i = includes.begin();
        includes_i != includes.end(); ++includes_i)
     {
@@ -354,11 +355,11 @@ void cmGhsMultiTargetGenerator::WriteTargetLinkLibraries()
 {
   // library directories
   cmTargetDependSet tds =
-    this->GetGlobalGenerator()->GetTargetDirectDepends(*this->Target);
+    this->GetGlobalGenerator()->GetTargetDirectDepends(this->GeneratorTarget);
   for (cmTargetDependSet::iterator tdsI = tds.begin(); tdsI != tds.end();
        ++tdsI)
     {
-    const cmTarget *tg(*tdsI);
+    const cmTarget *tg = (*tdsI)->Target;
     *this->GetFolderBuildStreams() << "    -L\"" << GetAbsBuildFilePath(tg)
                                    << "\"" << std::endl;
     }
@@ -373,7 +374,6 @@ void cmGhsMultiTargetGenerator::WriteTargetLinkLibraries()
     cmTarget *tg(GetGlobalGenerator()->FindTarget(libName));
     if (NULL != tg)
       {
-      cmGhsMultiTargetGenerator gmtg(tg);
       libName = tg->GetName() + ".a";
       }
     *this->GetFolderBuildStreams() << "    -l\"" << libName << "\""
@@ -452,14 +452,17 @@ void cmGhsMultiTargetGenerator::WriteSources(
       this->Makefile->GetHomeOutputDirectory(), sgPath,
       GhsMultiGpj::SUBPROJECT, this->RelBuildFilePath);
 
-    if ((*si)->GetExtension() == ".int")
+    std::string fullSourcePath((*si)->GetFullPath());
+    if ((*si)->GetExtension() == "int" || (*si)->GetExtension() == "bsp")
       {
-      *this->FolderBuildStreams[sgPath] << "\"" << (*si)->GetFullPath() << "\""
-                                        << std::endl;
+      *this->FolderBuildStreams[sgPath] << fullSourcePath << std::endl;
       }
     else
       {
-      *this->FolderBuildStreams[sgPath] << (*si)->GetFullPath() << std::endl;
+      //WORKAROUND: GHS MULTI needs the path to use backslashes without quotes
+      //  to open files in search as of version 6.1.6
+      cmsys::SystemTools::ReplaceString(fullSourcePath, "/", "\\");
+      *this->FolderBuildStreams[sgPath] << fullSourcePath << std::endl;
       }
 
     if ("ld" != (*si)->GetExtension() && "int" != (*si)->GetExtension() &&
@@ -557,7 +560,7 @@ bool cmGhsMultiTargetGenerator::IsNotKernel(std::string const &config,
 {
   bool output;
   std::vector<std::string> options;
-  this->Target->GetCompileOptions(options, config, language);
+  this->GeneratorTarget->GetCompileOptions(options, config, language);
   output =
     options.end() == std::find(options.begin(), options.end(), "-kernel");
   return output;
@@ -586,7 +589,7 @@ bool cmGhsMultiTargetGenerator::DetermineIfDynamicDownload(
 {
   std::vector<std::string> options;
   bool output = false;
-  this->Target->GetCompileOptions(options, config, language);
+  this->GeneratorTarget->GetCompileOptions(options, config, language);
   for (std::vector<std::string>::const_iterator options_i = options.begin();
        options_i != options.end(); ++options_i)
     {

@@ -191,11 +191,11 @@ public:
   ///! Compute the md5sum of a file
   static bool ComputeFileMD5(const std::string& source, char* md5out);
 
-  ///! Get the SHA thumbprint for a certificate file
-  static std::string ComputeCertificateThumbprint(const std::string& source);
-
   /** Compute the md5sum of a string.  */
   static std::string ComputeStringMD5(const std::string& input);
+
+  ///! Get the SHA thumbprint for a certificate file
+  static std::string ComputeCertificateThumbprint(const std::string& source);
 
   /**
    * Run a single executable command
@@ -259,11 +259,6 @@ public:
   static void ParseUnixCommandLine(const char* command,
                                    std::vector<std::string>& args);
 
-  /** Compute an escaped version of the given argument for use in a
-      windows shell.  See kwsys/System.h.in for details.  */
-  static std::string EscapeWindowsShellArgument(const char* arg,
-                                                int shell_flags);
-
   static void EnableMessages() { s_DisableMessages = false; }
   static void DisableMessages() { s_DisableMessages = true; }
   static void DisableRunCommandOutput() {s_DisableRunCommandOutput = true; }
@@ -299,6 +294,8 @@ public:
    * Compare versions
    */
   static bool VersionCompare(CompareOp op, const char* lhs, const char* rhs);
+  static bool VersionCompareGreater(std::string const& lhs,
+                                    std::string const& rhs);
 
   /**
    * Determine the file type based on the extension
@@ -341,8 +338,6 @@ public:
   // be used when RunCommand is called from cmake, because the
   // running cmake needs paths to be in its format
   static std::string ConvertToRunCommandPath(const char* path);
-  //! Check if the first string ends with the second one.
-  static bool StringEndsWith(const char* str1, const char* str2);
 
   /** compute the relative path from local to remote.  local must
       be a directory.  remote can be a file or a directory.
@@ -433,6 +428,7 @@ public:
   static std::string const& GetCMakeCommand();
   static std::string const& GetCMakeGUICommand();
   static std::string const& GetCMakeCursesCommand();
+  static std::string const& GetCMClDepsCommand();
   static std::string const& GetCMakeRoot();
 
   /** Echo a message in color using KWSys's Terminal cprintf.  */
@@ -472,6 +468,7 @@ public:
 
   /** Convert string to long. Expected that the whole string is an integer */
   static bool StringToLong(const char* str, long* value);
+  static bool StringToULong(const char* str, unsigned long* value);
 
 #ifdef _WIN32
   struct WindowsFileRetry

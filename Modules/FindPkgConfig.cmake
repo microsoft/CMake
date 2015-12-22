@@ -70,14 +70,14 @@ macro(_pkgconfig_invoke _pkglist _prefix _varname _regexp)
   execute_process(
     COMMAND ${PKG_CONFIG_EXECUTABLE} ${ARGN} ${_pkglist}
     OUTPUT_VARIABLE _pkgconfig_invoke_result
-    RESULT_VARIABLE _pkgconfig_failed)
+    RESULT_VARIABLE _pkgconfig_failed
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
 
   if (_pkgconfig_failed)
     set(_pkgconfig_${_varname} "")
     _pkgconfig_unset(${_prefix}_${_varname})
   else()
     string(REGEX REPLACE "[\r\n]"                  " " _pkgconfig_invoke_result "${_pkgconfig_invoke_result}")
-    string(REGEX REPLACE " +$"                     ""  _pkgconfig_invoke_result "${_pkgconfig_invoke_result}")
 
     if (NOT ${_regexp} STREQUAL "")
       string(REGEX REPLACE "${_regexp}" " " _pkgconfig_invoke_result "${_pkgconfig_invoke_result}")
@@ -90,6 +90,26 @@ macro(_pkgconfig_invoke _pkglist _prefix _varname _regexp)
     _pkgconfig_set(${_prefix}_${_varname} "${_pkgconfig_invoke_result}")
   endif()
 endmacro()
+
+#[========================================[.rst:
+.. command:: pkg_get_variable
+
+  Retrieves the value of a variable from a package::
+
+    pkg_get_variable(<RESULT> <MODULE> <VARIABLE>)
+
+  For example:
+
+  .. code-block:: cmake
+
+    pkg_get_variable(GI_GIRDIR gobject-introspection-1.0 girdir)
+#]========================================]
+function (pkg_get_variable result pkg variable)
+  _pkgconfig_invoke("${pkg}" "prefix" "result" "" "--variable=${variable}")
+  set("${result}"
+    "${prefix_result}"
+    PARENT_SCOPE)
+endfunction ()
 
 # Invokes pkgconfig two times; once without '--static' and once with
 # '--static'
@@ -109,7 +129,7 @@ macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cma
       set(${_no_cmake_path} 1)
       set(${_no_cmake_environment_path} 1)
     endif()
-  elseif(${CMAKE_MINIMUM_REQUIRED_VERSION} VERSION_LESS 3.1)
+  elseif(CMAKE_MINIMUM_REQUIRED_VERSION VERSION_LESS 3.1)
     set(${_no_cmake_path} 1)
     set(${_no_cmake_environment_path} 1)
   endif()
@@ -192,9 +212,9 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
     # give out status message telling checked module
     if (NOT ${_is_silent})
       if (_pkg_check_modules_cnt EQUAL 1)
-        message(STATUS "checking for module '${_pkg_check_modules_list}'")
+        message(STATUS "Checking for module '${_pkg_check_modules_list}'")
       else()
-        message(STATUS "checking for modules '${_pkg_check_modules_list}'")
+        message(STATUS "Checking for modules '${_pkg_check_modules_list}'")
       endif()
     endif()
 
@@ -327,7 +347,7 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
       # evaluate result and tell failures
       if (_pkgconfig_retval)
         if(NOT ${_is_silent})
-          message(STATUS "  package '${_pkg_check_modules_pkg}' not found")
+          message(STATUS "  Package '${_pkg_check_modules_pkg}' not found")
         endif()
 
         set(_pkg_check_modules_failed 1)
@@ -356,12 +376,12 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
         endif()
 
         _pkgconfig_invoke(${_pkg_check_modules_pkg} "${_pkg_check_prefix}" VERSION    ""   --modversion )
-        _pkgconfig_invoke(${_pkg_check_modules_pkg} "${_pkg_check_prefix}" PREFIX     ""   --variable=prefix )
-        _pkgconfig_invoke(${_pkg_check_modules_pkg} "${_pkg_check_prefix}" INCLUDEDIR ""   --variable=includedir )
-        _pkgconfig_invoke(${_pkg_check_modules_pkg} "${_pkg_check_prefix}" LIBDIR     ""   --variable=libdir )
+        pkg_get_variable("${_pkg_check_prefix}_PREFIX" ${_pkg_check_modules_pkg} "prefix")
+        pkg_get_variable("${_pkg_check_prefix}_INCLUDEDIR" ${_pkg_check_modules_pkg} "includedir")
+        pkg_get_variable("${_pkg_check_prefix}_LIBDIR" ${_pkg_check_modules_pkg} "libdir")
 
         if (NOT ${_is_silent})
-          message(STATUS "  found ${_pkg_check_modules_pkg}, version ${_pkgconfig_VERSION}")
+          message(STATUS "  Found ${_pkg_check_modules_pkg}, version ${_pkgconfig_VERSION}")
         endif ()
       endforeach()
 
@@ -529,7 +549,7 @@ macro(pkg_search_module _prefix _module0)
     _pkgconfig_parse_options(_pkg_modules_alt _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path "${_module0}" ${ARGN})
 
     if (NOT ${_pkg_is_silent})
-      message(STATUS "checking for one of the modules '${_pkg_modules_alt}'")
+      message(STATUS "Checking for one of the modules '${_pkg_modules_alt}'")
     endif ()
 
     # iterate through all modules and stop at the first working one.

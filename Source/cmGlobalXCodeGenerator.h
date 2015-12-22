@@ -41,8 +41,7 @@ public:
   static void GetDocumentation(cmDocumentationEntry& entry);
 
   ///! Create a local generator appropriate to this Global Generator
-  virtual cmLocalGenerator *CreateLocalGenerator(cmLocalGenerator* parent,
-                                                 cmState::Snapshot snapshot);
+  virtual cmLocalGenerator *CreateLocalGenerator(cmMakefile *mf);
 
   /**
    * Try to determine system information such as shared library
@@ -88,6 +87,7 @@ public:
   virtual bool SetGeneratorToolset(std::string const& ts, cmMakefile* mf);
   void AppendFlag(std::string& flags, std::string const& flag);
 protected:
+  virtual bool Compute();
   virtual void Generate();
 private:
   cmXCodeObject* CreateOrGetPBXGroup(cmTarget& cmtarget,

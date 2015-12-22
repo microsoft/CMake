@@ -72,11 +72,26 @@ bool cmTargetIncludeDirectoriesCommand
                       bool prepend, bool system)
 {
   cmListFileBacktrace lfbt = this->Makefile->GetBacktrace();
-  cmValueWithOrigin entry(this->Join(content), lfbt);
-  tgt->InsertInclude(entry, prepend);
+  tgt->InsertInclude(this->Join(content), lfbt, prepend);
   if (system)
     {
-    tgt->AddSystemIncludeDirectories(content);
+    std::string prefix =
+      this->Makefile->GetCurrentSourceDirectory() + std::string("/");
+    std::set<std::string> sdirs;
+    for (std::vector<std::string>::const_iterator it = content.begin();
+      it != content.end(); ++it)
+      {
+      if (cmSystemTools::FileIsFullPath(it->c_str())
+          || cmGeneratorExpression::Find(*it) == 0)
+        {
+        sdirs.insert(*it);
+        }
+      else
+        {
+        sdirs.insert(prefix + *it);
+        }
+      }
+    tgt->AddSystemIncludeDirectories(sdirs);
     }
   return true;
 }
@@ -92,7 +107,7 @@ void cmTargetIncludeDirectoriesCommand
 
   if (system)
     {
-    std::string joined = cmJoin(content, ";");
+    std::string joined = this->Join(content);
     tgt->AppendProperty("INTERFACE_SYSTEM_INCLUDE_DIRECTORIES",
                         joined.c_str());
     }

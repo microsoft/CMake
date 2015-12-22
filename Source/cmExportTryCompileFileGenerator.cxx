@@ -13,9 +13,16 @@
 #include "cmExportTryCompileFileGenerator.h"
 
 #include "cmGeneratedFileStream.h"
+#include "cmGlobalGenerator.h"
 #include "cmGeneratorExpressionDAGChecker.h"
 
 //----------------------------------------------------------------------------
+cmExportTryCompileFileGenerator::cmExportTryCompileFileGenerator(
+    cmGlobalGenerator* gg)
+{
+  gg->CreateGenerationObjects(cmGlobalGenerator::ImportedOnly);
+}
+
 bool cmExportTryCompileFileGenerator::GenerateMainFile(std::ostream& os)
 {
   std::set<cmTarget const*> emitted;
@@ -99,8 +106,6 @@ cmExportTryCompileFileGenerator::PopulateProperties(cmTarget const* target,
         || i->first.find("IMPORTED_LINK_DEPENDENT_LIBRARIES") == 0
         || i->first.find("INTERFACE_LINK_LIBRARIES") == 0)
       {
-      const std::string libs = i->second.GetValue();
-
       std::string evalResult = this->FindTargets(i->first,
                                                  target, emitted);
 
@@ -118,13 +123,14 @@ cmExportTryCompileFileGenerator::PopulateProperties(cmTarget const* target,
       }
     }
 }
+
 std::string
-cmExportTryCompileFileGenerator::InstallNameDir(cmTarget* target,
+cmExportTryCompileFileGenerator::InstallNameDir(cmGeneratorTarget* target,
                                                 const std::string& config)
 {
   std::string install_name_dir;
 
-  cmMakefile* mf = target->GetMakefile();
+  cmMakefile* mf = target->Target->GetMakefile();
   if(mf->IsOn("CMAKE_PLATFORM_HAS_INSTALLNAME"))
     {
     install_name_dir =

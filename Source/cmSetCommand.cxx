@@ -48,7 +48,7 @@ bool cmSetCommand
       return true;
       }
 
-    // if it will be cleared, then clear it if it isn;t already clear
+    // if it will be cleared, then clear it if it isn't already clear
     if (currValue)
       {
       cmSystemTools::PutEnv(putEnvArg);
@@ -59,7 +59,7 @@ bool cmSetCommand
   // SET (VAR) // Removes the definition of VAR.
   if (args.size() == 1)
     {
-    this->Makefile->RemoveDefinition(args[0]);
+    this->Makefile->RemoveDefinition(variable);
     return true;
     }
   // SET (VAR PARENT_SCOPE) // Removes the definition of VAR
@@ -108,7 +108,7 @@ bool cmSetCommand
     }
 
   // collect any values into a single semi-colon separated value list
-  value = cmJoin(cmRange(args).advance(1).retreat(ignoreLastArgs), ";");
+  value = cmJoin(cmMakeRange(args).advance(1).retreat(ignoreLastArgs), ";");
 
   if (parentScope)
     {

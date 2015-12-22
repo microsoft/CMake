@@ -115,7 +115,9 @@ void CCONV cmAddCacheDefinition(void *arg, const char* name,
 const char* CCONV cmGetProjectName(void *arg)
 {
   cmMakefile *mf = static_cast<cmMakefile *>(arg);
-  return mf->GetProjectName();
+  static std::string name;
+  name = mf->GetProjectName();
+  return name.c_str();
 }
 
 const char* CCONV cmGetHomeDirectory(void *arg)
@@ -426,8 +428,7 @@ int CCONV cmExecuteCommand(void *arg, const char *name,
     {
     // Assume all arguments are quoted.
     lff.Arguments.push_back(
-      cmListFileArgument(args[i], cmListFileArgument::Quoted,
-                         "[CMake-Plugin]", 0));
+      cmListFileArgument(args[i], cmListFileArgument::Quoted, 0));
     }
   cmExecutionStatus status;
   return mf->ExecuteCommand(lff,status);
@@ -526,11 +527,9 @@ void * CCONV cmCreateSourceFile(void)
   return (void*)new cmCPluginAPISourceFile;
 }
 
-void * CCONV cmCreateNewSourceFile(void *arg)
+void * CCONV cmCreateNewSourceFile(void *)
 {
-  cmMakefile *mf = static_cast<cmMakefile *>(arg);
   cmCPluginAPISourceFile *sf = new cmCPluginAPISourceFile;
-  sf->Properties.SetCMakeInstance(mf->GetCMakeInstance());
   return (void*)sf;
 }
 
@@ -630,11 +629,7 @@ const char * CCONV  cmSourceFileGetProperty(void *arg,const char *prop)
       {
       return sf->FullPath.c_str();
       }
-    bool chain = false;
-    // Ignore chain because old code will not expect it and it is a
-    // pain to implement here anyway.
-    return sf->Properties.GetPropertyValue(prop, cmProperty::SOURCE_FILE,
-                                           chain);
+    return sf->Properties.GetPropertyValue(prop);
     }
 }
 
@@ -662,7 +657,7 @@ void CCONV cmSourceFileSetProperty(void *arg,const char *prop,
   else if(prop)
     {
     if(!value) { value = "NOTFOUND"; }
-    sf->Properties.SetProperty(prop, value, cmProperty::SOURCE_FILE);
+    sf->Properties.SetProperty(prop, value);
     }
 }
 
@@ -801,8 +796,7 @@ void CCONV cmSourceFileSetName2(void *arg, const char* name, const char* dir,
   // Implement the old SetName method code here.
   if(headerFileOnly)
     {
-    sf->Properties.SetProperty("HEADER_FILE_ONLY", "1",
-                               cmProperty::SOURCE_FILE);
+    sf->Properties.SetProperty("HEADER_FILE_ONLY", "1");
     }
   sf->SourceName = name;
   std::string fname = sf->SourceName;

@@ -23,10 +23,8 @@
 #include <assert.h>
 
 cmLocalNinjaGenerator::cmLocalNinjaGenerator(cmGlobalGenerator* gg,
-                                             cmLocalGenerator* parent,
-                                             cmState::Snapshot snapshot)
-  : cmLocalGenerator(gg, parent, snapshot)
-  , ConfigName("")
+                                             cmMakefile* mf)
+  : cmLocalCommonGenerator(gg, mf)
   , HomeRelativeOutputPath("")
 {
   this->TargetImplib = "$TARGET_IMPLIB";
@@ -41,6 +39,15 @@ cmLocalNinjaGenerator::~cmLocalNinjaGenerator()
 
 void cmLocalNinjaGenerator::Generate()
 {
+  // Compute the path to use when referencing the current output
+  // directory from the top output directory.
+  this->HomeRelativeOutputPath =
+    this->Convert(this->Makefile->GetCurrentBinaryDirectory(), HOME_OUTPUT);
+  if(this->HomeRelativeOutputPath == ".")
+    {
+    this->HomeRelativeOutputPath = "";
+    }
+
   this->SetConfigName();
 
   this->WriteProcessedMakefile(this->GetBuildFileStream());
@@ -49,7 +56,7 @@ void cmLocalNinjaGenerator::Generate()
 #endif
 
   // We do that only once for the top CMakeLists.txt file.
-  if(this->IsRootMakefile())
+  if(this->Makefile->IsRootMakefile())
     {
     this->WriteBuildFileTop();
 
@@ -82,32 +89,13 @@ void cmLocalNinjaGenerator::Generate()
       // Add the target to "all" if required.
       if (!this->GetGlobalNinjaGenerator()->IsExcluded(
             this->GetGlobalNinjaGenerator()->GetLocalGenerators()[0],
-            *t->second->Target))
+            t->second))
         this->GetGlobalNinjaGenerator()->AddDependencyToAll(t->second->Target);
       delete tg;
       }
     }
 
   this->WriteCustomCommandBuildStatements();
-}
-
-// Implemented in:
-//   cmLocalUnixMakefileGenerator3.
-// Used in:
-//   Source/cmMakefile.cxx
-//   Source/cmGlobalGenerator.cxx
-void cmLocalNinjaGenerator::Configure()
-{
-  // Compute the path to use when referencing the current output
-  // directory from the top output directory.
-  this->HomeRelativeOutputPath =
-    this->Convert(this->Makefile->GetCurrentBinaryDirectory(), HOME_OUTPUT);
-  if(this->HomeRelativeOutputPath == ".")
-    {
-    this->HomeRelativeOutputPath = "";
-    }
-  this->cmLocalGenerator::Configure();
-
 }
 
 // TODO: Picked up from cmLocalUnixMakefileGenerator3.  Refactor it.
@@ -204,16 +192,14 @@ void cmLocalNinjaGenerator::WriteProjectHeader(std::ostream& os)
 void cmLocalNinjaGenerator::WriteNinjaRequiredVersion(std::ostream& os)
 {
   // Default required version
-  // Ninja generator uses 'deps' and 'msvc_deps_prefix' introduced in 1.3
-  std::string requiredVersion = "1.3";
+  std::string requiredVersion =
+      this->GetGlobalNinjaGenerator()->RequiredNinjaVersion();
 
   // Ninja generator uses the 'console' pool if available (>= 1.5)
-  std::string usedVersion = this->GetGlobalNinjaGenerator()->ninjaVersion();
-  if(cmSystemTools::VersionCompare(cmSystemTools::OP_LESS,
-                                   usedVersion.c_str(),
-                                   "1.5") ==  false)
+  if(this->GetGlobalNinjaGenerator()->SupportsConsolePool())
     {
-      requiredVersion = "1.5";
+    requiredVersion =
+      this->GetGlobalNinjaGenerator()->RequiredNinjaVersionForConsolePool();
     }
 
   cmGlobalNinjaGenerator::WriteComment(os,
@@ -271,22 +257,6 @@ void cmLocalNinjaGenerator::WriteNinjaFilesInclusion(std::ostream& os)
   os << "\n";
 }
 
-void cmLocalNinjaGenerator::SetConfigName()
-{
-  // Store the configuration name that will be generated.
-  if(const char* config =
-       this->GetMakefile()->GetDefinition("CMAKE_BUILD_TYPE"))
-    {
-    // Use the build type given by the user.
-    this->ConfigName = config;
-    }
-  else
-    {
-    // No configuration type given.
-    this->ConfigName = "";
-    }
-}
-
 //----------------------------------------------------------------------------
 void cmLocalNinjaGenerator::ComputeObjectFilenames(
                         std::map<cmSourceFile const*, std::string>& mapping,
@@ -308,19 +278,10 @@ void cmLocalNinjaGenerator::WriteProcessedMakefile(std::ostream& os)
     << "# Write statements declared in CMakeLists.txt:" << std::endl
     << "# "
     << this->Makefile->GetDefinition("CMAKE_CURRENT_LIST_FILE") << std::endl;
-  if(this->IsRootMakefile())
+  if(this->Makefile->IsRootMakefile())
     os << "# Which is the root file." << std::endl;
   cmGlobalNinjaGenerator::WriteDivider(os);
   os << std::endl;
-}
-
-std::string cmLocalNinjaGenerator::ConvertToNinjaPath(const std::string& path)
-{
-  std::string convPath = this->Convert(path, cmLocalGenerator::HOME_OUTPUT);
-#ifdef _WIN32
-  cmSystemTools::ReplaceString(convPath, "/", "\\");
-#endif
-  return convPath;
 }
 
 void
@@ -346,7 +307,8 @@ void cmLocalNinjaGenerator::AppendCustomCommandDeps(
        i != deps.end(); ++i) {
     std::string dep;
     if (this->GetRealDependency(*i, this->GetConfigName(), dep))
-      ninjaDeps.push_back(ConvertToNinjaPath(dep));
+      ninjaDeps.push_back(
+        this->GetGlobalNinjaGenerator()->ConvertToNinjaPath(dep));
   }
 }
 
@@ -431,7 +393,7 @@ cmLocalNinjaGenerator::WriteCustomCommandBuildStatement(
   if (this->GetGlobalNinjaGenerator()->SeenCustomCommand(cc))
     return;
 
-  cmCustomCommandGenerator ccg(*cc, this->GetConfigName(), this->Makefile);
+  cmCustomCommandGenerator ccg(*cc, this->GetConfigName(), this);
 
   const std::vector<std::string> &outputs = ccg.GetOutputs();
   const std::vector<std::string> &byproducts = ccg.GetByproducts();
@@ -443,9 +405,11 @@ cmLocalNinjaGenerator::WriteCustomCommandBuildStatement(
     at us.  How to know which ExternalProject step actually provides it?
 #endif
   std::transform(outputs.begin(), outputs.end(),
-                 ninjaOutputs.begin(), MapToNinjaPath());
+                 ninjaOutputs.begin(),
+                 this->GetGlobalNinjaGenerator()->MapToNinjaPath());
   std::transform(byproducts.begin(), byproducts.end(),
-                 ninjaOutputs.begin() + outputs.size(), MapToNinjaPath());
+                 ninjaOutputs.begin() + outputs.size(),
+                 this->GetGlobalNinjaGenerator()->MapToNinjaPath());
   this->AppendCustomCommandDeps(ccg, ninjaDeps);
 
   for (cmNinjaDeps::iterator i = ninjaOutputs.begin(); i != ninjaOutputs.end();

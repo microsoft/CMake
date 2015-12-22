@@ -27,6 +27,8 @@ in each directory of a source tree with the name CMakeLists.txt.
 Users build a project by using CMake to generate a build system for a
 native tool on their platform.
 
+.. _`CMake Options`:
+
 Options
 =======
 
@@ -113,14 +115,18 @@ Options
 ``--debug-output``
  Put cmake in a debug mode.
 
- Print extra stuff during the cmake run like stack traces with
+ Print extra information during the cmake run like stack traces with
  message(send_error ) calls.
 
 ``--trace``
  Put cmake in trace mode.
 
- Print a trace of all calls made and from where with
- message(send_error ) calls.
+ Print a trace of all calls made and from where.
+
+``--trace-expand``
+ Put cmake in trace mode.
+
+ Like ``--trace``, but with variables expanded.
 
 ``--warn-uninitialized``
  Warn about uninitialized values.

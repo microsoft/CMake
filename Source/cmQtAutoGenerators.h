@@ -15,8 +15,10 @@
 #define cmQtAutoGenerators_h
 
 #include <list>
+#include <vector>
+#include <string>
+#include <map>
 
-class cmGlobalGenerator;
 class cmMakefile;
 
 class cmQtAutoGenerators
@@ -25,18 +27,7 @@ public:
   cmQtAutoGenerators();
   bool Run(const std::string& targetDirectory, const std::string& config);
 
-  bool InitializeAutogenTarget(cmTarget* target);
-  void SetupAutoGenerateTarget(cmTarget const* target);
-  void SetupSourceFiles(cmTarget const* target);
-
 private:
-  void SetupAutoMocTarget(cmTarget const* target,
-                          const std::string &autogenTargetName,
-                          std::map<std::string, std::string> &configIncludes,
-                          std::map<std::string, std::string> &configDefines);
-  void SetupAutoUicTarget(cmTarget const* target,
-                        std::map<std::string, std::string> &configUicOptions);
-  void SetupAutoRccTarget(cmTarget const* target);
 
   bool ReadAutogenInfoFile(cmMakefile* makefile,
                            const std::string& targetDirectory,
@@ -82,19 +73,8 @@ private:
   bool EndsWith(const std::string& str, const std::string& with);
   bool StartsWith(const std::string& str, const std::string& with);
 
-  void MergeUicOptions(std::vector<std::string> &opts,
+  static void MergeUicOptions(std::vector<std::string> &opts,
                        const std::vector<std::string> &fileOpts, bool isQt5);
-
-  void MergeRccOptions(std::vector<std::string> &opts,
-                       const std::vector<std::string> &fileOpts, bool isQt5);
-
-  std::string GetRccExecutable(cmTarget const* target);
-
-  std::string ListQt5RccInputs(cmSourceFile* sf, cmTarget const* target,
-                               std::vector<std::string>& depends);
-
-  std::string ListQt4RccInputs(cmSourceFile* sf,
-                               std::vector<std::string>& depends);
 
   bool InputFilesNewerThanQrc(const std::string& qrcFile,
                               const std::string& rccOutput);
@@ -105,7 +85,6 @@ private:
   std::string SkipMoc;
   std::string SkipUic;
   std::string Headers;
-  bool IncludeProjectDirsBefore;
   std::string Srcdir;
   std::string Builddir;
   std::string MocExecutable;
@@ -131,6 +110,7 @@ private:
   std::map<std::string, std::string> RccOptions;
   std::map<std::string, std::vector<std::string> > RccInputs;
 
+  bool IncludeProjectDirsBefore;
   bool Verbose;
   bool ColorOutput;
   bool RunMocFailed;
@@ -138,7 +118,6 @@ private:
   bool RunRccFailed;
   bool GenerateAll;
   bool RelaxedMode;
-
 };
 
 #endif

@@ -17,8 +17,6 @@ macro(ADD_TEST_MACRO NAME COMMAND)
   list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/${dir}")
 endmacro()
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/RegexEscapeString.cmake)
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/CheckFortran.cmake)
 
 # Fake a user home directory to avoid polluting the real one.
@@ -215,6 +213,29 @@ if(BUILD_TESTING)
         set(CMake_TEST_XCODE_VERSION "${CMAKE_MATCH_1}")
       endif()
     endif()
+    if(CMAKE_OSX_SYSROOT)
+      execute_process(
+        COMMAND xcodebuild -sdk ${CMAKE_OSX_SYSROOT} -version ProductName
+        OUTPUT_VARIABLE _stdout
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_VARIABLE _stderr
+        RESULT_VARIABLE _failed
+        )
+      if(NOT _failed)
+        set(CMAKE_OSX_SDKPRODUCT "${_stdout}")
+      endif()
+
+      execute_process(
+        COMMAND xcodebuild -sdk ${CMAKE_OSX_SYSROOT} -version SDKVersion
+        OUTPUT_VARIABLE _stdout
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_VARIABLE _stderr
+        RESULT_VARIABLE _failed
+        )
+      if(NOT _failed)
+        set(CMAKE_OSX_SDKVERSION "${_stdout}")
+      endif()
+    endif()
   endif()
 
   # Use 1500 or CTEST_TEST_TIMEOUT for long test timeout value,
@@ -255,11 +276,22 @@ if(BUILD_TESTING)
   if(TEST_RESOURCES)
     ADD_TEST_MACRO(VSResource VSResource)
   endif()
+  ADD_TEST_MACRO(MSManifest MSManifest)
   ADD_TEST_MACRO(Simple Simple)
   ADD_TEST_MACRO(PreOrder PreOrder)
   ADD_TEST_MACRO(MissingSourceFile MissingSourceFile)
   set_tests_properties(MissingSourceFile PROPERTIES
     PASS_REGULAR_EXPRESSION "CMake Error at CMakeLists.txt:3 \\(add_executable\\):[ \r\n]*Cannot find source file:[ \r\n]*DoesNotExist/MissingSourceFile.c")
+  if(CMake_TEST_XCODE_VERSION AND CMAKE_OSX_SDKVERSION AND CMAKE_OSX_SDKPRODUCT)
+    if((NOT CMake_TEST_XCODE_VERSION VERSION_LESS 6.1) AND
+       ((NOT CMAKE_OSX_SDKPRODUCT STREQUAL "Mac OS X") OR
+        (NOT CMAKE_OSX_SDKVERSION VERSION_LESS 10.10)))
+      if(CMAKE_GENERATOR STREQUAL "Xcode")
+        ADD_TEST_MACRO(SwiftMix SwiftMix)
+        ADD_TEST_MACRO(SwiftOnly SwiftOnly)
+      endif()
+    endif()
+  endif()
   if(CMAKE_Fortran_COMPILER)
     ADD_TEST_MACRO(FortranOnly FortranOnly)
   endif()
@@ -1328,6 +1360,12 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
   if(CMake_TEST_FindJsonCpp)
     add_subdirectory(FindJsonCpp)
   endif()
+
+  if(CMake_TEST_FindOpenSSL)
+    add_subdirectory(FindOpenSSL)
+  endif()
+
+  add_subdirectory(FindThreads)
 
   # Matlab module
   if(CMake_TEST_FindMatlab)
@@ -2431,37 +2469,6 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
   set_tests_properties(CTestTestEmptyBinaryDirectory PROPERTIES
     PASS_REGULAR_EXPRESSION "TEST_SUCCESS")
 
-  configure_file(
-    "${CMake_SOURCE_DIR}/Tests/CTestTestConfigFileInBuildDir/test1.cmake.in"
-    "${CMake_BINARY_DIR}/Tests/CTestTestConfigFileInBuildDir1/test1.cmake"
-    @ONLY ESCAPE_QUOTES)
-  add_test(CTestTestConfigFileInBuildDir1 ${CMAKE_CTEST_COMMAND}
-    -S "${CMake_BINARY_DIR}/Tests/CTestTestConfigFileInBuildDir1/test1.cmake" -V
-    --output-log "${CMake_BINARY_DIR}/Tests/CTestTestConfigFileInBuildDir1/testOut1.log"
-    )
-  REGEX_ESCAPE_STRING(CTEST_TEST_ESCAPED_SOURCE_DIR "${CMake_SOURCE_DIR}")
-  set_tests_properties(CTestTestConfigFileInBuildDir1 PROPERTIES DEPENDS CTestTestNoBuild
-    PASS_REGULAR_EXPRESSION
-      "Reading ctest configuration file: ${CTEST_TEST_ESCAPED_SOURCE_DIR}.Tests.CTestTestConfigFileInBuildDir.CTestConfig.cmake")
-
-  configure_file(
-    "${CMake_SOURCE_DIR}/Tests/CTestTestConfigFileInBuildDir/test2.cmake.in"
-    "${CMake_BINARY_DIR}/Tests/CTestTestConfigFileInBuildDir2/test2.cmake"
-    @ONLY ESCAPE_QUOTES)
-  configure_file(
-    "${CMake_SOURCE_DIR}/Tests/CTestTestConfigFileInBuildDir/CTestConfig.cmake"
-    "${CMake_BINARY_DIR}/Tests/CTestTestConfigFileInBuildDir2/CTestConfig.cmake"
-    @ONLY ESCAPE_QUOTES COPYONLY)
-  add_test(CTestTestConfigFileInBuildDir2 ${CMAKE_CTEST_COMMAND}
-    -S "${CMake_BINARY_DIR}/Tests/CTestTestConfigFileInBuildDir2/test2.cmake" -V
-    --output-log "${CMake_BINARY_DIR}/Tests/CTestTestConfigFileInBuildDir2/testOut2.log"
-    )
-  REGEX_ESCAPE_STRING(CTEST_TEST_ESCAPED_BINARY_DIR "${CMake_BINARY_DIR}")
-  set_tests_properties(CTestTestConfigFileInBuildDir2 PROPERTIES DEPENDS CTestTestNoBuild
-    REQUIRED_FILES ${CMake_BINARY_DIR}/Tests/CTestTestConfigFileInBuildDir2/CTestConfig.cmake
-    PASS_REGULAR_EXPRESSION
-      "Reading ctest configuration file: ${CTEST_TEST_ESCAPED_BINARY_DIR}.Tests.CTestTestConfigFileInBuildDir2.CTestConfig.cmake")
-
   # test coverage for mumps
   # create a MumpsCoverage dir in the binary tree under Testing to
   # avoid the .NoDartCoverage files in the cmake testing tree
@@ -3042,17 +3049,55 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     if(JNI_H AND EXISTS "${JNI_H}") # in case jni.h is a broken symlink
       file(READ "${JNI_H}" JNI_FILE)
       if("${JNI_FILE}" MATCHES "JDK1_2")
-        add_test(Java ${CMAKE_CTEST_COMMAND}
+        add_test(Java.Jar ${CMAKE_CTEST_COMMAND}
           --build-and-test
           "${CMake_SOURCE_DIR}/Tests/Java"
-          "${CMake_BINARY_DIR}/Tests/Java"
+          "${CMake_BINARY_DIR}/Tests/JavaJar"
           ${build_generator_args}
           --build-project hello
+          --build-target hello
           --build-two-config
-          --build-run-dir "${CMake_BINARY_DIR}/Tests/Java/"
+          --build-run-dir "${CMake_BINARY_DIR}/Tests/JavaJar/"
           --build-options ${build_options}
           --test-command ${JAVA_RUNTIME} -classpath hello.jar HelloWorld)
-        list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/Java")
+        list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/JavaJar")
+        add_test(Java.JarSourceList ${CMAKE_CTEST_COMMAND}
+          --build-and-test
+          "${CMake_SOURCE_DIR}/Tests/Java"
+          "${CMake_BINARY_DIR}/Tests/JavaJarSourceList"
+          ${build_generator_args}
+          --build-project hello
+          --build-target hello2
+          --build-two-config
+          --build-run-dir "${CMake_BINARY_DIR}/Tests/JavaJarSourceList/"
+          --build-options ${build_options}
+          --test-command ${JAVA_RUNTIME} -classpath hello2.jar HelloWorld)
+        list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/JavaJarSourceList")
+
+        # For next test, java tool must have same architecture as toolchain
+        math(EXPR _object_mode "${CMAKE_SIZEOF_VOID_P} * 8")
+        execute_process(
+          COMMAND "${Java_JAVA_EXECUTABLE}" -d${_object_mode} -version
+          OUTPUT_QUIET ERROR_QUIET RESULT_VARIABLE _result
+          )
+        if(_result EQUAL 0)
+          if(CMAKE_CONFIGURATION_TYPES)
+            set (JAVAH_LIBRARY_PATH ${CMake_BINARY_DIR}/Tests/JavaJavah/$<CONFIGURATION>)
+          else()
+            set (JAVAH_LIBRARY_PATH ${CMake_BINARY_DIR}/Tests/JavaJavah)
+          endif()
+          add_test(NAME Java.Javah COMMAND ${CMAKE_CTEST_COMMAND}
+            --build-and-test
+            "${CMake_SOURCE_DIR}/Tests/JavaJavah"
+            "${CMake_BINARY_DIR}/Tests/JavaJavah"
+            ${build_generator_args}
+            --build-project helloJavah
+            --build-two-config
+            --build-run-dir "${CMake_BINARY_DIR}/Tests/JavaJavah/"
+            --build-options ${build_options}
+            --test-command ${JAVA_RUNTIME} -Djava.library.path=${JAVAH_LIBRARY_PATH} -classpath hello3.jar HelloWorld2)
+          list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/JavaJavah")
+        endif()
       endif()
     endif()
   endif()

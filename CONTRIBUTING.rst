@@ -14,7 +14,7 @@ Please subscribe and post to the `CMake Developers List`_ to offer
 contributions.  Regular and productive contributors may be invited
 to gain direct push access.
 
-.. _`CMake Developers List`: http://www.cmake.org/mailman/listinfo/cmake-developers
+.. _`CMake Developers List`: https://cmake.org/mailman/listinfo/cmake-developers
 
 Patches
 =======
@@ -28,7 +28,7 @@ License
 
 We do not require any formal copyright assignment or contributor license
 agreement.  Any contributions intentionally sent upstream are presumed
-to be offerred under terms of the OSI-approved BSD 3-clause License.
+to be offered under terms of the OSI-approved BSD 3-clause License.
 See `Copyright.txt`_ for details.
 
 .. _`Copyright.txt`: Copyright.txt

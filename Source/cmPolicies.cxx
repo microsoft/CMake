@@ -255,6 +255,22 @@ bool cmPolicies::ApplyPolicyVersion(cmMakefile *mf,
           {
           return false;
           }
+        if(pid == cmPolicies::CMP0001 &&
+           (status == cmPolicies::WARN || status == cmPolicies::OLD))
+          {
+          if(!(mf->GetState()
+               ->GetInitializedCacheValue("CMAKE_BACKWARDS_COMPATIBILITY")))
+            {
+            // Set it to 2.4 because that is the last version where the
+            // variable had meaning.
+            mf->AddCacheDefinition
+              ("CMAKE_BACKWARDS_COMPATIBILITY", "2.4",
+               "For backwards compatibility, what version of CMake "
+               "commands and "
+               "syntax should this version of CMake try to support.",
+               cmState::STRING);
+            }
+          }
         }
       }
     else
@@ -343,31 +359,18 @@ cmPolicies::GetRequiredAlwaysPolicyError(cmPolicies::PolicyID id)
   return e.str();
 }
 
-cmPolicies::PolicyMap::PolicyMap()
-{
-  this->UNDEFINED.set();
-}
-
 cmPolicies::PolicyStatus
 cmPolicies::PolicyMap::Get(cmPolicies::PolicyID id) const
 {
   PolicyStatus status = cmPolicies::WARN;
 
-  if (this->OLD[id])
+  if (this->Status[(POLICY_STATUS_COUNT * id) + OLD])
     {
     status = cmPolicies::OLD;
     }
-  else if (this->NEW[id])
+  else if (this->Status[(POLICY_STATUS_COUNT * id) + NEW])
     {
     status = cmPolicies::NEW;
-    }
-  else if (this->REQUIRED_ALWAYS[id])
-    {
-    status = cmPolicies::REQUIRED_ALWAYS;
-    }
-  else if (this->REQUIRED_IF_USED[id])
-    {
-    status = cmPolicies::REQUIRED_IF_USED;
     }
   return status;
 }
@@ -375,19 +378,19 @@ cmPolicies::PolicyMap::Get(cmPolicies::PolicyID id) const
 void cmPolicies::PolicyMap::Set(cmPolicies::PolicyID id,
                                 cmPolicies::PolicyStatus status)
 {
-  this->UNDEFINED.reset(id);
-  this->OLD[id] = (status == cmPolicies::OLD);
-  this->NEW[id] = (status == cmPolicies::NEW);
-  this->REQUIRED_ALWAYS[id] = (status == cmPolicies::REQUIRED_ALWAYS);
-  this->REQUIRED_IF_USED[id] = (status == cmPolicies::REQUIRED_IF_USED);
+  this->Status[(POLICY_STATUS_COUNT * id) + OLD] = (status == OLD);
+  this->Status[(POLICY_STATUS_COUNT * id) + WARN] = (status == WARN);
+  this->Status[(POLICY_STATUS_COUNT * id) + NEW] = (status == NEW);
 }
 
 bool cmPolicies::PolicyMap::IsDefined(cmPolicies::PolicyID id) const
 {
-  return !this->UNDEFINED[id];
+  return this->Status[(POLICY_STATUS_COUNT * id) + OLD]
+      || this->Status[(POLICY_STATUS_COUNT * id) + WARN]
+      || this->Status[(POLICY_STATUS_COUNT * id) + NEW];
 }
 
 bool cmPolicies::PolicyMap::IsEmpty() const
 {
-  return !this->UNDEFINED.none();
+  return this->Status.none();
 }

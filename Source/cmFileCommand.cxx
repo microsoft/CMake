@@ -66,7 +66,7 @@ static mode_t mode_setuid = S_ISUID;
 static mode_t mode_setgid = S_ISGID;
 #endif
 
-#if defined(WIN32) && defined(CMAKE_ENCODING_UTF8)
+#if defined(_WIN32) && defined(CMAKE_ENCODING_UTF8)
 // libcurl doesn't support file:// urls for unicode filenames on Windows.
 // Convert string from UTF-8 to ACP if this is a file:// URL.
 static std::string fix_file_url_windows(const std::string& url)
@@ -270,7 +270,7 @@ bool cmFileCommand::HandleWriteCommand(std::vector<std::string> const& args,
     this->SetError(error);
     return false;
     }
-  std::string message = cmJoin(cmRange(i, args.end()), std::string());
+  std::string message = cmJoin(cmMakeRange(i, args.end()), std::string());
   file << message;
   file.close();
   if(mode)
@@ -906,13 +906,13 @@ bool cmFileCommand::HandleGlobCommand(std::vector<std::string> const& args,
     {
     switch(status)
       {
+      case cmPolicies::REQUIRED_IF_USED:
+      case cmPolicies::REQUIRED_ALWAYS:
       case cmPolicies::NEW:
         g.RecurseThroughSymlinksOff();
         break;
       case cmPolicies::OLD:
       case cmPolicies::WARN:
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
         g.RecurseThroughSymlinksOn();
         break;
       }
@@ -1044,6 +1044,8 @@ bool cmFileCommand::HandleGlobCommand(std::vector<std::string> const& args,
     {
     switch (status)
       {
+      case cmPolicies::REQUIRED_IF_USED:
+      case cmPolicies::REQUIRED_ALWAYS:
       case cmPolicies::NEW:
         // Correct behavior, yay!
         break;
@@ -1059,12 +1061,6 @@ bool cmFileCommand::HandleGlobCommand(std::vector<std::string> const& args,
             cmPolicies::GetPolicyWarning(cmPolicies::CMP0009));
           }
         break;
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
-        this->SetError("policy CMP0009 error");
-        this->Makefile->IssueMessage(cmake::FATAL_ERROR,
-          cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0009));
-        return false;
       }
     }
 
@@ -3160,7 +3156,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string> const& args)
     return false;
     }
 
-#if defined(WIN32) && defined(CMAKE_ENCODING_UTF8)
+#if defined(_WIN32) && defined(CMAKE_ENCODING_UTF8)
   url = fix_file_url_windows(url);
 #endif
 
@@ -3415,7 +3411,7 @@ cmFileCommand::HandleUploadCommand(std::vector<std::string> const& args)
 
   unsigned long file_size = cmsys::SystemTools::FileLength(filename);
 
-#if defined(WIN32) && defined(CMAKE_ENCODING_UTF8)
+#if defined(_WIN32) && defined(CMAKE_ENCODING_UTF8)
   url = fix_file_url_windows(url);
 #endif
 
@@ -3569,19 +3565,16 @@ void cmFileCommand::AddEvaluationFile(const std::string &inputName,
 {
   cmListFileBacktrace lfbt = this->Makefile->GetBacktrace();
 
-  cmGeneratorExpression outputGe(&lfbt);
+  cmGeneratorExpression outputGe(lfbt);
   cmsys::auto_ptr<cmCompiledGeneratorExpression> outputCge
                                                 = outputGe.Parse(outputExpr);
 
-  cmGeneratorExpression conditionGe(&lfbt);
+  cmGeneratorExpression conditionGe(lfbt);
   cmsys::auto_ptr<cmCompiledGeneratorExpression> conditionCge
                                               = conditionGe.Parse(condition);
 
-  this->Makefile->GetGlobalGenerator()->AddEvaluationFile(inputName,
-                                                          outputCge,
-                                                          this->Makefile,
-                                                          conditionCge,
-                                                          inputIsContent);
+  this->Makefile->AddEvaluationFile(inputName, outputCge,
+                                    conditionCge, inputIsContent);
 }
 
 //----------------------------------------------------------------------------

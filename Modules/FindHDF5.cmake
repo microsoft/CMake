@@ -31,6 +31,12 @@
 # Find module will then look in this path when searching for HDF5
 # executables, paths, and libraries.
 #
+# Both the serial and parallel HDF5 wrappers are considered and the first
+# directory to contain either one will be used.  In the event that both appear
+# in the same directory the serial version is preferentially selected. This
+# behavior can be reversed by setting the variable HDF5_PREFER_PARALLEL to
+# true.
+#
 # In addition to finding the includes and libraries required to compile
 # an HDF5 client application, this module also makes an effort to find
 # tools that come with the HDF5 distribution that may be useful for
@@ -103,27 +109,42 @@ else()
     endforeach()
 endif()
 
+# Determine whether to search for serial or parallel executable first
+if(HDF5_PREFER_PARALLEL)
+  set(HDF5_C_COMPILER_NAMES h5pcc h5cc)
+  set(HDF5_CXX_COMPILER_NAMES h5pc++ h5c++)
+  set(HDF5_Fortran_COMPILER_NAMES h5pfc h5fc)
+else()
+  set(HDF5_C_COMPILER_NAMES h5cc h5pcc)
+  set(HDF5_CXX_COMPILER_NAMES h5c++ h5pc++)
+  set(HDF5_Fortran_COMPILER_NAMES h5fc h5pfc)
+endif()
+
 # try to find the HDF5 wrapper compilers
 find_program( HDF5_C_COMPILER_EXECUTABLE
-    NAMES h5cc h5pcc
+    NAMES ${HDF5_C_COMPILER_NAMES} NAMES_PER_DIR
     HINTS ENV HDF5_ROOT
     PATH_SUFFIXES bin Bin
     DOC "HDF5 Wrapper compiler.  Used only to detect HDF5 compile flags." )
 mark_as_advanced( HDF5_C_COMPILER_EXECUTABLE )
 
 find_program( HDF5_CXX_COMPILER_EXECUTABLE
-    NAMES h5c++ h5pc++
+    NAMES ${HDF5_CXX_COMPILER_NAMES} NAMES_PER_DIR
     HINTS ENV HDF5_ROOT
     PATH_SUFFIXES bin Bin
     DOC "HDF5 C++ Wrapper compiler.  Used only to detect HDF5 compile flags." )
 mark_as_advanced( HDF5_CXX_COMPILER_EXECUTABLE )
 
 find_program( HDF5_Fortran_COMPILER_EXECUTABLE
-    NAMES h5fc h5pfc
+    NAMES ${HDF5_Fortran_COMPILER_NAMES} NAMES_PER_DIR
     HINTS ENV HDF5_ROOT
     PATH_SUFFIXES bin Bin
     DOC "HDF5 Fortran Wrapper compiler.  Used only to detect HDF5 compile flags." )
 mark_as_advanced( HDF5_Fortran_COMPILER_EXECUTABLE )
+
+unset(HDF5_C_COMPILER_NAMES)
+unset(HDF5_CXX_COMPILER_NAMES)
+unset(HDF5_Fortran_COMPILER_NAMES)
 
 find_program( HDF5_DIFF_EXECUTABLE
     NAMES h5diff
@@ -225,6 +246,8 @@ if( NOT HDF5_FOUND )
     _HDF5_invoke_compiler( C HDF5_C_COMPILE_LINE HDF5_C_RETURN_VALUE )
     _HDF5_invoke_compiler( CXX HDF5_CXX_COMPILE_LINE HDF5_CXX_RETURN_VALUE )
     _HDF5_invoke_compiler( Fortran HDF5_Fortran_COMPILE_LINE HDF5_Fortran_RETURN_VALUE )
+    set(HDF5_HL_COMPILE_LINE ${HDF5_C_COMPILE_LINE})
+    set(HDF5_Fortran_HL_COMPILE_LINE ${HDF5_Fortran_COMPILE_LINE})
 
     # seed the initial lists of libraries to find with items we know we need
     set( HDF5_C_LIBRARY_NAMES_INIT hdf5 )
@@ -232,7 +255,7 @@ if( NOT HDF5_FOUND )
     set( HDF5_CXX_LIBRARY_NAMES_INIT hdf5_cpp ${HDF5_C_LIBRARY_NAMES_INIT} )
     set( HDF5_Fortran_LIBRARY_NAMES_INIT hdf5_fortran
         ${HDF5_C_LIBRARY_NAMES_INIT} )
-    set( HDF5_Fortran_HL_LIBRARY_NAMES_INIT hdf5hl_fortran
+    set( HDF5_Fortran_HL_LIBRARY_NAMES_INIT hdf5hl_fortran hdf5_hl
         ${HDF5_Fortran_LIBRARY_NAMES_INIT} )
 
     foreach( LANGUAGE ${HDF5_LANGUAGE_BINDINGS} )
@@ -284,7 +307,7 @@ if( NOT HDF5_FOUND )
             if( UNIX AND HDF5_USE_STATIC_LIBRARIES )
                 # According to bug 1643 on the CMake bug tracker, this is the
                 # preferred method for searching for a static library.
-                # See http://www.cmake.org/Bug/view.php?id=1643.  We search
+                # See https://cmake.org/Bug/view.php?id=1643.  We search
                 # first for the full static library name, but fall back to a
                 # generic search on the name if the static search fails.
                 set( THIS_LIBRARY_SEARCH_DEBUG lib${LIB}d.a ${LIB}d )
@@ -376,4 +399,3 @@ find_package_handle_standard_args( HDF5
     REQUIRED_VARS HDF5_LIBRARIES HDF5_INCLUDE_DIRS
     VERSION_VAR   HDF5_VERSION
 )
-

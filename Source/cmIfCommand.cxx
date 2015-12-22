@@ -27,7 +27,7 @@ static std::string cmIfCommandError(
       i != args.end(); ++i)
     {
     err += " ";
-    err += cmLocalGenerator::EscapeForCMake(i->GetValue());
+    err += cmOutputConverter::EscapeForCMake(i->GetValue());
     }
   err += "\n";
   return err;
@@ -92,10 +92,6 @@ IsFunctionBlocked(const cmListFileFunction& lff,
             }
           else
             {
-            // Place this call on the call stack.
-            cmMakefileCall stack_manager(&mf, this->Functions[c], status);
-            static_cast<void>(stack_manager);
-
             // if trace is enabled, print the evaluated "elseif" statement
             if(mf.GetCMakeInstance()->GetTrace())
               {
@@ -110,7 +106,14 @@ IsFunctionBlocked(const cmListFileFunction& lff,
 
             cmake::MessageType messType;
 
-            cmConditionEvaluator conditionEvaluator(mf);
+            cmListFileContext conditionContext =
+                cmConditionEvaluator::GetConditionContext(
+                  &mf, this->Functions[c],
+                  this->GetStartingContext().FilePath);
+
+            cmConditionEvaluator conditionEvaluator(
+                  mf, conditionContext,
+                  mf.GetBacktrace(this->Functions[c]));
 
             bool isTrue = conditionEvaluator.IsTrue(
               expandedArguments, errorString, messType);
@@ -119,7 +122,8 @@ IsFunctionBlocked(const cmListFileFunction& lff,
               {
               std::string err = cmIfCommandError(expandedArguments);
               err += errorString;
-              mf.IssueMessage(messType, err);
+              cmListFileBacktrace bt = mf.GetBacktrace(this->Functions[c]);
+              mf.GetCMakeInstance()->IssueMessage(messType, err, bt);
               if (messType == cmake::FATAL_ERROR)
                 {
                 cmSystemTools::SetFatalErrorOccured();
@@ -198,7 +202,16 @@ bool cmIfCommand
 
   cmake::MessageType status;
 
-  cmConditionEvaluator conditionEvaluator(*(this->Makefile));
+  cmListFileContext execContext = this->Makefile->GetExecutionContext();
+
+  cmCommandContext commandContext;
+  commandContext.Line = execContext.Line;
+  commandContext.Name = execContext.Name;
+
+  cmConditionEvaluator conditionEvaluator(
+        *(this->Makefile), cmConditionEvaluator::GetConditionContext(
+          this->Makefile, commandContext, execContext.FilePath),
+        this->Makefile->GetBacktrace());
 
   bool isTrue = conditionEvaluator.IsTrue(
     expandedArguments, errorString, status);

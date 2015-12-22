@@ -49,13 +49,41 @@
 # (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
+# Use the executable's path as a hint
+set(_Python_LIBRARY_PATH_HINT)
+if(PYTHON_EXECUTABLE)
+  if(WIN32)
+    get_filename_component(_Python_PREFIX ${PYTHON_EXECUTABLE} PATH)
+    if(_Python_PREFIX)
+      set(_Python_LIBRARY_PATH_HINT ${_Python_PREFIX}/libs)
+    endif()
+    unset(_Python_PREFIX)
+  else()
+    get_filename_component(_Python_PREFIX ${PYTHON_EXECUTABLE} PATH)
+    get_filename_component(_Python_PREFIX ${_Python_PREFIX} PATH)
+    if(_Python_PREFIX)
+      set(_Python_LIBRARY_PATH_HINT ${_Python_PREFIX}/lib)
+    endif()
+    unset(_Python_PREFIX)
+  endif()
+endif()
+
 include(${CMAKE_CURRENT_LIST_DIR}/CMakeFindFrameworks.cmake)
 # Search for the python framework on Apple.
 CMAKE_FIND_FRAMEWORKS(Python)
 
+# Save CMAKE_FIND_FRAMEWORK
+if(DEFINED CMAKE_FIND_FRAMEWORK)
+  set(_PythonLibs_CMAKE_FIND_FRAMEWORK ${CMAKE_FIND_FRAMEWORK})
+else()
+  unset(_PythonLibs_CMAKE_FIND_FRAMEWORK)
+endif()
+# To avoid picking up the system Python.h pre-maturely.
+set(CMAKE_FIND_FRAMEWORK LAST)
+
 set(_PYTHON1_VERSIONS 1.6 1.5)
 set(_PYTHON2_VERSIONS 2.7 2.6 2.5 2.4 2.3 2.2 2.1 2.0)
-set(_PYTHON3_VERSIONS 3.4 3.3 3.2 3.1 3.0)
+set(_PYTHON3_VERSIONS 3.6 3.5 3.4 3.3 3.2 3.1 3.0)
 
 if(PythonLibs_FIND_VERSION)
     if(PythonLibs_FIND_VERSION_COUNT GREATER 1)
@@ -103,6 +131,7 @@ foreach(_CURRENT_VERSION ${_Python_VERSIONS})
   if(WIN32)
     find_library(PYTHON_DEBUG_LIBRARY
       NAMES python${_CURRENT_VERSION_NO_DOTS}_d python
+      HINTS ${_Python_LIBRARY_PATH_HINT}
       PATHS
       [HKEY_LOCAL_MACHINE\\SOFTWARE\\Python\\PythonCore\\${_CURRENT_VERSION}\\InstallPath]/libs/Debug
       [HKEY_CURRENT_USER\\SOFTWARE\\Python\\PythonCore\\${_CURRENT_VERSION}\\InstallPath]/libs/Debug
@@ -111,14 +140,24 @@ foreach(_CURRENT_VERSION ${_Python_VERSIONS})
       )
   endif()
 
+  set(PYTHON_FRAMEWORK_LIBRARIES)
+  if(Python_FRAMEWORKS AND NOT PYTHON_LIBRARY)
+    foreach(dir ${Python_FRAMEWORKS})
+      list(APPEND PYTHON_FRAMEWORK_LIBRARIES
+           ${dir}/Versions/${_CURRENT_VERSION}/lib)
+    endforeach()
+  endif()
   find_library(PYTHON_LIBRARY
     NAMES
-    python${_CURRENT_VERSION_NO_DOTS}
-    python${_CURRENT_VERSION}mu
-    python${_CURRENT_VERSION}m
-    python${_CURRENT_VERSION}u
-    python${_CURRENT_VERSION}
+      python${_CURRENT_VERSION_NO_DOTS}
+      python${_CURRENT_VERSION}mu
+      python${_CURRENT_VERSION}m
+      python${_CURRENT_VERSION}u
+      python${_CURRENT_VERSION}
+    HINTS
+      ${_Python_LIBRARY_PATH_HINT}
     PATHS
+      ${PYTHON_FRAMEWORK_LIBRARIES}
       [HKEY_LOCAL_MACHINE\\SOFTWARE\\Python\\PythonCore\\${_CURRENT_VERSION}\\InstallPath]/libs
       [HKEY_CURRENT_USER\\SOFTWARE\\Python\\PythonCore\\${_CURRENT_VERSION}\\InstallPath]/libs
     # Avoid finding the .dll in the PATH.  We want the .lib.
@@ -133,33 +172,42 @@ foreach(_CURRENT_VERSION ${_Python_VERSIONS})
     PATH_SUFFIXES python${_CURRENT_VERSION}/config
   )
 
-  # For backward compatibility, honour value of PYTHON_INCLUDE_PATH, if
-  # PYTHON_INCLUDE_DIR is not set.
-  if(DEFINED PYTHON_INCLUDE_PATH AND NOT DEFINED PYTHON_INCLUDE_DIR)
-    set(PYTHON_INCLUDE_DIR "${PYTHON_INCLUDE_PATH}" CACHE PATH
-      "Path to where Python.h is found" FORCE)
-  endif()
+  # Don't search for include dir until library location is known
+  if(PYTHON_LIBRARY)
 
-  set(PYTHON_FRAMEWORK_INCLUDES)
-  if(Python_FRAMEWORKS AND NOT PYTHON_INCLUDE_DIR)
-    foreach(dir ${Python_FRAMEWORKS})
-      set(PYTHON_FRAMEWORK_INCLUDES ${PYTHON_FRAMEWORK_INCLUDES}
-        ${dir}/Versions/${_CURRENT_VERSION}/include/python${_CURRENT_VERSION})
-    endforeach()
-  endif()
+    # Use the library's install prefix as a hint
+    set(_Python_INCLUDE_PATH_HINT)
+    get_filename_component(_Python_PREFIX ${PYTHON_LIBRARY} PATH)
+    get_filename_component(_Python_PREFIX ${_Python_PREFIX} PATH)
+    if(_Python_PREFIX)
+      set(_Python_INCLUDE_PATH_HINT ${_Python_PREFIX}/include)
+    endif()
+    unset(_Python_PREFIX)
 
-  find_path(PYTHON_INCLUDE_DIR
-    NAMES Python.h
-    PATHS
-      ${PYTHON_FRAMEWORK_INCLUDES}
-      [HKEY_LOCAL_MACHINE\\SOFTWARE\\Python\\PythonCore\\${_CURRENT_VERSION}\\InstallPath]/include
-      [HKEY_CURRENT_USER\\SOFTWARE\\Python\\PythonCore\\${_CURRENT_VERSION}\\InstallPath]/include
-    PATH_SUFFIXES
-      python${_CURRENT_VERSION}mu
-      python${_CURRENT_VERSION}m
-      python${_CURRENT_VERSION}u
-      python${_CURRENT_VERSION}
-  )
+    # Add framework directories to the search paths
+    set(PYTHON_FRAMEWORK_INCLUDES)
+    if(Python_FRAMEWORKS AND NOT PYTHON_INCLUDE_DIR)
+      foreach(dir ${Python_FRAMEWORKS})
+        list(APPEND PYTHON_FRAMEWORK_INCLUDES
+          ${dir}/Versions/${_CURRENT_VERSION}/include)
+      endforeach()
+    endif()
+
+    find_path(PYTHON_INCLUDE_DIR
+      NAMES Python.h
+      HINTS
+        ${_Python_INCLUDE_PATH_HINT}
+      PATHS
+        ${PYTHON_FRAMEWORK_INCLUDES}
+        [HKEY_LOCAL_MACHINE\\SOFTWARE\\Python\\PythonCore\\${_CURRENT_VERSION}\\InstallPath]/include
+        [HKEY_CURRENT_USER\\SOFTWARE\\Python\\PythonCore\\${_CURRENT_VERSION}\\InstallPath]/include
+      PATH_SUFFIXES
+        python${_CURRENT_VERSION}mu
+        python${_CURRENT_VERSION}m
+        python${_CURRENT_VERSION}u
+        python${_CURRENT_VERSION}
+    )
+  endif()
 
   # For backward compatibility, set PYTHON_INCLUDE_PATH.
   set(PYTHON_INCLUDE_PATH "${PYTHON_INCLUDE_DIR}")
@@ -176,6 +224,9 @@ foreach(_CURRENT_VERSION ${_Python_VERSIONS})
     break()
   endif()
 endforeach()
+
+unset(_Python_INCLUDE_PATH_HINT)
+unset(_Python_LIBRARY_PATH_HINT)
 
 mark_as_advanced(
   PYTHON_DEBUG_LIBRARY
@@ -200,6 +251,14 @@ SELECT_LIBRARY_CONFIGURATIONS(PYTHON)
 # Unset this, this prefix doesn't match the module prefix, they are different
 # for historical reasons.
 unset(PYTHON_FOUND)
+
+# Restore CMAKE_FIND_FRAMEWORK
+if(DEFINED _PythonLibs_CMAKE_FIND_FRAMEWORK)
+  set(CMAKE_FIND_FRAMEWORK ${_PythonLibs_CMAKE_FIND_FRAMEWORK})
+  unset(_PythonLibs_CMAKE_FIND_FRAMEWORK)
+else()
+  unset(CMAKE_FIND_FRAMEWORK)
+endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 FIND_PACKAGE_HANDLE_STANDARD_ARGS(PythonLibs

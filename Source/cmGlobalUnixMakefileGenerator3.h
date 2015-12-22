@@ -12,7 +12,7 @@
 #ifndef cmGlobalUnixMakefileGenerator3_h
 #define cmGlobalUnixMakefileGenerator3_h
 
-#include "cmGlobalGenerator.h"
+#include "cmGlobalCommonGenerator.h"
 #include "cmGlobalGeneratorFactory.h"
 
 class cmGeneratedFileStream;
@@ -51,7 +51,7 @@ class cmLocalUnixMakefileGenerator3;
 
  */
 
-class cmGlobalUnixMakefileGenerator3 : public cmGlobalGenerator
+class cmGlobalUnixMakefileGenerator3 : public cmGlobalCommonGenerator
 {
 public:
   cmGlobalUnixMakefileGenerator3(cmake* cm);
@@ -67,9 +67,7 @@ public:
   /** Get the documentation entry for this generator.  */
   static void GetDocumentation(cmDocumentationEntry& entry);
 
-  ///! Create a local generator appropriate to this Global Generator3
-  virtual cmLocalGenerator *CreateLocalGenerator(cmLocalGenerator* parent,
-                                                 cmState::Snapshot snapshot);
+  virtual cmLocalGenerator *CreateLocalGenerator(cmMakefile* mf);
 
   /**
    * Try to determine system information such as shared library
@@ -153,7 +151,7 @@ protected:
                             cmLocalUnixMakefileGenerator3* lg);
 
   void AppendGlobalTargetDepends(std::vector<std::string>& depends,
-                                 cmTarget& target);
+                                 cmGeneratorTarget* target);
 
   // does this generator need a requires step for any of its targets
   bool NeedRequiresStep(cmTarget const&);
@@ -198,14 +196,19 @@ protected:
                    cmStrictTargetComparison> ProgressMapType;
   ProgressMapType ProgressMap;
 
-  size_t CountProgressMarksInTarget(cmTarget const* target,
-                                    std::set<cmTarget const*>& emitted);
+  size_t CountProgressMarksInTarget(cmGeneratorTarget const* target,
+                                 std::set<cmGeneratorTarget const*>& emitted);
   size_t CountProgressMarksInAll(cmLocalUnixMakefileGenerator3* lg);
 
   cmGeneratedFileStream *CommandDatabase;
 private:
   virtual const char* GetBuildIgnoreErrorsFlag() const { return "-i"; }
   virtual std::string GetEditCacheCommand() const;
+
+  std::map<cmState::Snapshot,
+           std::set<cmGeneratorTarget const*>,
+           cmState::Snapshot::StrictWeakOrder> DirectoryTargetsMap;
+  virtual void InitializeProgressMarks();
 };
 
 #endif

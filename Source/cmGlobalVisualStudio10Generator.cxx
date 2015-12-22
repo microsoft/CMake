@@ -176,7 +176,14 @@ cmGlobalVisualStudio10Generator::SetGeneratorToolset(std::string const& ts,
 //----------------------------------------------------------------------------
 bool cmGlobalVisualStudio10Generator::InitializeSystem(cmMakefile* mf)
 {
-  if (this->SystemName == "WindowsCE")
+  if (this->SystemName == "Windows")
+    {
+    if (!this->InitializeWindows(mf))
+      {
+      return false;
+      }
+    }
+  else if (this->SystemName == "WindowsCE")
     {
     this->SystemIsWindowsCE = true;
     if (!this->InitializeWindowsCE(mf))
@@ -184,7 +191,7 @@ bool cmGlobalVisualStudio10Generator::InitializeSystem(cmMakefile* mf)
       return false;
       }
     }
-  else if(this->SystemName == "WindowsPhone")
+  else if (this->SystemName == "WindowsPhone")
     {
     this->SystemIsWindowsPhone = true;
     if(!this->InitializeWindowsPhone(mf))
@@ -192,7 +199,7 @@ bool cmGlobalVisualStudio10Generator::InitializeSystem(cmMakefile* mf)
       return false;
       }
     }
-  else if(this->SystemName == "WindowsStore")
+  else if (this->SystemName == "WindowsStore")
     {
     this->SystemIsWindowsStore = true;
     if(!this->InitializeWindowsStore(mf))
@@ -225,6 +232,12 @@ bool cmGlobalVisualStudio10Generator::InitializeSystem(cmMakefile* mf)
     mf->AddDefinition("CMAKE_VS_NsightTegra_VERSION", v.c_str());
     }
 
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool cmGlobalVisualStudio10Generator::InitializeWindows(cmMakefile*)
+{
   return true;
 }
 
@@ -306,17 +319,25 @@ void cmGlobalVisualStudio10Generator::WriteSLNHeader(std::ostream& fout)
 }
 
 ///! Create a local generator appropriate to this Global Generator
-cmLocalGenerator *
-cmGlobalVisualStudio10Generator::CreateLocalGenerator(cmLocalGenerator* parent,
-                                                    cmState::Snapshot snapshot)
+cmLocalGenerator* cmGlobalVisualStudio10Generator::CreateLocalGenerator(
+    cmMakefile* mf)
 {
-  return new cmLocalVisualStudio10Generator(this, parent, snapshot);
+  return new cmLocalVisualStudio10Generator(this, mf);
 }
 
 //----------------------------------------------------------------------------
+bool cmGlobalVisualStudio10Generator::Compute()
+{
+  if (!cmGlobalVisualStudio8Generator::Compute())
+    {
+    return false;
+    }
+  this->LongestSource = LongestSourcePath();
+  return true;
+}
+
 void cmGlobalVisualStudio10Generator::Generate()
 {
-  this->LongestSource = LongestSourcePath();
   this->cmGlobalVisualStudio8Generator::Generate();
   if(this->LongestSource.Length > 0)
     {

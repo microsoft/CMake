@@ -66,6 +66,11 @@ function(run_cmake test)
   else()
     set(actual_stderr_var actual_stderr)
   endif()
+  if(DEFINED RunCMake_TEST_TIMEOUT)
+    set(maybe_timeout TIMEOUT ${RunCMake_TEST_TIMEOUT})
+  else()
+    set(maybe_timeout "")
+  endif()
   if(RunCMake_TEST_COMMAND)
     execute_process(
       COMMAND ${RunCMake_TEST_COMMAND}
@@ -73,6 +78,7 @@ function(run_cmake test)
       OUTPUT_VARIABLE actual_stdout
       ERROR_VARIABLE ${actual_stderr_var}
       RESULT_VARIABLE actual_result
+      ${maybe_timeout}
       )
   else()
     execute_process(
@@ -87,6 +93,7 @@ function(run_cmake test)
       OUTPUT_VARIABLE actual_stdout
       ERROR_VARIABLE ${actual_stderr_var}
       RESULT_VARIABLE actual_result
+      ${maybe_timeout}
       )
   endif()
   set(msg "")
@@ -95,7 +102,7 @@ function(run_cmake test)
   endif()
   foreach(o out err)
     string(REGEX REPLACE "\r\n" "\n" actual_std${o} "${actual_std${o}}")
-    string(REGEX REPLACE "(^|\n)((==[0-9]+==|BullseyeCoverage|[a-z]+\\([0-9]+\\) malloc:|Error kstat returned)[^\n]*\n)+" "\\1" actual_std${o} "${actual_std${o}}")
+    string(REGEX REPLACE "(^|\n)((==[0-9]+==|BullseyeCoverage|[a-z]+\\([0-9]+\\) malloc:|Error kstat returned|[^\n]*from Time Machine by path|[^\n]*Bullseye Testing Technology)[^\n]*\n)+" "\\1" actual_std${o} "${actual_std${o}}")
     string(REGEX REPLACE "\n+$" "" actual_std${o} "${actual_std${o}}")
     set(expect_${o} "")
     if(DEFINED expect_std${o})
@@ -108,7 +115,11 @@ function(run_cmake test)
     endif()
   endforeach()
   unset(RunCMake_TEST_FAILED)
-  include(${top_src}/${test}-check.cmake OPTIONAL)
+  if(RunCMake-check-file AND EXISTS ${top_src}/${RunCMake-check-file})
+    include(${top_src}/${RunCMake-check-file})
+  else()
+    include(${top_src}/${test}-check.cmake OPTIONAL)
+  endif()
   if(RunCMake_TEST_FAILED)
     set(msg "${RunCMake_TEST_FAILED}\n${msg}")
   endif()

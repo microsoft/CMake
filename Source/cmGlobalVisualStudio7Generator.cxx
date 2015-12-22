@@ -15,6 +15,7 @@
 #include "cmGeneratedFileStream.h"
 #include "cmLocalVisualStudio7Generator.h"
 #include "cmMakefile.h"
+#include "cmUuid.h"
 #include "cmake.h"
 #include <cmsys/Encoding.hxx>
 
@@ -278,12 +279,11 @@ void cmGlobalVisualStudio7Generator::GenerateBuildCommand(
 }
 
 ///! Create a local generator appropriate to this Global Generator
-cmLocalGenerator *
-cmGlobalVisualStudio7Generator::CreateLocalGenerator(cmLocalGenerator* parent,
-                                                   cmState::Snapshot snapshot)
+cmLocalGenerator *cmGlobalVisualStudio7Generator::CreateLocalGenerator(
+    cmMakefile* mf)
 {
   cmLocalVisualStudio7Generator *lg =
-    new cmLocalVisualStudio7Generator(this, parent, snapshot);
+    new cmLocalVisualStudio7Generator(this, mf);
   return lg;
 }
 
@@ -358,7 +358,7 @@ void cmGlobalVisualStudio7Generator
 ::OutputSLNFile(cmLocalGenerator* root,
                 std::vector<cmLocalGenerator*>& generators)
 {
-  if(generators.size() == 0)
+  if(generators.empty())
     {
     return;
     }
@@ -401,7 +401,7 @@ void cmGlobalVisualStudio7Generator::WriteTargetConfigurations(
   for(OrderedTargetDependSet::const_iterator tt =
         projectTargets.begin(); tt != projectTargets.end(); ++tt)
     {
-    cmTarget const* target = *tt;
+    cmTarget const* target = (*tt)->Target;
     if(target->GetType() == cmTarget::INTERFACE_LIBRARY)
       {
       continue;
@@ -441,7 +441,7 @@ void cmGlobalVisualStudio7Generator::WriteTargetsToSolution(
   for(OrderedTargetDependSet::const_iterator tt =
         projectTargets.begin(); tt != projectTargets.end(); ++tt)
     {
-    cmTarget const* target = *tt;
+    cmTarget const* target = (*tt)->Target;
     if(target->GetType() == cmTarget::INTERFACE_LIBRARY)
       {
       continue;
@@ -513,8 +513,6 @@ void cmGlobalVisualStudio7Generator::WriteTargetsToSolution(
 
             cumulativePath = cumulativePath + "/" + *iter;
             }
-
-          this->CreateGUID(cumulativePath.c_str());
           }
 
         if (!cumulativePath.empty())
@@ -535,7 +533,7 @@ void cmGlobalVisualStudio7Generator::WriteTargetDepends(
   for(OrderedTargetDependSet::const_iterator tt =
         projectTargets.begin(); tt != projectTargets.end(); ++tt)
     {
-    cmTarget const* target = *tt;
+    cmTarget const* target = (*tt)->Target;
     if(target->GetType() == cmTarget::INTERFACE_LIBRARY)
       {
       continue;
@@ -570,7 +568,7 @@ void cmGlobalVisualStudio7Generator
   TargetDependSet projectTargets;
   TargetDependSet originalTargets;
   this->GetTargetSets(projectTargets, originalTargets, root, generators);
-  OrderedTargetDependSet orderedProjectTargets(projectTargets);
+  OrderedTargetDependSet orderedProjectTargets(projectTargets, "ALL_BUILD");
 
   this->WriteTargetsToSolution(fout, root, orderedProjectTargets);
 
@@ -737,7 +735,7 @@ cmGlobalVisualStudio7Generator
     {
     const char* name = di->c_str();
     std::string guid = this->GetGUID(name);
-    if(guid.size() == 0)
+    if(guid.empty())
       {
       std::string m = "Target: ";
       m += target.GetName();
@@ -815,14 +813,15 @@ void cmGlobalVisualStudio7Generator
 {
   bool extensibilityGlobalsOverridden = false;
   bool extensibilityAddInsOverridden = false;
-  const cmPropertyMap& props = root->GetMakefile()->GetProperties();
-  for(cmPropertyMap::const_iterator itProp = props.begin();
-      itProp != props.end(); ++itProp)
+  const std::vector<std::string> propKeys =
+      root->GetMakefile()->GetPropertyKeys();
+  for(std::vector<std::string>::const_iterator it = propKeys.begin();
+      it != propKeys.end(); ++it)
     {
-    if(itProp->first.find("VS_GLOBAL_SECTION_") == 0)
+    if(it->find("VS_GLOBAL_SECTION_") == 0)
       {
       std::string sectionType;
-      std::string name = itProp->first.substr(18);
+      std::string name = it->substr(18);
       if(name.find("PRE_") == 0)
         {
         name = name.substr(4);
@@ -843,8 +842,9 @@ void cmGlobalVisualStudio7Generator
           extensibilityAddInsOverridden = true;
         fout << "\tGlobalSection(" << name << ") = " << sectionType << "\n";
         std::vector<std::string> keyValuePairs;
-        cmSystemTools::ExpandListArgument(itProp->second.GetValue(),
-                                          keyValuePairs);
+        cmSystemTools::ExpandListArgument(
+              root->GetMakefile()->GetProperty(it->c_str()),
+              keyValuePairs);
         for(std::vector<std::string>::const_iterator itPair =
             keyValuePairs.begin(); itPair != keyValuePairs.end(); ++itPair)
           {
@@ -899,7 +899,6 @@ cmGlobalVisualStudio7Generator::WriteUtilityDepend(cmTarget const* target)
   fname += ".vcproj";
   cmGeneratedFileStream fout(fname.c_str());
   fout.SetCopyIfDifferent(true);
-  this->CreateGUID(pname.c_str());
   std::string guid = this->GetGUID(pname.c_str());
 
   fout <<
@@ -943,41 +942,29 @@ cmGlobalVisualStudio7Generator::WriteUtilityDepend(cmTarget const* target)
   return pname;
 }
 
-std::string cmGlobalVisualStudio7Generator::GetGUID(const std::string& name)
+//----------------------------------------------------------------------------
+std::string cmGlobalVisualStudio7Generator::GetGUID(std::string const& name)
 {
-  std::string guidStoreName = name;
-  guidStoreName += "_GUID_CMAKE";
-  const char* storedGUID =
-    this->CMakeInstance->GetCacheDefinition(guidStoreName.c_str());
-  if(storedGUID)
+  std::string const& guidStoreName = name + "_GUID_CMAKE";
+  if (const char* storedGUID =
+      this->CMakeInstance->GetCacheDefinition(guidStoreName.c_str()))
     {
     return std::string(storedGUID);
     }
-  cmSystemTools::Error("Unknown Target referenced : ",
-                       name.c_str());
-  return "";
-}
+  // Compute a GUID that is deterministic but unique to the build tree.
+  std::string input = this->CMakeInstance->GetState()->GetBinaryDirectory();
+  input += "|";
+  input += name;
 
+  cmUuid uuidGenerator;
 
-void cmGlobalVisualStudio7Generator::CreateGUID(const std::string& name)
-{
-  std::string guidStoreName = name;
-  guidStoreName += "_GUID_CMAKE";
-  if(this->CMakeInstance->GetCacheDefinition(guidStoreName.c_str()))
-    {
-    return;
-    }
-  std::string ret;
-  UUID uid;
-  unsigned short *uidstr;
-  UuidCreate(&uid);
-  UuidToStringW(&uid,&uidstr);
-  ret = cmsys::Encoding::ToNarrow(reinterpret_cast<wchar_t*>(uidstr));
-  RpcStringFreeW(&uidstr);
-  ret = cmSystemTools::UpperCase(ret);
-  this->CMakeInstance->AddCacheEntry(guidStoreName.c_str(),
-                                     ret.c_str(), "Stored GUID",
-                                     cmState::INTERNAL);
+  std::vector<unsigned char> uuidNamespace;
+  uuidGenerator.StringToBinary(
+    "ee30c4be-5192-4fb0-b335-722a2dffe760", uuidNamespace);
+
+  std::string guid = uuidGenerator.FromMd5(uuidNamespace, input);
+
+  return cmSystemTools::UpperCase(guid);
 }
 
 //----------------------------------------------------------------------------
@@ -1039,12 +1026,13 @@ cmGlobalVisualStudio7Generator::IsPartOfDefaultBuild(
     {
     return activeConfigs;
     }
+  cmGeneratorTarget* gt = this->GetGeneratorTarget(target);
   // inspect EXCLUDE_FROM_DEFAULT_BUILD[_<CONFIG>] properties
   for(std::vector<std::string>::const_iterator i = configs.begin();
       i != configs.end(); ++i)
     {
     const char* propertyValue =
-      target->GetFeature("EXCLUDE_FROM_DEFAULT_BUILD", i->c_str());
+      gt->GetFeature("EXCLUDE_FROM_DEFAULT_BUILD", i->c_str());
     if(cmSystemTools::IsOff(propertyValue))
       {
       activeConfigs.insert(*i);
@@ -1058,12 +1046,12 @@ cmGlobalVisualStudio7Generator
 ::IsDependedOn(OrderedTargetDependSet const& projectTargets,
                cmTarget const* targetIn)
 {
+  cmGeneratorTarget* gtIn = this->GetGeneratorTarget(targetIn);
   for (OrderedTargetDependSet::const_iterator l = projectTargets.begin();
        l != projectTargets.end(); ++l)
     {
-    cmTarget const& target = **l;
-    TargetDependSet const& tgtdeps = this->GetTargetDirectDepends(target);
-    if(tgtdeps.count(targetIn))
+    TargetDependSet const& tgtdeps = this->GetTargetDirectDepends(*l);
+    if(tgtdeps.count(gtIn))
       {
       return true;
       }

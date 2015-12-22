@@ -34,6 +34,10 @@
 #include <time.h>
 
 #include <stdlib.h> // required for atoi
+#if defined(_WIN32) && defined(CMAKE_BUILD_WITH_CMAKE)
+// defined in binexplib.cxx
+bool DumpFile(const char* filename, FILE *fout);
+#endif
 
 void CMakeCommandUsage(const char* program)
 {
@@ -211,6 +215,41 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
       return 0;
       }
 
+#if defined(_WIN32) && defined(CMAKE_BUILD_WITH_CMAKE)
+    else if(args[1] == "__create_def")
+      {
+      if(args.size() < 4)
+        {
+        std::cerr <<
+          "__create_def Usage: -E __create_def outfile.def objlistfile\n";
+        return 1;
+        }
+      FILE* fout = cmsys::SystemTools::Fopen(args[2].c_str(), "w+");
+      if(!fout)
+        {
+        std::cerr << "could not open output .def file: " << args[2].c_str()
+                  << "\n";
+        return 1;
+        }
+      cmsys::ifstream fin(args[3].c_str(),
+                          std::ios::in | std::ios::binary);
+      if(!fin)
+        {
+        std::cerr << "could not open object list file: " << args[3].c_str()
+                  << "\n";
+        return 1;
+        }
+      std::string objfile;
+      while(cmSystemTools::GetLineFromStream(fin, objfile))
+        {
+        if (!DumpFile(objfile.c_str(), fout))
+          {
+          return 1;
+          }
+        }
+      return 0;
+      }
+#endif
     // run include what you use command and then run the compile
     // command. This is an internal undocumented option and should
     // only be used by CMake itself when running iwyu.
@@ -296,14 +335,14 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
     // Echo string
     else if (args[1] == "echo" )
       {
-      std::cout << cmJoin(cmRange(args).advance(2), " ") << std::endl;
+      std::cout << cmJoin(cmMakeRange(args).advance(2), " ") << std::endl;
       return 0;
       }
 
     // Echo string no new line
     else if (args[1] == "echo_append" )
       {
-      std::cout << cmJoin(cmRange(args).advance(2), " ");
+      std::cout << cmJoin(cmMakeRange(args).advance(2), " ");
       return 0;
       }
 
@@ -472,7 +511,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
     // Clock command
     else if (args[1] == "time" && args.size() > 2)
       {
-      std::string command = cmJoin(cmRange(args).advance(2), " ");
+      std::string command = cmJoin(cmMakeRange(args).advance(2), " ");
 
       clock_t clock_start, clock_finish;
       time_t time_start, time_finish;
@@ -533,7 +572,8 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
         return 1;
         }
 
-      std::string command = cmWrap('"', cmRange(args).advance(3), '"', " ");
+      std::string command =
+        cmWrap('"', cmMakeRange(args).advance(3), '"', " ");
       int retval = 0;
       int timeout = 0;
       if ( cmSystemTools::RunSingleCommand(command.c_str(), 0, 0, &retval,
@@ -728,7 +768,10 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
       if(cmGlobalGenerator* ggd = cm.CreateGlobalGenerator(gen))
         {
         cm.SetGlobalGenerator(ggd);
-        cmsys::auto_ptr<cmLocalGenerator> lgd(ggd->MakeLocalGenerator());
+        cmState::Snapshot snapshot = cm.GetCurrentSnapshot();
+        cmsys::auto_ptr<cmMakefile> mf(new cmMakefile(ggd, snapshot));
+        cmsys::auto_ptr<cmLocalGenerator> lgd(
+              ggd->CreateLocalGenerator(mf.get()));
         lgd->GetMakefile()->SetCurrentSourceDirectory(startDir);
         lgd->GetMakefile()->SetCurrentBinaryDirectory(startOutDir);
 
@@ -1312,6 +1355,35 @@ int cmcmd::WindowsCEEnvironment(const char* version, const std::string& name)
   return -1;
 }
 
+class cmVSLink
+{
+  int Type;
+  bool Verbose;
+  bool Incremental;
+  bool LinkGeneratesManifest;
+  std::vector<std::string> LinkCommand;
+  std::vector<std::string> UserManifests;
+  std::string LinkerManifestFile;
+  std::string ManifestFile;
+  std::string ManifestFileRC;
+  std::string ManifestFileRes;
+  std::string TargetFile;
+public:
+  cmVSLink(int type, bool verbose)
+    : Type(type)
+    , Verbose(verbose)
+    , Incremental(false)
+    , LinkGeneratesManifest(true)
+    {}
+  bool Parse(std::vector<std::string>::const_iterator argBeg,
+             std::vector<std::string>::const_iterator argEnd);
+  int Link();
+private:
+  int LinkIncremental();
+  int LinkNonIncremental();
+  int RunMT(std::string const& out, bool notify);
+};
+
 // For visual studio 2005 and newer manifest files need to be embedded into
 // exe and dll's.  This code does that in such a way that incremental linking
 // still works.
@@ -1321,11 +1393,7 @@ int cmcmd::VisualStudioLink(std::vector<std::string>& args, int type)
     {
     return -1;
     }
-  bool verbose = false;
-  if(cmSystemTools::GetEnv("VERBOSE"))
-    {
-    verbose = true;
-    }
+  bool verbose = cmSystemTools::GetEnv("VERBOSE")? true:false;
   std::vector<std::string> expandedArgs;
   for(std::vector<std::string>::iterator i = args.begin();
       i != args.end(); ++i)
@@ -1346,79 +1414,19 @@ int cmcmd::VisualStudioLink(std::vector<std::string>& args, int type)
       expandedArgs.push_back(*i);
       }
     }
-  bool hasIncremental = false;
-  bool hasManifest = true;
-  for(std::vector<std::string>::iterator i = expandedArgs.begin();
-      i != expandedArgs.end(); ++i)
-    {
-    if(cmSystemTools::Strucmp(i->c_str(), "/INCREMENTAL:YES") == 0)
-      {
-      hasIncremental = true;
-      }
-    if(cmSystemTools::Strucmp(i->c_str(), "/INCREMENTAL") == 0)
-      {
-      hasIncremental = true;
-      }
-    if(cmSystemTools::Strucmp(i->c_str(), "/MANIFEST:NO") == 0)
-      {
-      hasManifest = false;
-      }
-    }
-  if(hasIncremental && hasManifest)
-    {
-    if(verbose)
-      {
-      std::cout << "Visual Studio Incremental Link with embedded manifests\n";
-      }
-    return cmcmd::VisualStudioLinkIncremental(expandedArgs, type, verbose);
-    }
-  if(verbose)
-    {
-    if(!hasIncremental)
-      {
-      std::cout << "Visual Studio Non-Incremental Link\n";
-      }
-    else
-      {
-      std::cout << "Visual Studio Incremental Link without manifests\n";
-      }
-    }
-  return cmcmd::VisualStudioLinkNonIncremental(expandedArgs,
-                                               type, hasManifest, verbose);
-}
 
-int cmcmd::ParseVisualStudioLinkCommand(std::vector<std::string>& args,
-                                        std::vector<std::string>& command,
-                                        std::string& targetName)
-{
-  std::vector<std::string>::iterator i = args.begin();
-  i++; // skip -E
-  i++; // skip vs_link_dll or vs_link_exe
-  command.push_back(*i);
-  i++; // move past link command
-  for(; i != args.end(); ++i)
-    {
-    command.push_back(*i);
-    if(i->find("/Fe") == 0)
-      {
-      targetName = i->substr(3);
-      }
-    if(i->find("/out:") == 0)
-      {
-      targetName = i->substr(5);
-      }
-    }
-  if(targetName.empty() || command.empty())
+  cmVSLink vsLink(type, verbose);
+  if (!vsLink.Parse(expandedArgs.begin()+2, expandedArgs.end()))
     {
     return -1;
     }
-  return 0;
+  return vsLink.Link();
 }
 
-bool cmcmd::RunCommand(const char* comment,
+static bool RunCommand(const char* comment,
                        std::vector<std::string>& command,
                        bool verbose,
-                       int* retCodeOut)
+                       int* retCodeOut = 0)
 {
   if(verbose)
     {
@@ -1428,17 +1436,23 @@ bool cmcmd::RunCommand(const char* comment,
   std::string output;
   int retCode =0;
   // use rc command to create .res file
-  cmSystemTools::RunSingleCommand(command,
-                                  &output, &output,
-                                  &retCode, 0, cmSystemTools::OUTPUT_NONE);
+  bool res = cmSystemTools::RunSingleCommand(command,
+                                             &output, &output,
+                                             &retCode, 0,
+                                             cmSystemTools::OUTPUT_NONE);
   // always print the output of the command, unless
   // it is the dumb rc command banner, but if the command
   // returned an error code then print the output anyway as
   // the banner may be mixed with some other important information.
   if(output.find("Resource Compiler Version") == output.npos
-     || retCode !=0)
+     || !res || retCode)
     {
     std::cout << output;
+    }
+  if (!res)
+    {
+    std::cout << comment << " failed to run." << std::endl;
+    return false;
     }
   // if retCodeOut is requested then always return true
   // and set the retCodeOut to retCode
@@ -1454,8 +1468,134 @@ bool cmcmd::RunCommand(const char* comment,
   return retCode == 0;
 }
 
-int cmcmd::VisualStudioLinkIncremental(std::vector<std::string>& args,
-                                       int type, bool verbose)
+bool cmVSLink::Parse(std::vector<std::string>::const_iterator argBeg,
+                     std::vector<std::string>::const_iterator argEnd)
+{
+  // Parse our own arguments.
+  std::string intDir;
+  std::vector<std::string>::const_iterator arg = argBeg;
+  while (arg != argEnd && cmHasLiteralPrefix(*arg, "-"))
+    {
+    if (*arg == "--")
+      {
+      ++arg;
+      break;
+      }
+    else if (*arg == "--manifests")
+      {
+      for (++arg; arg != argEnd && !cmHasLiteralPrefix(*arg, "-"); ++arg)
+        {
+        this->UserManifests.push_back(*arg);
+        }
+      }
+    else if (cmHasLiteralPrefix(*arg, "--intdir="))
+      {
+      intDir = arg->substr(9);
+      ++arg;
+      }
+    else
+      {
+      std::cerr << "unknown argument '" << *arg << "'\n";
+      return false;
+      }
+    }
+  if (intDir.empty())
+    {
+    return false;
+    }
+
+  // The rest of the arguments form the link command.
+  if (arg == argEnd)
+    {
+    return false;
+    }
+  this->LinkCommand.insert(this->LinkCommand.begin(), arg, argEnd);
+
+  // Parse the link command to extract information we need.
+  for (; arg != argEnd; ++arg)
+    {
+    if (cmSystemTools::Strucmp(arg->c_str(), "/INCREMENTAL:YES") == 0)
+      {
+      this->Incremental = true;
+      }
+    else if (cmSystemTools::Strucmp(arg->c_str(), "/INCREMENTAL") == 0)
+      {
+      this->Incremental = true;
+      }
+    else if (cmSystemTools::Strucmp(arg->c_str(), "/MANIFEST:NO") == 0)
+      {
+      this->LinkGeneratesManifest = false;
+      }
+    else if (cmHasLiteralPrefix(*arg, "/Fe"))
+      {
+      this->TargetFile = arg->substr(3);
+      }
+    else if (cmHasLiteralPrefix(*arg, "/out:"))
+      {
+      this->TargetFile = arg->substr(5);
+      }
+    }
+
+  if (this->TargetFile.empty())
+    {
+    return false;
+    }
+
+  this->ManifestFile = intDir + "/embed.manifest";
+  this->LinkerManifestFile = intDir + "/intermediate.manifest";
+
+  if (this->Incremental)
+    {
+    // We will compile a resource containing the manifest and
+    // pass it to the link command.
+    this->ManifestFileRC = intDir + "/manifest.rc";
+    this->ManifestFileRes = intDir + "/manifest.res";
+    this->LinkCommand.push_back(this->ManifestFileRes);
+    }
+  else if (this->UserManifests.empty())
+    {
+    // Prior to support for user-specified manifests CMake placed the
+    // linker-generated manifest next to the binary (as if it were not to be
+    // embedded) when not linking incrementally.  Preserve this behavior.
+    this->ManifestFile = this->TargetFile + ".manifest";
+    this->LinkerManifestFile = this->ManifestFile;
+    }
+
+  if (this->LinkGeneratesManifest)
+    {
+    this->LinkCommand.push_back("/MANIFEST");
+    this->LinkCommand.push_back("/MANIFESTFILE:" + this->LinkerManifestFile);
+    }
+
+  return true;
+}
+
+int cmVSLink::Link()
+{
+  if (this->Incremental &&
+      (this->LinkGeneratesManifest || !this->UserManifests.empty()))
+    {
+    if (this->Verbose)
+      {
+      std::cout << "Visual Studio Incremental Link with embedded manifests\n";
+      }
+    return LinkIncremental();
+    }
+  if (this->Verbose)
+    {
+    if (!this->Incremental)
+      {
+      std::cout << "Visual Studio Non-Incremental Link\n";
+      }
+    else
+      {
+      std::cout << "Visual Studio Incremental Link without manifests\n";
+      }
+    }
+  return LinkNonIncremental();
+}
+
+int cmVSLink::LinkIncremental()
 {
   // This follows the steps listed here:
   // http://blogs.msdn.com/zakramer/archive/2006/05/22/603558.aspx
@@ -1479,158 +1619,118 @@ int cmcmd::VisualStudioLinkIncremental(std::vector<std::string>& args,
   //    7.  Finally, the Linker does another incremental link, but since the
   //    only thing that has changed is the *.res file that contains the
   //    manifest it is a short link.
-  std::vector<std::string> linkCommand;
-  std::string targetName;
-  if(cmcmd::ParseVisualStudioLinkCommand(args, linkCommand, targetName) == -1)
+
+  // Create a resource file referencing the manifest.
+  std::string absManifestFile =
+    cmSystemTools::CollapseFullPath(this->ManifestFile);
+  if (this->Verbose)
+    {
+    std::cout << "Create " << this->ManifestFileRC << "\n";
+    }
+  {
+  cmsys::ofstream fout(this->ManifestFileRC.c_str());
+  if (!fout)
     {
     return -1;
     }
-  std::string manifestArg = "/MANIFESTFILE:";
+  fout << this->Type << " /* CREATEPROCESS_MANIFEST_RESOURCE_ID */ "
+    "24 /* RT_MANIFEST */ \"" << absManifestFile << "\"";
+  }
+
+  // If we have not previously generated a manifest file,
+  // generate an empty one so the resource compiler succeeds.
+  if (!cmSystemTools::FileExists(this->ManifestFile))
+    {
+    if (this->Verbose)
+      {
+      std::cout << "Create empty: " << this->ManifestFile << "\n";
+      }
+    cmsys::ofstream foutTmp(this->ManifestFile.c_str());
+    }
+
+  // Compile the resource file.
   std::vector<std::string> rcCommand;
   rcCommand.push_back(cmSystemTools::FindProgram("rc.exe"));
-  std::vector<std::string> mtCommand;
-  mtCommand.push_back(cmSystemTools::FindProgram("mt.exe"));
-  std::string tempManifest;
-  tempManifest = targetName;
-  tempManifest += ".intermediate.manifest";
-  std::string resourceInputFile = targetName;
-  resourceInputFile += ".resource.txt";
-  if(verbose)
-    {
-    std::cout << "Create " << resourceInputFile << "\n";
-    }
-  // Create input file for rc command
-  cmsys::ofstream fout(resourceInputFile.c_str());
-  if(!fout)
+  rcCommand.push_back("/fo" + this->ManifestFileRes);
+  rcCommand.push_back(this->ManifestFileRC);
+  if (!RunCommand("RC Pass 1", rcCommand, this->Verbose))
     {
     return -1;
     }
-  std::string manifestFile = targetName;
-  manifestFile += ".embed.manifest";
-  std::string fullPath= cmSystemTools::CollapseFullPath(manifestFile);
-  fout << type << " /* CREATEPROCESS_MANIFEST_RESOURCE_ID "
-    "*/ 24 /* RT_MANIFEST */ " << "\"" << fullPath << "\"";
-  fout.close();
-  manifestArg += tempManifest;
-  // add the manifest arg to the linkCommand
-  linkCommand.push_back("/MANIFEST");
-  linkCommand.push_back(manifestArg);
-  // if manifestFile is not yet created, create an
-  // empty one
-  if(!cmSystemTools::FileExists(manifestFile.c_str()))
-    {
-    if(verbose)
-      {
-      std::cout << "Create empty: " << manifestFile << "\n";
-      }
-    cmsys::ofstream foutTmp(manifestFile.c_str());
-    }
-  std::string resourceFile = manifestFile;
-  resourceFile += ".res";
-  // add the resource file to the end of the link command
-  linkCommand.push_back(resourceFile);
-  std::string outputOpt = "/fo";
-  outputOpt += resourceFile;
-  rcCommand.push_back(outputOpt);
-  rcCommand.push_back(resourceInputFile);
-  // Run rc command to create resource
-  if(!cmcmd::RunCommand("RC Pass 1", rcCommand, verbose))
+
+  // Run the link command (possibly generates intermediate manifest).
+  if (!RunCommand("LINK Pass 1", this->LinkCommand, this->Verbose))
     {
     return -1;
     }
-  // Now run the link command to link and create manifest
-  if(!cmcmd::RunCommand("LINK Pass 1", linkCommand, verbose))
-    {
-    return -1;
-    }
-  // create mt command
-  std::string outArg("/out:");
-  outArg+= manifestFile;
-  mtCommand.push_back("/nologo");
-  mtCommand.push_back(outArg);
-  mtCommand.push_back("/notify_update");
-  mtCommand.push_back("/manifest");
-  mtCommand.push_back(tempManifest);
-  //  now run mt.exe to create the final manifest file
-  int mtRet =0;
-  cmcmd::RunCommand("MT", mtCommand, verbose, &mtRet);
-  // if mt returns 0, then the manifest was not changed and
-  // we do not need to do another link step
-  if(mtRet == 0)
-    {
-    return 0;
-    }
-  // check for magic mt return value if mt returns the magic number
-  // 1090650113 then it means that it updated the manifest file and we need
-  // to do the final link.  If mt has any value other than 0 or 1090650113
-  // then there was some problem with the command itself and there was an
-  // error so return the error code back out of cmake so make can report it.
-  // (when hosted on a posix system the value is 187)
-  if(mtRet != 1090650113 && mtRet != 187)
+
+  // Run the manifest tool to create the final manifest.
+  int mtRet = this->RunMT("/out:" + this->ManifestFile, true);
+
+  // If mt returns 1090650113 (or 187 on a posix host) then it updated the
+  // manifest file so we need to embed it again.  Otherwise we are done.
+  if (mtRet != 1090650113 && mtRet != 187)
     {
     return mtRet;
     }
-  // update the resource file with the new manifest from the mt command.
-  if(!cmcmd::RunCommand("RC Pass 2", rcCommand, verbose))
+
+  // Compile the resource file again.
+  if (!RunCommand("RC Pass 2", rcCommand, this->Verbose))
     {
     return -1;
     }
-  // Run the final incremental link that will put the new manifest resource
-  // into the file incrementally.
-  if(!cmcmd::RunCommand("FINAL LINK", linkCommand, verbose))
+
+  // Link incrementally again to use the updated resource.
+  if (!RunCommand("FINAL LINK", this->LinkCommand, this->Verbose))
     {
     return -1;
     }
   return 0;
 }
 
-int cmcmd::VisualStudioLinkNonIncremental(std::vector<std::string>& args,
-                                          int type,
-                                          bool hasManifest,
-                                          bool verbose)
+int cmVSLink::LinkNonIncremental()
 {
-  std::vector<std::string> linkCommand;
-  std::string targetName;
-  if(cmcmd::ParseVisualStudioLinkCommand(args, linkCommand, targetName) == -1)
+  // Run the link command (possibly generates intermediate manifest).
+  if (!RunCommand("LINK", this->LinkCommand, this->Verbose))
     {
     return -1;
     }
-  // Run the link command as given
-  if (hasManifest)
-    {
-    linkCommand.push_back("/MANIFEST");
-    }
-  if(!cmcmd::RunCommand("LINK", linkCommand, verbose))
-    {
-    return -1;
-    }
-  if(!hasManifest)
+
+  // If we have no manifest files we are done.
+  if (!this->LinkGeneratesManifest && this->UserManifests.empty())
     {
     return 0;
     }
+
+  // Run the manifest tool to embed the final manifest in the binary.
+  std::string mtOut =
+    "/outputresource:" + this->TargetFile + (this->Type == 1? ";#1" : ";#2");
+  return this->RunMT(mtOut, false);
+}
+
+int cmVSLink::RunMT(std::string const& out, bool notify)
+{
   std::vector<std::string> mtCommand;
   mtCommand.push_back(cmSystemTools::FindProgram("mt.exe"));
   mtCommand.push_back("/nologo");
   mtCommand.push_back("/manifest");
-  std::string manifestFile = targetName;
-  manifestFile += ".manifest";
-  mtCommand.push_back(manifestFile);
-  std::string outresource = "/outputresource:";
-  outresource += targetName;
-  outresource += ";#";
-  if(type == 1)
+  if (this->LinkGeneratesManifest)
     {
-    outresource += "1";
+    mtCommand.push_back(this->LinkerManifestFile);
     }
-  else if(type == 2)
+  mtCommand.insert(mtCommand.end(),
+                   this->UserManifests.begin(), this->UserManifests.end());
+  mtCommand.push_back(out);
+  if (notify)
     {
-    outresource += "2";
+    // Add an undocumented option that enables a special return
+    // code to notify us when the manifest is modified.
+    mtCommand.push_back("/notify_update");
     }
-  mtCommand.push_back(outresource);
-  // Now use the mt tool to embed the manifest into the exe or dll
-  if(!cmcmd::RunCommand("MT", mtCommand, verbose))
+  int mtRet = 0;
+  if (!RunCommand("MT", mtCommand, this->Verbose, &mtRet))
     {
     return -1;
     }
-  return 0;
+  return mtRet;
 }

@@ -142,8 +142,7 @@ bool cmGetPropertyCommand
     {
     // Lookup brief documentation.
     std::string output;
-    if(cmPropertyDefinition* def =
-       this->Makefile->GetState()->
+    if(cmPropertyDefinition const* def = this->Makefile->GetState()->
        GetPropertyDefinition(this->PropertyName, scope))
       {
       output = def->GetShortDescription();
@@ -158,8 +157,7 @@ bool cmGetPropertyCommand
     {
     // Lookup full documentation.
     std::string output;
-    if(cmPropertyDefinition* def =
-       this->Makefile->GetState()->
+    if(cmPropertyDefinition const* def = this->Makefile->GetState()->
        GetPropertyDefinition(this->PropertyName, scope))
       {
       output = def->GetFullDescription();
@@ -264,13 +262,8 @@ bool cmGetPropertyCommand::HandleDirectoryMode()
     dir = cmSystemTools::CollapseFullPath(dir);
 
     // Lookup the generator.
-    if(cmLocalGenerator* lg =
-       (this->Makefile->GetGlobalGenerator()->FindLocalGenerator(dir)))
-      {
-      // Use the makefile for the directory found.
-      mf = lg->GetMakefile();
-      }
-    else
+    mf = this->Makefile->GetGlobalGenerator()->FindMakefile(dir);
+    if (!mf)
       {
       // Could not find the directory.
       this->SetError
@@ -278,6 +271,22 @@ bool cmGetPropertyCommand::HandleDirectoryMode()
          "This could be because the directory argument was invalid or, "
          "it is valid but has not been processed yet.");
       return false;
+      }
+    }
+
+  if (this->PropertyName == "DEFINITIONS")
+    {
+    switch(mf->GetPolicyStatus(cmPolicies::CMP0059))
+      {
+      case cmPolicies::WARN:
+        mf->IssueMessage(cmake::AUTHOR_WARNING,
+                         cmPolicies::GetPolicyWarning(cmPolicies::CMP0059));
+      case cmPolicies::OLD:
+        return this->StoreResult(mf->GetDefineFlagsCMP0059());
+      case cmPolicies::NEW:
+      case cmPolicies::REQUIRED_ALWAYS:
+      case cmPolicies::REQUIRED_IF_USED:
+        break;
       }
     }
 

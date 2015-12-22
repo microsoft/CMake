@@ -83,6 +83,7 @@ static const char * cmDocumentationOptions[][2] =
    "useful on one try_compile at a time."},
   {"--debug-output", "Put cmake in a debug mode."},
   {"--trace", "Put cmake in trace mode."},
+  {"--trace-expand", "Put cmake in trace mode with variable expansion."},
   {"--warn-uninitialized", "Warn about uninitialized values."},
   {"--warn-unused-vars", "Warn about unused variables."},
   {"--no-warn-unused-cli", "Don't warn about command line options."},
@@ -113,12 +114,7 @@ static cmMakefile* cmakemainGetMakefile(void *clientdata)
     cmGlobalGenerator* gg=cm->GetGlobalGenerator();
     if (gg)
       {
-      cmLocalGenerator* lg=gg->GetCurrentLocalGenerator();
-      if (lg)
-        {
-        cmMakefile* mf = lg->GetMakefile();
-        return mf;
-        }
+      return gg->GetCurrentMakefile();
       }
     }
   return 0;
@@ -425,7 +421,7 @@ static int do_build(int ac, char const* const* av)
       switch (doing)
         {
         case DoingDir:
-          dir = av[i];
+          dir = cmSystemTools::CollapseFullPath(av[i]);
           doing = DoingNone;
           break;
         case DoingTarget:

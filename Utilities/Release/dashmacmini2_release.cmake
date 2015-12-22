@@ -1,7 +1,7 @@
 set(PROCESSORS 2)
 set(CMAKE_RELEASE_DIRECTORY /Users/kitware/CMakeReleaseDirectory)
 set(USER_OVERRIDE "set(CMAKE_CXX_LINK_EXECUTABLE \\\"gcc  <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS>  -o <TARGET> <LINK_LIBRARIES>  -shared-libgcc -lstdc++-static\\\")")
-set(INSTALL_PREFIX /)
+set(BOOTSTRAP_ARGS "--prefix=/ --docdir=doc/cmake")
 set(HOST dashmacmini2)
 set(MAKE_PROGRAM "make")
 set(MAKE "${MAKE_PROGRAM} -j2")
@@ -18,6 +18,7 @@ CMAKE_SKIP_BOOTSTRAP_TEST:STRING=TRUE
 CPACK_SYSTEM_NAME:STRING=Darwin-universal
 BUILD_QtDialog:BOOL=TRUE
 CMake_GUI_DISTRIBUTE_WITH_Qt_LGPL:BOOL=TRUE
+CMake_INSTALL_DEPENDENCIES:BOOL=ON
 QT_QMAKE_EXECUTABLE:FILEPATH=/Users/kitware/Support/qt-4.8.0/install/bin/qmake
 ")
 get_filename_component(path "${CMAKE_CURRENT_LIST_FILE}" PATH)

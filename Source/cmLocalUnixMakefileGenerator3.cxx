@@ -80,9 +80,8 @@ static std::string cmSplitExtension(std::string const& in, std::string& base)
 
 //----------------------------------------------------------------------------
 cmLocalUnixMakefileGenerator3::
-cmLocalUnixMakefileGenerator3(cmGlobalGenerator* gg, cmLocalGenerator* parent,
-                              cmState::Snapshot snapshot)
-  : cmLocalGenerator(gg, parent, snapshot)
+cmLocalUnixMakefileGenerator3(cmGlobalGenerator* gg, cmMakefile* mf)
+  : cmLocalCommonGenerator(gg, mf)
 {
   this->MakefileVariableSize = 0;
   this->ColorMakefile = false;
@@ -98,37 +97,9 @@ cmLocalUnixMakefileGenerator3::~cmLocalUnixMakefileGenerator3()
 }
 
 //----------------------------------------------------------------------------
-void cmLocalUnixMakefileGenerator3::Configure()
-{
-  // Compute the path to use when referencing the current output
-  // directory from the top output directory.
-  this->HomeRelativeOutputPath =
-    this->Convert(this->Makefile->GetCurrentBinaryDirectory(), HOME_OUTPUT);
-  if(this->HomeRelativeOutputPath == ".")
-    {
-    this->HomeRelativeOutputPath = "";
-    }
-  if(!this->HomeRelativeOutputPath.empty())
-    {
-    this->HomeRelativeOutputPath += "/";
-    }
-  this->cmLocalGenerator::Configure();
-}
-
-//----------------------------------------------------------------------------
 void cmLocalUnixMakefileGenerator3::Generate()
 {
-  // Store the configuration name that will be generated.
-  if(const char* config = this->Makefile->GetDefinition("CMAKE_BUILD_TYPE"))
-    {
-    // Use the build type given by the user.
-    this->ConfigurationName = config;
-    }
-  else
-    {
-    // No configuration type given.
-    this->ConfigurationName = "";
-    }
+  this->SetConfigName();
 
   // Record whether some options are enabled to avoid checking many
   // times later.
@@ -167,6 +138,22 @@ void cmLocalUnixMakefileGenerator3::Generate()
 
   // Write the cmake file with information for this directory.
   this->WriteDirectoryInformationFile();
+}
+
+void cmLocalUnixMakefileGenerator3::ComputeHomeRelativeOutputPath()
+{
+  // Compute the path to use when referencing the current output
+  // directory from the top output directory.
+  this->HomeRelativeOutputPath =
+    this->Convert(this->Makefile->GetCurrentBinaryDirectory(), HOME_OUTPUT);
+  if(this->HomeRelativeOutputPath == ".")
+    {
+    this->HomeRelativeOutputPath = "";
+    }
+  if(!this->HomeRelativeOutputPath.empty())
+    {
+    this->HomeRelativeOutputPath += "/";
+    }
 }
 
 //----------------------------------------------------------------------------
@@ -268,7 +255,7 @@ void cmLocalUnixMakefileGenerator3::WriteLocalMakefile()
     return;
     }
   // always write the top makefile
-  if (this->Parent)
+  if (!this->GetMakefile()->IsRootMakefile())
     {
     ruleFileStream.SetCopyIfDifferent(true);
     }
@@ -279,7 +266,7 @@ void cmLocalUnixMakefileGenerator3::WriteLocalMakefile()
   // only write local targets unless at the top Keep track of targets already
   // listed.
   std::set<std::string> emittedTargets;
-  if (this->Parent)
+  if (!this->GetMakefile()->IsRootMakefile())
     {
     // write our targets, and while doing it collect up the object
     // file rules
@@ -498,8 +485,7 @@ void cmLocalUnixMakefileGenerator3
 
       // Add a local name for the rule to relink the target before
       // installation.
-      if(t->second->Target
-                  ->NeedRelinkBeforeInstall(this->ConfigurationName))
+      if(t->second->NeedRelinkBeforeInstall(this->ConfigName))
         {
         makeTargetName = this->GetRelativeTargetDirectory(*t->second->Target);
         makeTargetName += "/preinstall";
@@ -542,10 +528,10 @@ void cmLocalUnixMakefileGenerator3::WriteDirectoryInformationFile()
   infoFileStream
     << "# Relative path conversion top directories.\n"
     << "set(CMAKE_RELATIVE_PATH_TOP_SOURCE \""
-    << this->StateSnapshot.GetRelativePathTopSource()
+    << this->StateSnapshot.GetDirectory().GetRelativePathTopSource()
     << "\")\n"
     << "set(CMAKE_RELATIVE_PATH_TOP_BINARY \""
-    << this->StateSnapshot.GetRelativePathTopBinary()
+    << this->StateSnapshot.GetDirectory().GetRelativePathTopBinary()
     << "\")\n"
     << "\n";
 
@@ -900,7 +886,7 @@ void cmLocalUnixMakefileGenerator3
   std::vector<std::string> no_depends;
   std::vector<std::string> commands;
   commands.push_back(runRule);
-  if(this->Parent)
+  if(!this->GetMakefile()->IsRootMakefile())
     {
     this->CreateCDCommand(commands,
                           this->Makefile->GetHomeOutputDirectory(),
@@ -1019,8 +1005,7 @@ cmLocalUnixMakefileGenerator3
   for(std::vector<cmCustomCommand>::const_iterator i = ccs.begin();
       i != ccs.end(); ++i)
     {
-    cmCustomCommandGenerator ccg(*i, this->ConfigurationName,
-                                 this->Makefile);
+    cmCustomCommandGenerator ccg(*i, this->ConfigName, this);
     this->AppendCustomDepend(depends, ccg);
     }
 }
@@ -1036,7 +1021,7 @@ cmLocalUnixMakefileGenerator3
     {
     // Lookup the real name of the dependency in case it is a CMake target.
     std::string dep;
-    if(this->GetRealDependency(*d, this->ConfigurationName,
+    if(this->GetRealDependency(*d, this->ConfigName,
                                dep))
       {
       depends.push_back(dep);
@@ -1055,8 +1040,7 @@ cmLocalUnixMakefileGenerator3
   for(std::vector<cmCustomCommand>::const_iterator i = ccs.begin();
       i != ccs.end(); ++i)
     {
-    cmCustomCommandGenerator ccg(*i, this->ConfigurationName,
-                                 this->Makefile);
+    cmCustomCommandGenerator ccg(*i, this->ConfigName, this);
     this->AppendCustomCommand(commands, ccg, target, true, relative);
     }
 }
@@ -1259,7 +1243,7 @@ cmLocalUnixMakefileGenerator3
         f != files.end(); ++f)
       {
       std::string fc = this->Convert(*f,START_OUTPUT,UNCHANGED);
-      fout << "  " << cmLocalGenerator::EscapeForCMake(fc) << "\n";
+      fout << "  " << cmOutputConverter::EscapeForCMake(fc) << "\n";
       }
     fout << ")\n";
     }
@@ -1272,7 +1256,9 @@ cmLocalUnixMakefileGenerator3
     {
     // Get the set of source languages in the target.
     std::set<std::string> languages;
-    target.GetLanguages(languages,
+    cmGeneratorTarget *gtgt =
+        this->GlobalGenerator->GetGeneratorTarget(&target);
+    gtgt->GetLanguages(languages,
                       this->Makefile->GetSafeDefinition("CMAKE_BUILD_TYPE"));
     fout << "\n"
          << "# Per-language clean rules from dependency scanning.\n"
@@ -1614,12 +1600,14 @@ cmLocalUnixMakefileGenerator3
     if(const char* relativePathTopSource =
        mf->GetDefinition("CMAKE_RELATIVE_PATH_TOP_SOURCE"))
       {
-      this->StateSnapshot.SetRelativePathTopSource(relativePathTopSource);
+      this->StateSnapshot.GetDirectory()
+            .SetRelativePathTopSource(relativePathTopSource);
       }
     if(const char* relativePathTopBinary =
        mf->GetDefinition("CMAKE_RELATIVE_PATH_TOP_BINARY"))
       {
-      this->StateSnapshot.SetRelativePathTopBinary(relativePathTopBinary);
+      this->StateSnapshot.GetDirectory()
+            .SetRelativePathTopBinary(relativePathTopBinary);
       }
     }
   else
@@ -1845,7 +1833,6 @@ void cmLocalUnixMakefileGenerator3
   std::vector<std::string> commands;
 
   // Write the all rule.
-  std::string dir;
   std::string recursiveTarget = this->Makefile->GetCurrentBinaryDirectory();
   recursiveTarget += "/all";
 
@@ -2046,7 +2033,7 @@ void cmLocalUnixMakefileGenerator3
     // Build a list of preprocessor definitions for the target.
     std::set<std::string> defines;
     this->AddCompileDefinitions(defines, &target,
-                                this->ConfigurationName, l->first);
+                                this->ConfigName, l->first);
     if(!defines.empty())
       {
       cmakefileStream
@@ -2057,7 +2044,7 @@ void cmLocalUnixMakefileGenerator3
           di != defines.end(); ++di)
         {
         cmakefileStream
-          << "  " << cmLocalGenerator::EscapeForCMake(*di) << "\n";
+          << "  " << cmOutputConverter::EscapeForCMake(*di) << "\n";
         }
       cmakefileStream
         << "  )\n";
@@ -2111,7 +2098,7 @@ void cmLocalUnixMakefileGenerator3
         tri != transformRules.end(); ++tri)
       {
       cmakefileStream << "  "
-          << cmLocalGenerator::EscapeForCMake(*tri) << "\n";
+          << cmOutputConverter::EscapeForCMake(*tri) << "\n";
       }
     cmakefileStream
       << "  )\n";
@@ -2270,7 +2257,7 @@ cmLocalUnixMakefileGenerator3::ConvertToQuotedOutputPath(const char* p,
                           std::string());
       std::vector<std::string>::const_iterator compStart
           = components.begin() + 1;
-      result += cmJoin(cmRange(compStart, compEnd), slash);
+      result += cmJoin(cmMakeRange(compStart, compEnd), slash);
       // Only the last component can be empty to avoid double slashes.
       result += slash;
       result += components.back();

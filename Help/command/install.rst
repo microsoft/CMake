@@ -192,6 +192,10 @@ The list of ``files...`` given to ``FILES`` or ``PROGRAMS`` may use
 However, if any item begins in a generator expression it must evaluate
 to a full path.
 
+The install destination given to the files install ``DESTINATION`` may
+use "generator expressions" with the syntax ``$<...>``.  See the
+:manual:`cmake-generator-expressions(7)` manual for available expressions.
+
 Installing Directories
 ^^^^^^^^^^^^^^^^^^^^^^
 
@@ -266,6 +270,10 @@ will install the ``icons`` directory to ``share/myproj/icons`` and the
 ``scripts`` directory to ``share/myproj``.  The icons will get default
 file permissions, the scripts will be given specific permissions, and any
 ``CVS`` directories will be excluded.
+
+The install destination given to the directory install ``DESTINATION`` may
+use "generator expressions" with the syntax ``$<...>``.  See the
+:manual:`cmake-generator-expressions(7)` manual for available expressions.
 
 Custom Installation Logic
 ^^^^^^^^^^^^^^^^^^^^^^^^^

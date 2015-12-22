@@ -175,6 +175,23 @@ Create custom targets to build projects in external trees
   ``LOG_INSTALL 1``
     Wrap install in script to log output
 
+  Steps can be given direct access to the terminal if possible.  With
+  the :generator:`Ninja` generator, this places the steps in the
+  ``console`` :prop_gbl:`pool <JOB_POOLS>`.  Options are:
+
+  ``USES_TERMINAL_DOWNLOAD 1``
+    Give download terminal access.
+  ``USES_TERMINAL_UPDATE 1``
+    Give update terminal access.
+  ``USES_TERMINAL_CONFIGURE 1``
+    Give configure terminal access.
+  ``USES_TERMINAL_BUILD 1``
+    Give build terminal access.
+  ``USES_TERMINAL_TEST 1``
+    Give test terminal access.
+  ``USES_TERMINAL_INSTALL 1``
+    Give install terminal access.
+
   Other options are:
 
   ``STEP_TARGETS <step-target>...``
@@ -256,6 +273,8 @@ Create custom targets to build projects in external trees
     Working directory for command
   ``LOG 1``
     Wrap step in script to log output
+  ``USES_TERMINAL 1``
+    Give the step direct access to the terminal if possible.
 
   The command line, comment, working directory, and byproducts of every
   standard and custom step are processed to replace tokens ``<SOURCE_DIR>``,
@@ -529,7 +548,7 @@ if(error_code)
 endif()
 
 execute_process(
-  COMMAND \"${git_EXECUTABLE}\" submodule init
+  COMMAND \"${git_EXECUTABLE}\" submodule init ${git_submodules}
   WORKING_DIRECTORY \"${work_dir}/${src_name}\"
   RESULT_VARIABLE error_code
   )
@@ -590,7 +609,7 @@ if(error_code)
 endif()
 
 execute_process(
-  COMMAND \"${hg_EXECUTABLE}\" clone \"${hg_repository}\" \"${src_name}\"
+  COMMAND \"${hg_EXECUTABLE}\" clone -U \"${hg_repository}\" \"${src_name}\"
   WORKING_DIRECTORY \"${work_dir}\"
   RESULT_VARIABLE error_code
   )
@@ -627,6 +646,11 @@ endfunction()
 
 
 function(_ep_write_gitupdate_script script_filename git_EXECUTABLE git_tag git_submodules git_repository work_dir)
+  if(NOT GIT_VERSION_STRING VERSION_LESS 1.7.6)
+    set(git_stash_save_options --all --quiet)
+  else()
+    set(git_stash_save_options --quiet)
+  endif()
   file(WRITE ${script_filename}
 "if(\"${git_tag}\" STREQUAL \"\")
   message(FATAL_ERROR \"Tag for git checkout should not be empty.\")
@@ -705,7 +729,7 @@ if(error_code OR is_remote_ref OR NOT (\"\${tag_sha}\" STREQUAL \"\${head_sha}\"
     # perform git pull --rebase
     if(need_stash)
       execute_process(
-        COMMAND \"${git_EXECUTABLE}\" stash save --all --quiet
+        COMMAND \"${git_EXECUTABLE}\" stash save ${git_stash_save_options}
         WORKING_DIRECTORY \"${work_dir}\"
         RESULT_VARIABLE error_code
         )
@@ -1192,7 +1216,7 @@ function(_ep_get_build_command name step cmd_var)
         if(step STREQUAL "INSTALL")
           set(args install)
         endif()
-        if(step STREQUAL "TEST")
+        if("x${step}x" STREQUAL "xTESTx")
           set(args test)
         endif()
       else()
@@ -1211,7 +1235,7 @@ function(_ep_get_build_command name step cmd_var)
           list(APPEND args --target install)
         endif()
         # But for "TEST" drive the project with corresponding "ctest".
-        if(step STREQUAL "TEST")
+        if("x${step}x" STREQUAL "xTESTx")
           string(REGEX REPLACE "^(.*/)cmake([^/]*)$" "\\1ctest\\2" cmd "${cmd}")
           set(args "")
         endif()
@@ -1227,7 +1251,7 @@ function(_ep_get_build_command name step cmd_var)
       if(step STREQUAL "INSTALL")
         set(args install)
       endif()
-      if(step STREQUAL "TEST")
+      if("x${step}x" STREQUAL "xTESTx")
         set(args test)
       endif()
     endif()
@@ -1463,6 +1487,14 @@ function(ExternalProject_Add_Step name step)
     get_property(comment TARGET ${name} PROPERTY _EP_${step}_COMMENT)
   endif()
 
+  # Uses terminal?
+  get_property(uses_terminal TARGET ${name} PROPERTY _EP_${step}_USES_TERMINAL)
+  if(uses_terminal)
+    set(uses_terminal USES_TERMINAL)
+  else()
+    set(uses_terminal "")
+  endif()
+
   # Run every time?
   get_property(always TARGET ${name} PROPERTY _EP_${step}_ALWAYS)
   if(always)
@@ -1505,6 +1537,7 @@ function(ExternalProject_Add_Step name step)
     DEPENDS ${depends}
     WORKING_DIRECTORY ${work_dir}
     VERBATIM
+    ${uses_terminal}
     )
   set_property(TARGET ${name} APPEND PROPERTY _EP_STEPS ${step})
 
@@ -1603,20 +1636,6 @@ function(_ep_add_mkdir_command name)
 endfunction()
 
 
-function(_ep_get_git_version git_EXECUTABLE git_version_var)
-  if(git_EXECUTABLE)
-    execute_process(
-      COMMAND "${git_EXECUTABLE}" --version
-      OUTPUT_VARIABLE ov
-      ERROR_VARIABLE ev
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      )
-    string(REGEX REPLACE "^git version (.+)$" "\\1" version "${ov}")
-    set(${git_version_var} "${version}" PARENT_SCOPE)
-  endif()
-endfunction()
-
-
 function(_ep_is_dir_empty dir empty_var)
   file(GLOB gr "${dir}/*")
   if("${gr}" STREQUAL "")
@@ -1712,6 +1731,7 @@ function(_ep_add_download_command name)
       --non-interactive ${svn_trust_cert_args} ${svn_user_pw_args} ${src_name})
     list(APPEND depends ${stamp_dir}/${name}-svninfo.txt)
   elseif(git_repository)
+    unset(CMAKE_MODULE_PATH) # Use CMake builtin find module
     find_package(Git QUIET)
     if(NOT GIT_EXECUTABLE)
       message(FATAL_ERROR "error: could not find git for clone of ${name}")
@@ -1719,9 +1739,8 @@ function(_ep_add_download_command name)
 
     # The git submodule update '--recursive' flag requires git >= v1.6.5
     #
-    _ep_get_git_version("${GIT_EXECUTABLE}" git_version)
-    if(git_version VERSION_LESS 1.6.5)
-      message(FATAL_ERROR "error: git version 1.6.5 or later required for 'git submodule update --recursive': git_version='${git_version}'")
+    if(GIT_VERSION_STRING VERSION_LESS 1.6.5)
+      message(FATAL_ERROR "error: git version 1.6.5 or later required for 'git submodule update --recursive': GIT_VERSION_STRING='${GIT_VERSION_STRING}'")
     endif()
 
     get_property(git_tag TARGET ${name} PROPERTY _EP_GIT_TAG)
@@ -1890,6 +1909,14 @@ function(_ep_add_download_command name)
     set(log "")
   endif()
 
+  get_property(uses_terminal TARGET ${name} PROPERTY
+    _EP_USES_TERMINAL_DOWNLOAD)
+  if(uses_terminal)
+    set(uses_terminal USES_TERMINAL 1)
+  else()
+    set(uses_terminal "")
+  endif()
+
   ExternalProject_Add_Step(${name} download
     COMMENT ${comment}
     COMMAND ${cmd}
@@ -1897,6 +1924,7 @@ function(_ep_add_download_command name)
     DEPENDS ${depends}
     DEPENDEES mkdir
     ${log}
+    ${uses_terminal}
     )
 endfunction()
 
@@ -2001,6 +2029,14 @@ Update to Mercurial >= 2.1.1.
     set(log "")
   endif()
 
+  get_property(uses_terminal TARGET ${name} PROPERTY
+    _EP_USES_TERMINAL_UPDATE)
+  if(uses_terminal)
+    set(uses_terminal USES_TERMINAL 1)
+  else()
+    set(uses_terminal "")
+  endif()
+
   ExternalProject_Add_Step(${name} update
     COMMENT ${comment}
     COMMAND ${cmd}
@@ -2009,6 +2045,7 @@ Update to Mercurial >= 2.1.1.
     WORKING_DIRECTORY ${work_dir}
     DEPENDEES download
     ${log}
+    ${uses_terminal}
     )
 
   if(always AND update_disconnected)
@@ -2021,6 +2058,7 @@ Update to Mercurial >= 2.1.1.
       WORKING_DIRECTORY ${work_dir}
       DEPENDEES download
       ${log}
+      ${uses_terminal}
     )
     set_property(SOURCE ${skip-update_stamp_file} PROPERTY SYMBOLIC 1)
   endif()
@@ -2149,6 +2187,14 @@ function(_ep_add_configure_command name)
     set(log "")
   endif()
 
+  get_property(uses_terminal TARGET ${name} PROPERTY
+    _EP_USES_TERMINAL_CONFIGURE)
+  if(uses_terminal)
+    set(uses_terminal USES_TERMINAL 1)
+  else()
+    set(uses_terminal "")
+  endif()
+
   get_property(update_disconnected_set TARGET ${name} PROPERTY _EP_UPDATE_DISCONNECTED SET)
   if(update_disconnected_set)
     get_property(update_disconnected TARGET ${name} PROPERTY _EP_UPDATE_DISCONNECTED)
@@ -2167,6 +2213,7 @@ function(_ep_add_configure_command name)
     DEPENDEES ${update_dep} patch
     DEPENDS ${file_deps}
     ${log}
+    ${uses_terminal}
     )
 endfunction()
 
@@ -2188,6 +2235,14 @@ function(_ep_add_build_command name)
     set(log "")
   endif()
 
+  get_property(uses_terminal TARGET ${name} PROPERTY
+    _EP_USES_TERMINAL_BUILD)
+  if(uses_terminal)
+    set(uses_terminal USES_TERMINAL 1)
+  else()
+    set(uses_terminal "")
+  endif()
+
   get_property(build_always TARGET ${name} PROPERTY _EP_BUILD_ALWAYS)
   if(build_always)
     set(always 1)
@@ -2204,6 +2259,7 @@ function(_ep_add_build_command name)
     DEPENDEES configure
     ALWAYS ${always}
     ${log}
+    ${uses_terminal}
     )
 endfunction()
 
@@ -2225,11 +2281,20 @@ function(_ep_add_install_command name)
     set(log "")
   endif()
 
+  get_property(uses_terminal TARGET ${name} PROPERTY
+    _EP_USES_TERMINAL_INSTALL)
+  if(uses_terminal)
+    set(uses_terminal USES_TERMINAL 1)
+  else()
+    set(uses_terminal "")
+  endif()
+
   ExternalProject_Add_Step(${name} install
     COMMAND ${cmd}
     WORKING_DIRECTORY ${binary_dir}
     DEPENDEES build
     ${log}
+    ${uses_terminal}
     )
 endfunction()
 
@@ -2277,6 +2342,14 @@ function(_ep_add_test_command name)
       set(log "")
     endif()
 
+    get_property(uses_terminal TARGET ${name} PROPERTY
+      _EP_USES_TERMINAL_TEST)
+    if(uses_terminal)
+      set(uses_terminal USES_TERMINAL 1)
+    else()
+      set(uses_terminal "")
+    endif()
+
     ExternalProject_Add_Step(${name} test
       COMMAND ${cmd}
       WORKING_DIRECTORY ${binary_dir}
@@ -2284,6 +2357,7 @@ function(_ep_add_test_command name)
       ${dependers_args}
       ${exclude_args}
       ${log}
+      ${uses_terminal}
       )
   endif()
 endfunction()

@@ -15,8 +15,72 @@
 #include "cmCacheManager.h"
 #include "cmCommand.h"
 #include "cmAlgorithms.h"
+#include "cmDefinitions.h"
 
 #include <assert.h>
+
+struct cmState::SnapshotDataType
+{
+  cmState::PositionType ScopeParent;
+  cmState::PositionType DirectoryParent;
+  cmLinkedTree<cmState::PolicyStackEntry>::iterator Policies;
+  cmLinkedTree<cmState::PolicyStackEntry>::iterator PolicyRoot;
+  cmLinkedTree<cmState::PolicyStackEntry>::iterator PolicyScope;
+  cmState::SnapshotType SnapshotType;
+  cmLinkedTree<std::string>::iterator ExecutionListFile;
+  cmLinkedTree<cmState::BuildsystemDirectoryStateType>::iterator
+                                                          BuildSystemDirectory;
+  cmLinkedTree<cmDefinitions>::iterator Vars;
+  cmLinkedTree<cmDefinitions>::iterator Root;
+  cmLinkedTree<cmDefinitions>::iterator Parent;
+  std::string EntryPointCommand;
+  long EntryPointLine;
+  std::vector<std::string>::size_type IncludeDirectoryPosition;
+  std::vector<std::string>::size_type CompileDefinitionsPosition;
+  std::vector<std::string>::size_type CompileOptionsPosition;
+};
+
+struct cmState::PolicyStackEntry: public cmPolicies::PolicyMap
+{
+  typedef cmPolicies::PolicyMap derived;
+  PolicyStackEntry(bool w = false): derived(), Weak(w) {}
+  PolicyStackEntry(derived const& d, bool w): derived(d), Weak(w) {}
+  PolicyStackEntry(PolicyStackEntry const& r): derived(r), Weak(r.Weak) {}
+  bool Weak;
+};
+
+struct cmState::BuildsystemDirectoryStateType
+{
+  cmState::PositionType DirectoryEnd;
+
+  std::string Location;
+  std::string OutputLocation;
+
+  std::vector<std::string> CurrentSourceDirectoryComponents;
+  std::vector<std::string> CurrentBinaryDirectoryComponents;
+  // The top-most directories for relative path conversion.  Both the
+  // source and destination location of a relative path conversion
+  // must be underneath one of these directories (both under source or
+  // both under binary) in order for the relative path to be evaluated
+  // safely by the build tools.
+  std::string RelativePathTopSource;
+  std::string RelativePathTopBinary;
+
+  std::vector<std::string> IncludeDirectories;
+  std::vector<cmListFileBacktrace> IncludeDirectoryBacktraces;
+
+  std::vector<std::string> CompileDefinitions;
+  std::vector<cmListFileBacktrace> CompileDefinitionsBacktraces;
+
+  std::vector<std::string> CompileOptions;
+  std::vector<cmListFileBacktrace> CompileOptionsBacktraces;
+
+  std::string ProjectName;
+
+  cmPropertyMap Properties;
+
+  std::vector<cmState::Snapshot> Children;
+};
 
 cmState::cmState(cmake* cm)
   : CMakeInstance(cm),
@@ -195,34 +259,38 @@ void cmState::RemoveCacheEntryProperty(std::string const& key,
        ->GetCacheIterator(key.c_str()).SetProperty(propertyName, (void*)0);
 }
 
-void cmState::Reset()
+cmState::Snapshot cmState::Reset()
 {
   this->GlobalProperties.clear();
   this->PropertyDefinitions.clear();
 
-  assert(this->Locations.size() > 0);
-  assert(this->OutputLocations.size() > 0);
-  assert(this->ParentPositions.size() > 0);
-  assert(this->CurrentSourceDirectoryComponents.size() > 0);
-  assert(this->CurrentBinaryDirectoryComponents.size() > 0);
-  assert(this->RelativePathTopSource.size() > 0);
-  assert(this->RelativePathTopBinary.size() > 0);
+  PositionType pos = this->SnapshotData.Truncate();
+  this->ExecutionListFiles.Truncate();
 
-  this->Locations.erase(this->Locations.begin() + 1, this->Locations.end());
-  this->OutputLocations.erase(this->OutputLocations.begin() + 1,
-                              this->OutputLocations.end());
-  this->ParentPositions.erase(this->ParentPositions.begin() + 1,
-                              this->ParentPositions.end());
-  this->CurrentSourceDirectoryComponents.erase(
-        this->CurrentSourceDirectoryComponents.begin() + 1,
-        this->CurrentSourceDirectoryComponents.end());
-  this->CurrentBinaryDirectoryComponents.erase(
-        this->CurrentBinaryDirectoryComponents.begin() + 1,
-        this->CurrentBinaryDirectoryComponents.end());
-  this->RelativePathTopSource.erase(this->RelativePathTopSource.begin() + 1,
-                                    this->RelativePathTopSource.end());
-  this->RelativePathTopBinary.erase(this->RelativePathTopBinary.begin() + 1,
-                                    this->RelativePathTopBinary.end());
+  {
+  cmLinkedTree<BuildsystemDirectoryStateType>::iterator it =
+      this->BuildsystemDirectory.Truncate();
+  it->IncludeDirectories.clear();
+  it->IncludeDirectoryBacktraces.clear();
+  it->CompileDefinitions.clear();
+  it->CompileDefinitionsBacktraces.clear();
+  it->CompileOptions.clear();
+  it->CompileOptionsBacktraces.clear();
+  it->DirectoryEnd = pos;
+  it->Properties.clear();
+  it->Children.clear();
+  }
+
+  this->PolicyStack.Clear();
+  pos->Policies = this->PolicyStack.Root();
+  pos->PolicyRoot = this->PolicyStack.Root();
+  pos->PolicyScope = this->PolicyStack.Root();
+  assert(pos->Policies.IsValid());
+  assert(pos->PolicyRoot.IsValid());
+  this->VarTree.Clear();
+  pos->Vars = this->VarTree.Extend(this->VarTree.Root());
+  pos->Parent = this->VarTree.Root();
+  pos->Root = this->VarTree.Root();
 
   this->DefineProperty
     ("RULE_LAUNCH_COMPILE", cmProperty::DIRECTORY,
@@ -243,6 +311,8 @@ void cmState::Reset()
   this->DefineProperty
     ("RULE_LAUNCH_CUSTOM", cmProperty::TARGET,
      "", "", true);
+
+  return Snapshot(this, pos);
 }
 
 void cmState::DefineProperty(const std::string& name,
@@ -256,27 +326,41 @@ void cmState::DefineProperty(const std::string& name,
                                                   chained);
 }
 
-cmPropertyDefinition *cmState
+cmPropertyDefinition const* cmState
 ::GetPropertyDefinition(const std::string& name,
-                        cmProperty::ScopeType scope)
+                        cmProperty::ScopeType scope) const
 {
   if (this->IsPropertyDefined(name,scope))
     {
-    return &(this->PropertyDefinitions[scope][name]);
+    cmPropertyDefinitionMap const& defs =
+        this->PropertyDefinitions.find(scope)->second;
+    return &defs.find(name)->second;
     }
   return 0;
 }
 
 bool cmState::IsPropertyDefined(const std::string& name,
-                              cmProperty::ScopeType scope)
+                                cmProperty::ScopeType scope) const
 {
-  return this->PropertyDefinitions[scope].IsPropertyDefined(name);
+  std::map<cmProperty::ScopeType, cmPropertyDefinitionMap>::const_iterator it
+      = this->PropertyDefinitions.find(scope);
+  if (it == this->PropertyDefinitions.end())
+    {
+    return false;
+    }
+  return it->second.IsPropertyDefined(name);
 }
 
 bool cmState::IsPropertyChained(const std::string& name,
-                              cmProperty::ScopeType scope)
+                                cmProperty::ScopeType scope) const
 {
-  return this->PropertyDefinitions[scope].IsPropertyChained(name);
+  std::map<cmProperty::ScopeType, cmPropertyDefinitionMap>::const_iterator it
+      = this->PropertyDefinitions.find(scope);
+  if (it == this->PropertyDefinitions.end())
+    {
+    return false;
+    }
+  return it->second.IsPropertyChained(name);
 }
 
 void cmState::SetLanguageEnabled(std::string const& l)
@@ -435,20 +519,17 @@ void cmState::RemoveUserDefinedCommands()
 
 void cmState::SetGlobalProperty(const std::string& prop, const char* value)
 {
-  this->GlobalProperties.SetProperty(prop, value, cmProperty::GLOBAL);
+  this->GlobalProperties.SetProperty(prop, value);
 }
 
 void cmState::AppendGlobalProperty(const std::string& prop,
                                    const char* value, bool asString)
 {
-  this->GlobalProperties.AppendProperty(prop, value,
-                                        cmProperty::GLOBAL, asString);
+  this->GlobalProperties.AppendProperty(prop, value, asString);
 }
 
 const char *cmState::GetGlobalProperty(const std::string& prop)
 {
-  // watch for special properties
-  std::string output = "";
   if ( prop == "CACHE_VARIABLES" )
     {
     std::vector<std::string> cacheKeys = this->GetCacheEntryKeys();
@@ -480,9 +561,7 @@ const char *cmState::GetGlobalProperty(const std::string& prop)
     return FOR_EACH_CXX_FEATURE(STRING_LIST_ELEMENT) + 1;
     }
 #undef STRING_LIST_ELEMENT
-  bool dummy = false;
-  return this->GlobalProperties.GetPropertyValue(prop, cmProperty::GLOBAL,
-                                                 dummy);
+  return this->GlobalProperties.GetPropertyValue(prop);
 }
 
 bool cmState::GetGlobalPropertyAsBool(const std::string& prop)
@@ -590,18 +669,18 @@ std::vector<std::string> const& cmState::GetBinaryDirectoryComponents() const
   return this->BinaryDirectoryComponents;
 }
 
-void cmState::Snapshot::ComputeRelativePathTopSource()
+void cmState::Directory::ComputeRelativePathTopSource()
 {
   // Relative path conversion inside the source tree is not used to
   // construct relative paths passed to build tools so it is safe to use
   // even when the source is a network path.
 
-  cmState::Snapshot snapshot = *this;
+  cmState::Snapshot snapshot = this->Snapshot_;
   std::vector<cmState::Snapshot> snapshots;
   snapshots.push_back(snapshot);
   while (true)
     {
-    snapshot = snapshot.GetParent();
+    snapshot = snapshot.GetBuildsystemDirectoryParent();
     if (snapshot.IsValid())
       {
       snapshots.push_back(snapshot);
@@ -612,28 +691,28 @@ void cmState::Snapshot::ComputeRelativePathTopSource()
       }
     }
 
-  std::string result = snapshots.front().GetCurrentSourceDirectory();
+  std::string result = snapshots.front().GetDirectory().GetCurrentSource();
 
   for (std::vector<cmState::Snapshot>::const_iterator it =
        snapshots.begin() + 1; it != snapshots.end(); ++it)
     {
-    std::string currentSource = it->GetCurrentSourceDirectory();
+    std::string currentSource = it->GetDirectory().GetCurrentSource();
     if(cmSystemTools::IsSubDirectory(result, currentSource))
       {
       result = currentSource;
       }
     }
-  this->State->RelativePathTopSource[this->Position] = result;
+  this->DirectoryState->RelativePathTopSource = result;
 }
 
-void cmState::Snapshot::ComputeRelativePathTopBinary()
+void cmState::Directory::ComputeRelativePathTopBinary()
 {
-  cmState::Snapshot snapshot = *this;
+  cmState::Snapshot snapshot = this->Snapshot_;
   std::vector<cmState::Snapshot> snapshots;
   snapshots.push_back(snapshot);
   while (true)
     {
-    snapshot = snapshot.GetParent();
+    snapshot = snapshot.GetBuildsystemDirectoryParent();
     if (snapshot.IsValid())
       {
       snapshots.push_back(snapshot);
@@ -645,12 +724,12 @@ void cmState::Snapshot::ComputeRelativePathTopBinary()
     }
 
   std::string result =
-      snapshots.front().GetCurrentBinaryDirectory();
+      snapshots.front().GetDirectory().GetCurrentBinary();
 
   for (std::vector<cmState::Snapshot>::const_iterator it =
        snapshots.begin() + 1; it != snapshots.end(); ++it)
     {
-    std::string currentBinary = it->GetCurrentBinaryDirectory();
+    std::string currentBinary = it->GetDirectory().GetCurrentBinary();
     if(cmSystemTools::IsSubDirectory(result, currentBinary))
       {
       result = currentBinary;
@@ -662,31 +741,213 @@ void cmState::Snapshot::ComputeRelativePathTopBinary()
   // is a network path.
   if(result.size() < 2 || result.substr(0, 2) != "//")
     {
-    this->State->RelativePathTopBinary[this->Position] = result;
+    this->DirectoryState->RelativePathTopBinary = result;
     }
   else
     {
-    this->State->RelativePathTopBinary[this->Position] = "";
+    this->DirectoryState->RelativePathTopBinary = "";
     }
 }
 
-cmState::Snapshot cmState::CreateSnapshot(Snapshot originSnapshot)
+cmState::Snapshot cmState::CreateBaseSnapshot()
 {
-  if (!originSnapshot.IsValid())
-    {
-    originSnapshot.State = this;
-    }
-  PositionType pos = this->ParentPositions.size();
-  this->ParentPositions.push_back(originSnapshot.Position);
-  this->Locations.resize(this->Locations.size() + 1);
-  this->OutputLocations.resize(this->OutputLocations.size() + 1);
-  this->CurrentSourceDirectoryComponents.resize(
-      this->CurrentSourceDirectoryComponents.size() + 1);
-  this->CurrentBinaryDirectoryComponents.resize(
-      this->CurrentBinaryDirectoryComponents.size() + 1);
-  this->RelativePathTopSource.resize(this->RelativePathTopSource.size() + 1);
-  this->RelativePathTopBinary.resize(this->RelativePathTopBinary.size() + 1);
+  PositionType pos = this->SnapshotData.Extend(this->SnapshotData.Root());
+  pos->DirectoryParent = this->SnapshotData.Root();
+  pos->ScopeParent = this->SnapshotData.Root();
+  pos->SnapshotType = BaseType;
+  pos->BuildSystemDirectory =
+      this->BuildsystemDirectory.Extend(this->BuildsystemDirectory.Root());
+  pos->ExecutionListFile =
+      this->ExecutionListFiles.Extend(this->ExecutionListFiles.Root());
+  pos->IncludeDirectoryPosition = 0;
+  pos->CompileDefinitionsPosition = 0;
+  pos->CompileOptionsPosition = 0;
+  pos->BuildSystemDirectory->DirectoryEnd = pos;
+  pos->Policies = this->PolicyStack.Root();
+  pos->PolicyRoot = this->PolicyStack.Root();
+  pos->PolicyScope = this->PolicyStack.Root();
+  assert(pos->Policies.IsValid());
+  assert(pos->PolicyRoot.IsValid());
+  pos->Vars = this->VarTree.Extend(this->VarTree.Root());
+  assert(pos->Vars.IsValid());
+  pos->Parent = this->VarTree.Root();
+  pos->Root = this->VarTree.Root();
   return cmState::Snapshot(this, pos);
+}
+
+cmState::Snapshot
+cmState::CreateBuildsystemDirectorySnapshot(Snapshot originSnapshot,
+                                    std::string const& entryPointCommand,
+                                    long entryPointLine)
+{
+  assert(originSnapshot.IsValid());
+  PositionType pos = this->SnapshotData.Extend(originSnapshot.Position);
+  pos->EntryPointLine = entryPointLine;
+  pos->EntryPointCommand = entryPointCommand;
+  pos->DirectoryParent = originSnapshot.Position;
+  pos->ScopeParent = originSnapshot.Position;
+  pos->SnapshotType = BuildsystemDirectoryType;
+  pos->BuildSystemDirectory =
+      this->BuildsystemDirectory.Extend(
+        originSnapshot.Position->BuildSystemDirectory);
+  pos->ExecutionListFile =
+      this->ExecutionListFiles.Extend(
+        originSnapshot.Position->ExecutionListFile);
+  pos->BuildSystemDirectory->DirectoryEnd = pos;
+  pos->Policies = originSnapshot.Position->Policies;
+  pos->PolicyRoot = originSnapshot.Position->Policies;
+  pos->PolicyScope = originSnapshot.Position->Policies;
+  assert(pos->Policies.IsValid());
+  assert(pos->PolicyRoot.IsValid());
+
+  cmLinkedTree<cmDefinitions>::iterator origin =
+      originSnapshot.Position->Vars;
+  pos->Parent = origin;
+  pos->Root = origin;
+  pos->Vars = this->VarTree.Extend(origin);
+  cmState::Snapshot snapshot = cmState::Snapshot(this, pos);
+  originSnapshot.Position->BuildSystemDirectory->Children.push_back(snapshot);
+  return snapshot;
+}
+
+cmState::Snapshot
+cmState::CreateFunctionCallSnapshot(cmState::Snapshot originSnapshot,
+                                    std::string const& entryPointCommand,
+                                    long entryPointLine,
+                                    std::string const& fileName)
+{
+  PositionType pos = this->SnapshotData.Extend(originSnapshot.Position,
+                                               *originSnapshot.Position);
+  pos->ScopeParent = originSnapshot.Position;
+  pos->EntryPointLine = entryPointLine;
+  pos->EntryPointCommand = entryPointCommand;
+  pos->SnapshotType = FunctionCallType;
+  pos->ExecutionListFile = this->ExecutionListFiles.Extend(
+        originSnapshot.Position->ExecutionListFile, fileName);
+  pos->BuildSystemDirectory->DirectoryEnd = pos;
+  pos->PolicyScope = originSnapshot.Position->Policies;
+  assert(originSnapshot.Position->Vars.IsValid());
+  cmLinkedTree<cmDefinitions>::iterator origin =
+      originSnapshot.Position->Vars;
+  pos->Parent = origin;
+  pos->Vars = this->VarTree.Extend(origin);
+  return cmState::Snapshot(this, pos);
+}
+
+
+cmState::Snapshot
+cmState::CreateMacroCallSnapshot(cmState::Snapshot originSnapshot,
+                                    std::string const& entryPointCommand,
+                                    long entryPointLine,
+                                    std::string const& fileName)
+{
+  PositionType pos = this->SnapshotData.Extend(originSnapshot.Position,
+                                               *originSnapshot.Position);
+  pos->EntryPointLine = entryPointLine;
+  pos->EntryPointCommand = entryPointCommand;
+  pos->SnapshotType = MacroCallType;
+  pos->ExecutionListFile = this->ExecutionListFiles.Extend(
+        originSnapshot.Position->ExecutionListFile, fileName);
+  assert(originSnapshot.Position->Vars.IsValid());
+  pos->BuildSystemDirectory->DirectoryEnd = pos;
+  pos->PolicyScope = originSnapshot.Position->Policies;
+  return cmState::Snapshot(this, pos);
+}
+
+cmState::Snapshot
+cmState::CreateCallStackSnapshot(cmState::Snapshot originSnapshot,
+                                 const std::string& entryPointCommand,
+                                 long entryPointLine,
+                                 const std::string& fileName)
+{
+  PositionType pos = this->SnapshotData.Extend(originSnapshot.Position,
+                                               *originSnapshot.Position);
+  pos->EntryPointLine = entryPointLine;
+  pos->EntryPointCommand = entryPointCommand;
+  pos->SnapshotType = CallStackType;
+  pos->ExecutionListFile = this->ExecutionListFiles.Extend(
+        originSnapshot.Position->ExecutionListFile, fileName);
+  assert(originSnapshot.Position->Vars.IsValid());
+  pos->BuildSystemDirectory->DirectoryEnd = pos;
+  pos->PolicyScope = originSnapshot.Position->Policies;
+  return cmState::Snapshot(this, pos);
+}
+
+cmState::Snapshot
+cmState::CreateVariableScopeSnapshot(cmState::Snapshot originSnapshot,
+                                     std::string const& entryPointCommand,
+                                     long entryPointLine)
+{
+  PositionType pos = this->SnapshotData.Extend(originSnapshot.Position,
+                                               *originSnapshot.Position);
+  pos->ScopeParent = originSnapshot.Position;
+  pos->EntryPointLine = entryPointLine;
+  pos->EntryPointCommand = entryPointCommand;
+  pos->SnapshotType = VariableScopeType;
+  assert(originSnapshot.Position->Vars.IsValid());
+
+  cmLinkedTree<cmDefinitions>::iterator origin =
+      originSnapshot.Position->Vars;
+  pos->Parent = origin;
+  pos->Vars = this->VarTree.Extend(origin);
+  assert(pos->Vars.IsValid());
+  return cmState::Snapshot(this, pos);
+}
+
+cmState::Snapshot
+cmState::CreateInlineListFileSnapshot(cmState::Snapshot originSnapshot,
+                                      const std::string& entryPointCommand,
+                                      long entryPointLine,
+                                      const std::string& fileName)
+{
+  PositionType pos = this->SnapshotData.Extend(originSnapshot.Position,
+                                               *originSnapshot.Position);
+  pos->EntryPointLine = entryPointLine;
+  pos->EntryPointCommand = entryPointCommand;
+  pos->SnapshotType = InlineListFileType;
+  pos->ExecutionListFile = this->ExecutionListFiles.Extend(
+        originSnapshot.Position->ExecutionListFile, fileName);
+  pos->BuildSystemDirectory->DirectoryEnd = pos;
+  pos->PolicyScope = originSnapshot.Position->Policies;
+  return cmState::Snapshot(this, pos);
+}
+
+cmState::Snapshot
+cmState::CreatePolicyScopeSnapshot(cmState::Snapshot originSnapshot)
+{
+  PositionType pos = this->SnapshotData.Extend(originSnapshot.Position,
+                                               *originSnapshot.Position);
+  pos->SnapshotType = PolicyScopeType;
+  pos->BuildSystemDirectory->DirectoryEnd = pos;
+  pos->PolicyScope = originSnapshot.Position->Policies;
+  return cmState::Snapshot(this, pos);
+}
+
+cmState::Snapshot cmState::Pop(cmState::Snapshot originSnapshot)
+{
+  PositionType pos = originSnapshot.Position;
+  PositionType prevPos = pos;
+  ++prevPos;
+  prevPos->IncludeDirectoryPosition =
+      prevPos->BuildSystemDirectory->IncludeDirectories.size();
+  prevPos->CompileDefinitionsPosition =
+      prevPos->BuildSystemDirectory->CompileDefinitions.size();
+  prevPos->CompileOptionsPosition =
+      prevPos->BuildSystemDirectory->CompileOptions.size();
+  prevPos->BuildSystemDirectory->DirectoryEnd = prevPos;
+
+  return Snapshot(this, prevPos);
+}
+
+cmState::Snapshot::Snapshot(cmState* state)
+  : State(state)
+  , Position()
+{
+}
+
+std::vector<cmState::Snapshot> cmState::Snapshot::GetChildren()
+{
+  return this->Position->BuildSystemDirectory->Children;
 }
 
 cmState::Snapshot::Snapshot(cmState* state, PositionType position)
@@ -696,94 +957,785 @@ cmState::Snapshot::Snapshot(cmState* state, PositionType position)
 
 }
 
-const char* cmState::Snapshot::GetCurrentSourceDirectory() const
+cmState::SnapshotType cmState::Snapshot::GetType() const
 {
-  return this->State->Locations[this->Position].c_str();
+  return this->Position->SnapshotType;
 }
 
-void cmState::Snapshot::SetCurrentSourceDirectory(std::string const& dir)
+const char* cmState::Directory::GetCurrentSource() const
 {
-  assert(this->State);
-  assert(this->State->Locations.size() > this->Position);
-  this->State->Locations[this->Position] = dir;
-  cmSystemTools::ConvertToUnixSlashes(
-      this->State->Locations[this->Position]);
-  this->State->Locations[this->Position] =
-    cmSystemTools::CollapseFullPath(this->State->Locations[this->Position]);
+  return this->DirectoryState->Location.c_str();
+}
+
+void cmState::Directory::SetCurrentSource(std::string const& dir)
+{
+  std::string& loc = this->DirectoryState->Location;
+  loc = dir;
+  cmSystemTools::ConvertToUnixSlashes(loc);
+  loc = cmSystemTools::CollapseFullPath(loc);
 
   cmSystemTools::SplitPath(
-      this->State->Locations[this->Position],
-      this->State->CurrentSourceDirectoryComponents[this->Position]);
+      loc,
+      this->DirectoryState->CurrentSourceDirectoryComponents);
   this->ComputeRelativePathTopSource();
 }
 
-const char* cmState::Snapshot::GetCurrentBinaryDirectory() const
+const char* cmState::Directory::GetCurrentBinary() const
 {
-  return this->State->OutputLocations[this->Position].c_str();
+  return this->DirectoryState->OutputLocation.c_str();
 }
 
-void cmState::Snapshot::SetCurrentBinaryDirectory(std::string const& dir)
+void cmState::Directory::SetCurrentBinary(std::string const& dir)
 {
-  assert(this->State->OutputLocations.size() > this->Position);
-  this->State->OutputLocations[this->Position] = dir;
-  cmSystemTools::ConvertToUnixSlashes(
-      this->State->OutputLocations[this->Position]);
-  this->State->OutputLocations[this->Position] =
-    cmSystemTools::CollapseFullPath(
-        this->State->OutputLocations[this->Position]);
+  std::string& loc = this->DirectoryState->OutputLocation;
+  loc = dir;
+  cmSystemTools::ConvertToUnixSlashes(loc);
+  loc = cmSystemTools::CollapseFullPath(loc);
 
   cmSystemTools::SplitPath(
-      this->State->OutputLocations[this->Position],
-      this->State->CurrentBinaryDirectoryComponents[this->Position]);
+      loc,
+      this->DirectoryState->CurrentBinaryDirectoryComponents);
   this->ComputeRelativePathTopBinary();
 }
 
-std::vector<std::string> const&
-cmState::Snapshot::GetCurrentSourceDirectoryComponents()
+void cmState::Snapshot::SetListFile(const std::string& listfile)
 {
-  return this->State->CurrentSourceDirectoryComponents[this->Position];
+  *this->Position->ExecutionListFile = listfile;
 }
 
 std::vector<std::string> const&
-cmState::Snapshot::GetCurrentBinaryDirectoryComponents()
+cmState::Directory::GetCurrentSourceComponents() const
 {
-  return this->State->CurrentBinaryDirectoryComponents[this->Position];
+  return this->DirectoryState->CurrentSourceDirectoryComponents;
 }
 
-const char* cmState::Snapshot::GetRelativePathTopSource() const
+std::vector<std::string> const&
+cmState::Directory::GetCurrentBinaryComponents() const
 {
-  return this->State->RelativePathTopSource[this->Position].c_str();
+  return this->DirectoryState->CurrentBinaryDirectoryComponents;
 }
 
-const char* cmState::Snapshot::GetRelativePathTopBinary() const
+const char* cmState::Directory::GetRelativePathTopSource() const
 {
-  return this->State->RelativePathTopBinary[this->Position].c_str();
+  return this->DirectoryState->RelativePathTopSource.c_str();
 }
 
-void cmState::Snapshot::SetRelativePathTopSource(const char* dir)
+const char* cmState::Directory::GetRelativePathTopBinary() const
 {
-  this->State->RelativePathTopSource[this->Position] = dir;
+  return this->DirectoryState->RelativePathTopBinary.c_str();
 }
 
-void cmState::Snapshot::SetRelativePathTopBinary(const char* dir)
+void cmState::Directory::SetRelativePathTopSource(const char* dir)
 {
-  this->State->RelativePathTopBinary[this->Position] = dir;
+  this->DirectoryState->RelativePathTopSource = dir;
+}
+
+void cmState::Directory::SetRelativePathTopBinary(const char* dir)
+{
+  this->DirectoryState->RelativePathTopBinary = dir;
+}
+
+std::string cmState::Snapshot::GetExecutionListFile() const
+{
+  return *this->Position->ExecutionListFile;
+}
+
+std::string cmState::Snapshot::GetEntryPointCommand() const
+{
+  return this->Position->EntryPointCommand;
+}
+
+long cmState::Snapshot::GetEntryPointLine() const
+{
+  return this->Position->EntryPointLine;
 }
 
 bool cmState::Snapshot::IsValid() const
 {
-  return this->State ? true : false;
+  return this->State && this->Position.IsValid()
+      ? this->Position != this->State->SnapshotData.Root()
+      : false;
 }
 
-cmState::Snapshot cmState::Snapshot::GetParent() const
+cmState::Snapshot cmState::Snapshot::GetBuildsystemDirectoryParent() const
 {
   Snapshot snapshot;
-  if (!this->State || this->Position == 0)
+  if (!this->State || this->Position == this->State->SnapshotData.Root())
     {
     return snapshot;
     }
-  PositionType parentPos = this->State->ParentPositions[this->Position];
-  snapshot = Snapshot(this->State, parentPos);
+  PositionType parentPos = this->Position->DirectoryParent;
+  if (parentPos != this->State->SnapshotData.Root())
+    {
+    snapshot = Snapshot(this->State,
+                        parentPos->BuildSystemDirectory->DirectoryEnd);
+    }
 
   return snapshot;
+}
+
+cmState::Snapshot cmState::Snapshot::GetCallStackParent() const
+{
+  assert(this->State);
+  assert(this->Position != this->State->SnapshotData.Root());
+
+  Snapshot snapshot;
+  PositionType parentPos = this->Position;
+  while(parentPos->SnapshotType == cmState::PolicyScopeType)
+    {
+    ++parentPos;
+    }
+  if (parentPos->SnapshotType == cmState::BuildsystemDirectoryType
+      || parentPos->SnapshotType == cmState::BaseType)
+    {
+    return snapshot;
+    }
+
+  ++parentPos;
+  while(parentPos->SnapshotType == cmState::PolicyScopeType)
+    {
+    ++parentPos;
+    }
+
+  if (parentPos == this->State->SnapshotData.Root())
+    {
+    return snapshot;
+    }
+
+  snapshot = Snapshot(this->State, parentPos);
+  return snapshot;
+}
+
+void cmState::Snapshot::PushPolicy(cmPolicies::PolicyMap entry, bool weak)
+{
+  PositionType pos = this->Position;
+  pos->Policies =
+      this->State->PolicyStack.Extend(pos->Policies,
+                                      PolicyStackEntry(entry, weak));
+}
+
+bool cmState::Snapshot::PopPolicy()
+{
+  PositionType pos = this->Position;
+  if (pos->Policies == pos->PolicyScope)
+    {
+    return false;
+    }
+  ++pos->Policies;
+  return true;
+}
+
+bool cmState::Snapshot::CanPopPolicyScope()
+{
+  return this->Position->Policies == this->Position->PolicyScope;
+}
+
+void cmState::Snapshot::SetPolicy(cmPolicies::PolicyID id,
+                                  cmPolicies::PolicyStatus status)
+{
+  // Update the policy stack from the top to the top-most strong entry.
+  bool previous_was_weak = true;
+  for(cmLinkedTree<PolicyStackEntry>::iterator psi = this->Position->Policies;
+      previous_was_weak && psi != this->Position->PolicyRoot; ++psi)
+    {
+    psi->Set(id, status);
+    previous_was_weak = psi->Weak;
+    }
+}
+
+cmPolicies::PolicyStatus
+cmState::Snapshot::GetPolicy(cmPolicies::PolicyID id) const
+{
+  cmPolicies::PolicyStatus status = cmPolicies::GetPolicyStatus(id);
+
+  if(status == cmPolicies::REQUIRED_ALWAYS ||
+     status == cmPolicies::REQUIRED_IF_USED)
+    {
+    return status;
+    }
+
+  cmLinkedTree<BuildsystemDirectoryStateType>::iterator dir =
+      this->Position->BuildSystemDirectory;
+
+  while (true)
+    {
+    assert(dir.IsValid());
+    cmLinkedTree<PolicyStackEntry>::iterator leaf =
+        dir->DirectoryEnd->Policies;
+    cmLinkedTree<PolicyStackEntry>::iterator root =
+        dir->DirectoryEnd->PolicyRoot;
+    for( ; leaf != root; ++leaf)
+      {
+      if(leaf->IsDefined(id))
+        {
+        status = leaf->Get(id);
+        return status;
+        }
+      }
+    cmState::PositionType e = dir->DirectoryEnd;
+    cmState::PositionType p = e->DirectoryParent;
+    if (p == this->State->SnapshotData.Root())
+      {
+      break;
+      }
+    dir = p->BuildSystemDirectory;
+    }
+  return status;
+}
+
+bool cmState::Snapshot::HasDefinedPolicyCMP0011()
+{
+  return !this->Position->Policies->IsEmpty();
+}
+
+const char* cmState::Snapshot::GetDefinition(std::string const& name) const
+{
+  assert(this->Position->Vars.IsValid());
+  return cmDefinitions::Get(name, this->Position->Vars,
+                    this->Position->Root);
+}
+
+bool cmState::Snapshot::IsInitialized(std::string const& name) const
+{
+  return cmDefinitions::HasKey(name, this->Position->Vars,
+                               this->Position->Root);
+}
+
+void cmState::Snapshot::SetDefinition(std::string const& name,
+                                      std::string const& value)
+{
+  this->Position->Vars->Set(name, value.c_str());
+}
+
+void cmState::Snapshot::RemoveDefinition(std::string const& name)
+{
+  this->Position->Vars->Set(name, 0);
+}
+
+std::vector<std::string> cmState::Snapshot::UnusedKeys() const
+{
+  return this->Position->Vars->UnusedKeys();
+}
+
+std::vector<std::string> cmState::Snapshot::ClosureKeys() const
+{
+  return cmDefinitions::ClosureKeys(this->Position->Vars,
+                                    this->Position->Root);
+}
+
+bool cmState::Snapshot::RaiseScope(std::string const& var, const char* varDef)
+{
+  if(this->Position->ScopeParent == this->Position->DirectoryParent)
+    {
+    Snapshot parentDir = this->GetBuildsystemDirectoryParent();
+    if(!parentDir.IsValid())
+      {
+      return false;
+      }
+    // Update the definition in the parent directory top scope.  This
+    // directory's scope was initialized by the closure of the parent
+    // scope, so we do not need to localize the definition first.
+    if (varDef)
+      {
+      parentDir.SetDefinition(var, varDef);
+      }
+    else
+      {
+      parentDir.RemoveDefinition(var);
+      }
+    return true;
+    }
+  // First localize the definition in the current scope.
+  cmDefinitions::Raise(var, this->Position->Vars,
+                       this->Position->Root);
+
+  // Now update the definition in the parent scope.
+  this->Position->Parent->Set(var, varDef);
+  return true;
+}
+
+static const std::string cmPropertySentinal = std::string();
+
+template<typename T, typename U, typename V>
+void InitializeContentFromParent(T& parentContent,
+                          T& thisContent,
+                          U& parentBacktraces,
+                          U& thisBacktraces,
+                          V& contentEndPosition)
+{
+  std::vector<std::string>::const_iterator parentBegin =
+      parentContent.begin();
+  std::vector<std::string>::const_iterator parentEnd =
+      parentContent.end();
+
+  std::vector<std::string>::const_reverse_iterator parentRbegin =
+      cmMakeReverseIterator(parentEnd);
+  std::vector<std::string>::const_reverse_iterator parentRend =
+      parentContent.rend();
+  parentRbegin = std::find(parentRbegin, parentRend, cmPropertySentinal);
+  std::vector<std::string>::const_iterator parentIt = parentRbegin.base();
+
+  thisContent = std::vector<std::string>(parentIt, parentEnd);
+
+  std::vector<cmListFileBacktrace>::const_iterator btIt =
+      parentBacktraces.begin() + std::distance(parentBegin, parentIt);
+  std::vector<cmListFileBacktrace>::const_iterator btEnd =
+      parentBacktraces.end();
+
+  thisBacktraces = std::vector<cmListFileBacktrace>(btIt, btEnd);
+
+  contentEndPosition = thisContent.size();
+}
+
+void cmState::Snapshot::InitializeFromParent()
+{
+  PositionType parent = this->Position->DirectoryParent;
+  assert(this->Position->Vars.IsValid());
+  assert(parent->Vars.IsValid());
+
+  *this->Position->Vars =
+      cmDefinitions::MakeClosure(parent->Vars, parent->Root);
+
+  InitializeContentFromParent(parent->BuildSystemDirectory->IncludeDirectories,
+              this->Position->BuildSystemDirectory->IncludeDirectories,
+              parent->BuildSystemDirectory->IncludeDirectoryBacktraces,
+              this->Position->BuildSystemDirectory->IncludeDirectoryBacktraces,
+              this->Position->IncludeDirectoryPosition);
+
+  InitializeContentFromParent(parent->BuildSystemDirectory->CompileDefinitions,
+            this->Position->BuildSystemDirectory->CompileDefinitions,
+            parent->BuildSystemDirectory->CompileDefinitionsBacktraces,
+            this->Position->BuildSystemDirectory->CompileDefinitionsBacktraces,
+            this->Position->CompileDefinitionsPosition);
+
+  InitializeContentFromParent(parent->BuildSystemDirectory->CompileOptions,
+                this->Position->BuildSystemDirectory->CompileOptions,
+                parent->BuildSystemDirectory->CompileOptionsBacktraces,
+                this->Position->BuildSystemDirectory->CompileOptionsBacktraces,
+                this->Position->CompileOptionsPosition);
+}
+
+cmState* cmState::Snapshot::GetState() const
+{
+  return this->State;
+}
+
+cmState::Directory cmState::Snapshot::GetDirectory() const
+{
+  return Directory(this->Position->BuildSystemDirectory, *this);
+}
+
+void cmState::Snapshot::SetProjectName(const std::string& name)
+{
+  this->Position->BuildSystemDirectory->ProjectName = name;
+}
+
+std::string cmState::Snapshot::GetProjectName() const
+{
+  return this->Position->BuildSystemDirectory->ProjectName;
+}
+
+cmState::Directory::Directory(
+    cmLinkedTree<BuildsystemDirectoryStateType>::iterator iter,
+    const cmState::Snapshot& snapshot)
+  : DirectoryState(iter), Snapshot_(snapshot)
+{
+
+}
+
+template <typename T, typename U>
+cmStringRange GetPropertyContent(T const& content, U contentEndPosition)
+{
+  std::vector<std::string>::const_iterator end =
+      content.begin() + contentEndPosition;
+
+  std::vector<std::string>::const_reverse_iterator rbegin =
+      cmMakeReverseIterator(end);
+  rbegin = std::find(rbegin, content.rend(), cmPropertySentinal);
+
+  return cmMakeRange(rbegin.base(), end);
+}
+
+template <typename T, typename U, typename V>
+cmBacktraceRange GetPropertyBacktraces(T const& content,
+                                    U const& backtraces,
+                                    V contentEndPosition)
+{
+  std::vector<std::string>::const_iterator entryEnd =
+      content.begin() + contentEndPosition;
+
+  std::vector<std::string>::const_reverse_iterator rbegin =
+      cmMakeReverseIterator(entryEnd);
+  rbegin = std::find(rbegin, content.rend(), cmPropertySentinal);
+
+  std::vector<cmListFileBacktrace>::const_iterator it =
+      backtraces.begin() + std::distance(content.begin(), rbegin.base());
+
+  std::vector<cmListFileBacktrace>::const_iterator end = backtraces.end();
+  return cmMakeRange(it, end);
+}
+
+template <typename T, typename U, typename V>
+void AppendEntry(T& content, U& backtraces, V& endContentPosition,
+    const std::string& value, const cmListFileBacktrace& lfbt)
+{
+  if (value.empty())
+    {
+    return;
+    }
+
+  assert(endContentPosition == content.size());
+
+  content.push_back(value);
+  backtraces.push_back(lfbt);
+
+  endContentPosition = content.size();
+}
+
+template <typename T, typename U, typename V>
+void SetContent(T& content, U& backtraces, V& endContentPosition,
+                const std::string& vec, const cmListFileBacktrace& lfbt)
+{
+  assert(endContentPosition == content.size());
+
+  content.resize(content.size() + 2);
+  backtraces.resize(backtraces.size() + 2);
+
+  content.back() = vec;
+  backtraces.back() = lfbt;
+
+  endContentPosition = content.size();
+}
+
+template <typename T, typename U, typename V>
+void ClearContent(T& content, U& backtraces, V& endContentPosition)
+{
+  assert(endContentPosition == content.size());
+
+  content.resize(content.size() + 1);
+  backtraces.resize(backtraces.size() + 1);
+
+  endContentPosition = content.size();
+}
+
+cmStringRange
+cmState::Directory::GetIncludeDirectoriesEntries() const
+{
+  return GetPropertyContent(this->DirectoryState->IncludeDirectories,
+                       this->Snapshot_.Position->IncludeDirectoryPosition);
+}
+
+cmBacktraceRange
+cmState::Directory::GetIncludeDirectoriesEntryBacktraces() const
+{
+  return GetPropertyBacktraces(this->DirectoryState->IncludeDirectories,
+                       this->DirectoryState->IncludeDirectoryBacktraces,
+                       this->Snapshot_.Position->IncludeDirectoryPosition);
+}
+
+void cmState::Directory::AppendIncludeDirectoriesEntry(
+    const std::string& vec, const cmListFileBacktrace& lfbt)
+{
+  AppendEntry(this->DirectoryState->IncludeDirectories,
+              this->DirectoryState->IncludeDirectoryBacktraces,
+              this->Snapshot_.Position->IncludeDirectoryPosition,
+              vec, lfbt);
+}
+
+void cmState::Directory::PrependIncludeDirectoriesEntry(
+    const std::string& vec, const cmListFileBacktrace& lfbt)
+{
+  std::vector<std::string>::iterator entryEnd =
+      this->DirectoryState->IncludeDirectories.begin()
+      + this->Snapshot_.Position->IncludeDirectoryPosition;
+
+  std::vector<std::string>::reverse_iterator rend =
+      this->DirectoryState->IncludeDirectories.rend();
+  std::vector<std::string>::reverse_iterator rbegin =
+      cmMakeReverseIterator(entryEnd);
+  rbegin = std::find(rbegin, rend, cmPropertySentinal);
+
+  std::vector<std::string>::iterator entryIt = rbegin.base();
+  std::vector<std::string>::iterator entryBegin =
+      this->DirectoryState->IncludeDirectories.begin();
+
+  std::vector<cmListFileBacktrace>::iterator btIt =
+      this->DirectoryState->IncludeDirectoryBacktraces.begin()
+      + std::distance(entryBegin, entryIt);
+
+  this->DirectoryState->IncludeDirectories.insert(entryIt, vec);
+  this->DirectoryState->IncludeDirectoryBacktraces.insert(btIt, lfbt);
+
+  this->Snapshot_.Position->IncludeDirectoryPosition =
+      this->DirectoryState->IncludeDirectories.size();
+}
+
+void cmState::Directory::SetIncludeDirectories(
+    const std::string& vec, const cmListFileBacktrace& lfbt)
+{
+  SetContent(this->DirectoryState->IncludeDirectories,
+             this->DirectoryState->IncludeDirectoryBacktraces,
+             this->Snapshot_.Position->IncludeDirectoryPosition,
+             vec, lfbt);
+}
+
+void cmState::Directory::ClearIncludeDirectories()
+{
+  ClearContent(this->DirectoryState->IncludeDirectories,
+               this->DirectoryState->IncludeDirectoryBacktraces,
+               this->Snapshot_.Position->IncludeDirectoryPosition);
+}
+
+cmStringRange cmState::Directory::GetCompileDefinitionsEntries() const
+{
+  return GetPropertyContent(this->DirectoryState->CompileDefinitions,
+                     this->Snapshot_.Position->CompileDefinitionsPosition);
+}
+
+cmBacktraceRange
+cmState::Directory::GetCompileDefinitionsEntryBacktraces() const
+{
+  return GetPropertyBacktraces(this->DirectoryState->CompileDefinitions,
+                     this->DirectoryState->CompileDefinitionsBacktraces,
+                     this->Snapshot_.Position->CompileDefinitionsPosition);
+}
+
+void cmState::Directory::AppendCompileDefinitionsEntry(const std::string& vec,
+                                               const cmListFileBacktrace& lfbt)
+{
+  AppendEntry(this->DirectoryState->CompileDefinitions,
+              this->DirectoryState->CompileDefinitionsBacktraces,
+              this->Snapshot_.Position->CompileDefinitionsPosition,
+              vec, lfbt);
+}
+
+void cmState::Directory::SetCompileDefinitions(const std::string& vec,
+                                               const cmListFileBacktrace& lfbt)
+{
+  SetContent(this->DirectoryState->CompileDefinitions,
+             this->DirectoryState->CompileDefinitionsBacktraces,
+             this->Snapshot_.Position->CompileDefinitionsPosition,
+             vec, lfbt);
+}
+
+void cmState::Directory::ClearCompileDefinitions()
+{
+  ClearContent(this->DirectoryState->CompileDefinitions,
+               this->DirectoryState->CompileDefinitionsBacktraces,
+               this->Snapshot_.Position->CompileDefinitionsPosition);
+}
+
+cmStringRange cmState::Directory::GetCompileOptionsEntries() const
+{
+  return GetPropertyContent(this->DirectoryState->CompileOptions,
+                         this->Snapshot_.Position->CompileOptionsPosition);
+}
+
+cmBacktraceRange cmState::Directory::GetCompileOptionsEntryBacktraces() const
+{
+  return GetPropertyBacktraces(this->DirectoryState->CompileOptions,
+                         this->DirectoryState->CompileOptionsBacktraces,
+                         this->Snapshot_.Position->CompileOptionsPosition);
+}
+
+void
+cmState::Directory::AppendCompileOptionsEntry(const std::string& vec,
+                                              const cmListFileBacktrace& lfbt)
+{
+  AppendEntry(this->DirectoryState->CompileOptions,
+              this->DirectoryState->CompileOptionsBacktraces,
+              this->Snapshot_.Position->CompileOptionsPosition,
+              vec, lfbt);
+}
+
+void cmState::Directory::SetCompileOptions(const std::string& vec,
+                                           const cmListFileBacktrace& lfbt)
+{
+  SetContent(this->DirectoryState->CompileOptions,
+             this->DirectoryState->CompileOptionsBacktraces,
+             this->Snapshot_.Position->CompileOptionsPosition,
+             vec, lfbt);
+}
+
+void cmState::Directory::ClearCompileOptions()
+{
+  ClearContent(this->DirectoryState->CompileOptions,
+               this->DirectoryState->CompileOptionsBacktraces,
+               this->Snapshot_.Position->CompileOptionsPosition);
+}
+
+bool cmState::Snapshot::StrictWeakOrder::operator()(
+    const cmState::Snapshot& lhs, const cmState::Snapshot& rhs) const
+{
+  return lhs.Position.StrictWeakOrdered(rhs.Position);
+}
+
+void cmState::Directory::SetProperty(const std::string& prop,
+                                     const char* value,
+                                     cmListFileBacktrace lfbt)
+{
+  if (prop == "INCLUDE_DIRECTORIES")
+    {
+    if (!value)
+      {
+      this->ClearIncludeDirectories();
+      return;
+      }
+    this->SetIncludeDirectories(value, lfbt);
+    return;
+    }
+  if (prop == "COMPILE_OPTIONS")
+    {
+    if (!value)
+      {
+      this->ClearCompileOptions();
+      return;
+      }
+    this->SetCompileOptions(value, lfbt);
+    return;
+    }
+  if (prop == "COMPILE_DEFINITIONS")
+    {
+    if (!value)
+      {
+      this->ClearCompileDefinitions();
+      return;
+      }
+    this->SetCompileDefinitions(value, lfbt);
+    return;
+    }
+
+  this->DirectoryState->Properties.SetProperty(prop, value);
+}
+
+void cmState::Directory::AppendProperty(const std::string& prop,
+                                        const char* value,
+                                        bool asString,
+                                        cmListFileBacktrace lfbt)
+{
+  if (prop == "INCLUDE_DIRECTORIES")
+    {
+    this->AppendIncludeDirectoriesEntry(value, lfbt);
+    return;
+    }
+  if (prop == "COMPILE_OPTIONS")
+    {
+    this->AppendCompileOptionsEntry(value, lfbt);
+    return;
+    }
+  if (prop == "COMPILE_DEFINITIONS")
+    {
+    this->AppendCompileDefinitionsEntry(value, lfbt);
+    return;
+    }
+
+  this->DirectoryState->Properties.AppendProperty(prop, value, asString);
+}
+
+const char*cmState::Directory::GetProperty(const std::string& prop) const
+{
+  const bool chain = this->Snapshot_.State->
+      IsPropertyChained(prop, cmProperty::DIRECTORY);
+  return this->GetProperty(prop, chain);
+}
+
+const char*
+cmState::Directory::GetProperty(const std::string& prop, bool chain) const
+{
+  static std::string output;
+  output = "";
+  if (prop == "PARENT_DIRECTORY")
+    {
+    cmState::Snapshot parent =
+        this->Snapshot_.GetBuildsystemDirectoryParent();
+    if(parent.IsValid())
+      {
+      return parent.GetDirectory().GetCurrentSource();
+      }
+    return "";
+    }
+  else if (prop == "LISTFILE_STACK")
+    {
+    std::vector<std::string> listFiles;
+    cmState::Snapshot snp = this->Snapshot_;
+    while (snp.IsValid())
+      {
+      listFiles.push_back(snp.GetExecutionListFile());
+      snp = snp.GetCallStackParent();
+      }
+    std::reverse(listFiles.begin(), listFiles.end());
+    output = cmJoin(listFiles, ";");
+    return output.c_str();
+    }
+  else if ( prop == "CACHE_VARIABLES" )
+    {
+    output = cmJoin(this->Snapshot_.State->GetCacheEntryKeys(), ";");
+    return output.c_str();
+    }
+  else if (prop == "VARIABLES")
+    {
+    std::vector<std::string> res = this->Snapshot_.ClosureKeys();
+    std::vector<std::string> cacheKeys =
+        this->Snapshot_.State->GetCacheEntryKeys();
+    res.insert(res.end(), cacheKeys.begin(), cacheKeys.end());
+    std::sort(res.begin(), res.end());
+    output = cmJoin(res, ";");
+    return output.c_str();
+    }
+  else if (prop == "INCLUDE_DIRECTORIES")
+    {
+    output = cmJoin(this->GetIncludeDirectoriesEntries(), ";");
+    return output.c_str();
+    }
+  else if (prop == "COMPILE_OPTIONS")
+    {
+    output = cmJoin(this->GetCompileOptionsEntries(), ";");
+    return output.c_str();
+    }
+  else if (prop == "COMPILE_DEFINITIONS")
+    {
+    output = cmJoin(this->GetCompileDefinitionsEntries(), ";");
+    return output.c_str();
+    }
+
+  const char *retVal = this->DirectoryState->Properties.GetPropertyValue(prop);
+  if (!retVal && chain)
+    {
+    Snapshot parentSnapshot = this->Snapshot_.GetBuildsystemDirectoryParent();
+    if (parentSnapshot.IsValid())
+      {
+      return parentSnapshot.GetDirectory().GetProperty(prop, chain);
+      }
+    return this->Snapshot_.State->GetGlobalProperty(prop);
+    }
+
+  return retVal;
+}
+
+bool cmState::Directory::GetPropertyAsBool(const std::string& prop) const
+{
+  return cmSystemTools::IsOn(this->GetProperty(prop));
+}
+
+std::vector<std::string> cmState::Directory::GetPropertyKeys() const
+{
+  std::vector<std::string> keys;
+  keys.reserve(this->DirectoryState->Properties.size());
+  for(cmPropertyMap::const_iterator it =
+      this->DirectoryState->Properties.begin();
+      it != this->DirectoryState->Properties.end(); ++it)
+    {
+    keys.push_back(it->first);
+    }
+  return keys;
+}
+
+bool operator==(const cmState::Snapshot& lhs, const cmState::Snapshot& rhs)
+{
+  return lhs.Position == rhs.Position;
+}
+
+bool operator!=(const cmState::Snapshot& lhs, const cmState::Snapshot& rhs)
+{
+  return lhs.Position != rhs.Position;
 }

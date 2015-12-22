@@ -33,7 +33,7 @@ class cmVS10XMLParser : public cmXMLParser
   virtual void StartElement(const std::string& name, const char**)
     {
       // once the GUID is found do nothing
-      if(this->GUID.size())
+      if(!this->GUID.empty())
         {
         return;
         }
@@ -62,10 +62,8 @@ class cmVS10XMLParser : public cmXMLParser
 
 //----------------------------------------------------------------------------
 cmLocalVisualStudio10Generator
-::cmLocalVisualStudio10Generator(cmGlobalGenerator* gg,
-                                 cmLocalGenerator* parent,
-                                 cmState::Snapshot snapshot):
-  cmLocalVisualStudio7Generator(gg, parent, snapshot)
+::cmLocalVisualStudio10Generator(cmGlobalGenerator* gg, cmMakefile* mf):
+  cmLocalVisualStudio7Generator(gg, mf)
 {
 }
 
@@ -107,10 +105,9 @@ void cmLocalVisualStudio10Generator
   cmVS10XMLParser parser;
   parser.ParseFile(path);
 
-  // if we can not find a GUID then create one
+  // if we can not find a GUID then we will generate one later
   if(parser.GUID.empty())
     {
-    this->GlobalGenerator->CreateGUID(name);
     return;
     }
 

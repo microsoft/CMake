@@ -367,6 +367,7 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
       cmCPackLogger(cmCPackLog::LOG_OUTPUT,
         "- Install directory: " << top << std::endl);
       gl.RecurseOn();
+      gl.SetRecurseListDirs(true);
       if ( !gl.FindFiles(findExpr) )
         {
         cmCPackLogger(cmCPackLog::LOG_ERROR,
@@ -379,7 +380,11 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
       for ( gfit = files.begin(); gfit != files.end(); ++ gfit )
         {
         bool skip = false;
-        std::string &inFile = *gfit;
+        std::string inFile = *gfit;
+        if(cmSystemTools::FileIsDirectory(*gfit))
+          {
+          inFile += '/';
+          }
         for ( regIt= ignoreFilesRegex.begin();
           regIt!= ignoreFilesRegex.end();
           ++ regIt)
@@ -716,8 +721,10 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
         cm.AddCMakePaths();
         cm.SetProgressCallback(cmCPackGeneratorProgress, this);
         cmGlobalGenerator gg(&cm);
-        cmsys::auto_ptr<cmLocalGenerator> lg(gg.MakeLocalGenerator());
-        cmMakefile *mf = lg->GetMakefile();
+        cmsys::auto_ptr<cmMakefile> mf(
+              new cmMakefile(&gg, cm.GetCurrentSnapshot()));
+        cmsys::auto_ptr<cmLocalGenerator> lg(
+              gg.CreateLocalGenerator(mf.get()));
         std::string realInstallDirectory = tempInstallDirectory;
         if ( !installSubDirectory.empty() && installSubDirectory != "/" )
           {
@@ -867,6 +874,7 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
           cmsys::Glob glB;
           findExpr += "/*";
           glB.RecurseOn();
+          glB.SetRecurseListDirs(true);
           glB.FindFiles(findExpr);
           filesBefore = glB.GetFiles();
           std::sort(filesBefore.begin(),filesBefore.end());
@@ -906,6 +914,7 @@ int cmCPackGenerator::InstallProjectViaInstallCMakeProjects(
           {
           cmsys::Glob glA;
           glA.RecurseOn();
+          glA.SetRecurseListDirs(true);
           glA.FindFiles(findExpr);
           std::vector<std::string> filesAfter = glA.GetFiles();
           std::sort(filesAfter.begin(),filesAfter.end());
@@ -1072,6 +1081,7 @@ int cmCPackGenerator::DoPackage()
   std::string findExpr = tempDirectory;
   findExpr += "/*";
   gl.RecurseOn();
+  gl.SetRecurseListDirs(true);
   gl.SetRecurseThroughSymlinks(false);
   if ( !gl.FindFiles(findExpr) )
     {
