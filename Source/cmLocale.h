@@ -13,19 +13,18 @@
 #define cmLocale_h
 
 #include <locale.h>
+#include <string>
 
 class cmLocaleRAII
 {
-  const char* OldLocale;
+  std::string OldLocale;
+
 public:
   cmLocaleRAII(): OldLocale(setlocale(LC_CTYPE, 0))
     {
     setlocale(LC_CTYPE, "");
-    }
-  ~cmLocaleRAII()
-    {
-    setlocale(LC_CTYPE, this->OldLocale);
-    }
+  }
+  ~cmLocaleRAII() { setlocale(LC_CTYPE, this->OldLocale.c_str()); }
 };
 
 #endif
