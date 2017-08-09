@@ -36,6 +36,7 @@ static cmInstallTargetGenerator* CreateInstallTargetGenerator(
   cmInstallGenerator::MessageLevel message =
     cmInstallGenerator::SelectMessageLevel(target.GetMakefile());
   target.SetHaveInstallRule(true);
+  target.SetInstallPath(args.GetDestination().c_str());
   return new cmInstallTargetGenerator(
     target.GetName(), args.GetDestination().c_str(), impLib,
     args.GetPermissions().c_str(), args.GetConfigurations(),
