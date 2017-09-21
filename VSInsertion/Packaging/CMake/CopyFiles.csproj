@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{3F55989C-8E6B-44A8-9188-48177A63DB46}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>CopyFiles</RootNamespace>
+    <AssemblyName>CopyFiles</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <OutDir Condition="'$(OutDir)' == ''">$(OutputPath)</OutDir>
+  </PropertyGroup>
+  <Target Name="BeforeBuild">
+    <ItemGroup>
+      <CopyFiles Include="**\*" Exclude="CopyFiles.*;logs\**;obj\**;VersionSeed.xml;bin\**" />
+    </ItemGroup>
+    <Copy SourceFiles="@(CopyFiles)" DestinationFiles="@(CopyFiles->'$(OutDir)%(RecursiveDir)%(FileName)%(Extension)')" UseHardLinksIfPossible="true" />
+  </Target>
+  <Target Name="AfterBuild">
+    <ItemGroup>
+      <FilesToDelete Include="$(IntermediateOutputPath)$(AssemblyName).*" />
+      <FilesToDelete Include="$(OutDir)$(AssemblyName).*" />
+    </ItemGroup>
+    <PropertyGroup>
+      <DeleteFiles>false</DeleteFiles>
+      <DeleteFiles Condition="'@(FilesToDelete)' != ''">true</DeleteFiles>
+    </PropertyGroup>
+    <Delete Files="@(FilesToDelete)" Condition="$(DeleteFiles)" />
+  </Target>
+</Project>
