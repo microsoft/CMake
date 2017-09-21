@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<VersionSeed>
-  <NuGetPackage id="VS.ExternalAPIs.Microsoft.CMake">
-    <VersionPattern>1.0.YYMMDDBB</VersionPattern>
-  </NuGetPackage>
-</VersionSeed>
