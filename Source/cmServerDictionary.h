@@ -4,7 +4,7 @@
 
 #include <string>
 
-// Vocabulary:
+   // Vocabulary:
 
 static const std::string kDIRTY_SIGNAL = "dirty";
 static const std::string kFILE_CHANGE_SIGNAL = "fileChange";
@@ -74,8 +74,7 @@ static const std::string kPROTOCOL_VERSION_KEY = "protocolVersion";
 static const std::string kREPLY_TO_KEY = "inReplyTo";
 static const std::string kSOURCE_DIRECTORY_KEY = "sourceDirectory";
 static const std::string kSOURCES_KEY = "sources";
-static const std::string kSUPPORTED_PROTOCOL_VERSIONS =
-  "supportedProtocolVersions";
+static const std::string kSUPPORTED_PROTOCOL_VERSIONS = "supportedProtocolVersions";
 static const std::string kSYSROOT_KEY = "sysroot";
 static const std::string kTARGETS_KEY = "targets";
 static const std::string kTITLE_KEY = "title";
@@ -101,6 +100,7 @@ static const std::string kTARGET_CROSS_REFERENCES_KEY = "crossReferences";
 static const std::string kLINE_NUMBER_KEY = "line";
 static const std::string kBACKTRACE_KEY = "backtrace";
 static const std::string kRELATED_STATEMENTS_KEY = "relatedStatements";
+static const std::string KTARGET_DEPENDENCIES_KEY = "dependencies";
 
 static const std::string kSTART_MAGIC = "[== \"CMake Server\" ==[";
 static const std::string kEND_MAGIC = "]== \"CMake Server\" ==]";

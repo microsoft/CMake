@@ -257,7 +257,7 @@ bool cmServerProtocol::DoActivate(const cmServerRequest& /*request*/,
 
 std::pair<int, int> cmServerProtocol1::ProtocolVersion() const
 {
-  return std::make_pair(1, 2);
+  return std::make_pair(1, 3);
 }
 
 static void setErrorMessage(std::string* errorMessage, const std::string& text)
@@ -880,6 +880,7 @@ static Json::Value DumpCTestConfigurationsList(const cmake* cm)
 static Json::Value DumpTarget(cmGeneratorTarget* target,
                               const std::string& config)
 {
+  cmGlobalGenerator* g = target->GetGlobalGenerator();
   cmLocalGenerator* lg = target->GetLocalGenerator();
   const cmState* state = lg->GetState();
 
@@ -956,6 +957,13 @@ static Json::Value DumpTarget(cmGeneratorTarget* target,
 
   crossRefs[kRELATED_STATEMENTS_KEY] = std::move(statements);
   result[kTARGET_CROSS_REFERENCES_KEY] = std::move(crossRefs);
+
+  cmGlobalGenerator::TargetDependSet const& tgtdeps = g->GetTargetDirectDepends(target);
+  Json::Value dependencies = Json::arrayValue;
+  for (auto const & depend : tgtdeps) {
+      dependencies.append(depend->GetFullName(config));
+  }
+  result[KTARGET_DEPENDENCIES_KEY] = dependencies;
 
   if (target->HaveWellDefinedOutputFiles()) {
     Json::Value artifacts = Json::arrayValue;
