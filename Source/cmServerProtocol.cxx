@@ -961,7 +961,10 @@ static Json::Value DumpTarget(cmGeneratorTarget* target,
   cmGlobalGenerator::TargetDependSet const& tgtdeps = g->GetTargetDirectDepends(target);
   Json::Value dependencies = Json::arrayValue;
   for (auto const & depend : tgtdeps) {
-      dependencies.append(depend->GetFullName(config));
+      Json::Value obj = Json::objectValue;
+      obj[kNAME_KEY] = depend->GetFullName(config);
+      obj[kBACKTRACE_KEY] = DumpBacktrace(depend.Backtrace());
+      dependencies.append(obj);
   }
   result[KTARGET_DEPENDENCIES_KEY] = dependencies;
 
