@@ -435,3 +435,8 @@ bool operator!=(const cmStateSnapshot& lhs, const cmStateSnapshot& rhs)
 {
   return lhs.Position != rhs.Position;
 }
+
+bool operator<(const cmStateSnapshot& lhs, const cmStateSnapshot& rhs)
+{
+  return lhs.Position < rhs.Position;
+}

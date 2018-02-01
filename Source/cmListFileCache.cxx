@@ -278,91 +278,60 @@ bool cmListFileParser::AddArgument(cmListFileLexer_Token* token,
   return true;
 }
 
-struct cmListFileBacktrace::Entry : public cmListFileContext
-{
-  Entry(cmListFileContext const& lfc, Entry* up)
-    : cmListFileContext(lfc)
-    , Up(up)
-    , RefCount(0)
-  {
-    if (this->Up) {
-      this->Up->Ref();
-    }
-  }
-  ~Entry()
-  {
-    if (this->Up) {
-      this->Up->Unref();
-    }
-  }
-  void Ref() { ++this->RefCount; }
-  void Unref()
-  {
-    if (--this->RefCount == 0) {
-      delete this;
-    }
-  }
-  Entry* Up;
-  unsigned int RefCount;
-};
+std::map<size_t, cmListFileContext> s_idToFrameMap;
+std::map<cmListFileContext, size_t> s_frameToIdMap;
+std::map<size_t, cmStateSnapshot> s_idToSnapshotMap;
+std::map<cmStateSnapshot, size_t> s_SnapshotToIdMap;
 
-cmListFileBacktrace::cmListFileBacktrace(cmStateSnapshot const& bottom,
-                                         Entry* up,
-                                         cmListFileContext const& lfc)
-  : Bottom(bottom)
-  , Cur(new Entry(lfc, up))
+template<typename D> size_t ComputeId(D const & data, 
+                                      std::map<size_t, D> & idToDataMap, 
+                                      std::map<D, size_t> & dataToIdMap)
 {
-  assert(this->Bottom.IsValid());
-  this->Cur->Ref();
+  auto it = dataToIdMap.find(data);
+  if (it == dataToIdMap.end()) {
+    // Zero is a special id indicating not found. Always start at 1
+    it = dataToIdMap.emplace(data, dataToIdMap.size()+1).first;
+    idToDataMap.emplace(it->second, it->first);
+  }
+  return it->second;
 }
 
-cmListFileBacktrace::cmListFileBacktrace(cmStateSnapshot const& bottom,
-                                         Entry* cur)
-  : Bottom(bottom)
-  , Cur(cur)
+size_t ComputeSnapshotId(cmStateSnapshot const& snapshot)
 {
-  if (this->Cur) {
-    assert(this->Bottom.IsValid());
-    this->Cur->Ref();
-  }
+  return ComputeId(snapshot, s_idToSnapshotMap, s_SnapshotToIdMap);
+}
+
+size_t ComputeFrameId(cmListFileContext const& frame)
+{
+  return ComputeId(frame, s_idToFrameMap, s_frameToIdMap);
 }
 
 cmListFileBacktrace::cmListFileBacktrace()
-  : Bottom()
-  , Cur(nullptr)
+  : SnapshotId(0)
 {
 }
 
 cmListFileBacktrace::cmListFileBacktrace(cmStateSnapshot const& snapshot)
-  : Bottom(snapshot.GetCallStackBottom())
-  , Cur(nullptr)
+  : SnapshotId(ComputeSnapshotId(snapshot))
 {
 }
 
 cmListFileBacktrace::cmListFileBacktrace(cmListFileBacktrace const& r)
-  : Bottom(r.Bottom)
-  , Cur(r.Cur)
+  : SnapshotId(r.SnapshotId)
+  , Entries(r.Entries)
 {
-  if (this->Cur) {
-    assert(this->Bottom.IsValid());
-    this->Cur->Ref();
-  }
 }
 
 cmListFileBacktrace& cmListFileBacktrace::operator=(
   cmListFileBacktrace const& r)
 {
-  cmListFileBacktrace tmp(r);
-  std::swap(this->Cur, tmp.Cur);
-  std::swap(this->Bottom, tmp.Bottom);
+  this->SnapshotId = r.SnapshotId;
+  this->Entries = r.Entries;
   return *this;
 }
 
 cmListFileBacktrace::~cmListFileBacktrace()
 {
-  if (this->Cur) {
-    this->Cur->Unref();
-  }
 }
 
 cmListFileBacktrace cmListFileBacktrace::Push(std::string const& file) const
@@ -373,54 +342,73 @@ cmListFileBacktrace cmListFileBacktrace::Push(std::string const& file) const
   // skipped during call stack printing.
   cmListFileContext lfc;
   lfc.FilePath = file;
-  return cmListFileBacktrace(this->Bottom, this->Cur, lfc);
+  return Push(lfc);
 }
 
 cmListFileBacktrace cmListFileBacktrace::Push(
   cmListFileContext const& lfc) const
 {
-  return cmListFileBacktrace(this->Bottom, this->Cur, lfc);
+  cmListFileBacktrace copy(*this);
+  copy.Entries.push_front(ComputeFrameId(lfc));
+  return copy;
 }
 
 cmListFileBacktrace cmListFileBacktrace::Pop() const
 {
-  assert(this->Cur);
-  return cmListFileBacktrace(this->Bottom, this->Cur->Up);
+  assert(this->Entries.size());
+  cmListFileBacktrace copy(*this);
+  copy.Entries.pop_front();
+  return copy;
 }
 
 cmListFileContext const& cmListFileBacktrace::Top() const
 {
-  if (this->Cur) {
-    return *this->Cur;
+  if (this->Entries.size()) {
+    return s_idToFrameMap.at(*this->Entries.begin());
   }
   static cmListFileContext const empty;
   return empty;
 }
 
+cmStateSnapshot const& cmListFileBacktrace::GetBottom() const
+{
+  if (this->SnapshotId != 0) {
+    return s_idToSnapshotMap.at(this->SnapshotId);
+  }
+
+  static cmStateSnapshot const empty;
+  return empty;
+}
+
+
 void cmListFileBacktrace::PrintTitle(std::ostream& out) const
 {
-  if (!this->Cur) {
+  if (!this->Entries.size()) {
     return;
   }
-  cmOutputConverter converter(this->Bottom);
-  cmListFileContext lfc = *this->Cur;
-  if (!this->Bottom.GetState()->GetIsInTryCompile()) {
+  auto & bottom = this->GetBottom();
+  cmOutputConverter converter(bottom);
+  cmListFileContext lfc = Top();
+  if (!bottom.GetState()->GetIsInTryCompile()) {
     lfc.FilePath = converter.ConvertToRelativePath(
-      this->Bottom.GetState()->GetSourceDirectory(), lfc.FilePath);
+      bottom.GetState()->GetSourceDirectory(), lfc.FilePath);
   }
   out << (lfc.Line ? " at " : " in ") << lfc;
 }
 
 void cmListFileBacktrace::PrintCallStack(std::ostream& out) const
 {
-  if (!this->Cur || !this->Cur->Up) {
+  if (this->Entries.size() <= 1) {
     return;
   }
 
+  auto & bottom = this->GetBottom();
   bool first = true;
-  cmOutputConverter converter(this->Bottom);
-  for (Entry* i = this->Cur->Up; i; i = i->Up) {
-    if (i->Name.empty()) {
+  cmOutputConverter converter(bottom);
+  auto it = Entries.begin();
+  for (it++; it != Entries.end(); it++) {
+    auto & entry = s_idToFrameMap.at(*it);
+    if (entry.Name.empty()) {
       // Skip this whole-file scope.  When we get here we already will
       // have printed a more-specific context within the file.
       continue;
@@ -429,10 +417,10 @@ void cmListFileBacktrace::PrintCallStack(std::ostream& out) const
       first = false;
       out << "Call Stack (most recent call first):\n";
     }
-    cmListFileContext lfc = *i;
-    if (!this->Bottom.GetState()->GetIsInTryCompile()) {
+    cmListFileContext lfc = entry;
+    if (!bottom.GetState()->GetIsInTryCompile()) {
       lfc.FilePath = converter.ConvertToRelativePath(
-        this->Bottom.GetState()->GetSourceDirectory(), lfc.FilePath);
+        bottom.GetState()->GetSourceDirectory(), lfc.FilePath);
     }
     out << "  " << lfc << "\n";
   }
@@ -440,15 +428,8 @@ void cmListFileBacktrace::PrintCallStack(std::ostream& out) const
 
 size_t cmListFileBacktrace::Depth() const
 {
-  size_t depth = 0;
-  if (this->Cur == nullptr) {
-    return 0;
-  }
-
-  for (Entry* i = this->Cur->Up; i; i = i->Up) {
-    depth++;
-  }
-  return depth;
+  // TODO: This seems to have returned one minus the number of entries before.
+  return this->Entries.size();
 }
 
 std::ostream& operator<<(std::ostream& os, cmListFileContext const& lfc)

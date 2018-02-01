@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <string>
 #include <vector>
+#include <deque>
 
 #include "cmStateSnapshot.h"
 
@@ -115,7 +116,7 @@ public:
   cmListFileBacktrace& operator=(cmListFileBacktrace const& r);
   ~cmListFileBacktrace();
 
-  cmStateSnapshot GetBottom() const { return this->Bottom; }
+  cmStateSnapshot const& GetBottom() const;
 
   // Get a backtrace with the given file scope added to the top.
   // May not be called until after construction with a valid snapshot.
@@ -143,13 +144,8 @@ public:
   size_t Depth() const;
 
 private:
-  struct Entry;
-
-  cmStateSnapshot Bottom;
-  Entry* Cur;
-  cmListFileBacktrace(cmStateSnapshot const& bottom, Entry* up,
-                      cmListFileContext const& lfc);
-  cmListFileBacktrace(cmStateSnapshot const& bottom, Entry* cur);
+  std::deque<size_t> Entries;
+  size_t SnapshotId;
 };
 
 struct cmListFile
