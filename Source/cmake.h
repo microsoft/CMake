@@ -61,9 +61,10 @@ class cmake
 public:
   enum Role
   {
-    RoleInternal, // no commands
-    RoleScript,   // script commands
-    RoleProject   // all commands
+    RoleInternal = 1, // no commands
+    RoleScript   = 2, // script commands
+    RoleProject  = 4, // all commands
+	RoleServer   = 8, // server mode
   };
 
   enum MessageType
@@ -436,6 +437,7 @@ public:
     this->CurrentSnapshot = snapshot;
   }
   cmStateSnapshot GetCurrentSnapshot() const { return this->CurrentSnapshot; }
+  bool IsServerMode() const { return this->RoleVal && Role::RoleServer; }
 
 protected:
   void RunCheckForUnusedVariables();
@@ -517,6 +519,7 @@ private:
   cmMessenger* Messenger;
 
   std::vector<std::string> TraceOnlyThisSources;
+  Role RoleVal;
 
   void UpdateConversionPathTable();
 

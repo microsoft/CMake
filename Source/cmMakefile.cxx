@@ -303,6 +303,9 @@ bool cmMakefile::ExecuteCommand(const cmListFileFunction& lff,
     // Clone the prototype.
     std::unique_ptr<cmCommand> pcmd(proto->Clone());
     pcmd->SetMakefile(this);
+    if (this->GetCMakeInstance()->IsServerMode()) {
+      pcmd->SetBacktrace(this->Backtrace);
+    }
 
     // Decide whether to invoke the command.
     if (!cmSystemTools::GetFatalErrorOccured()) {
