@@ -130,7 +130,11 @@ public:
     bool StrictWeakOrdered(iterator other) const
     {
       assert(this->Tree);
-      assert(this->Tree == other.Tree);
+      assert(other.Tree);
+      
+      if (this->Tree != other.Tree)
+        return this->Tree->UpPositions.size() < other.Tree->UpPositions.size();
+
       return this->Position < other.Position;
     }
   };
