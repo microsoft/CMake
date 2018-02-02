@@ -432,6 +432,18 @@ size_t cmListFileBacktrace::Depth() const
   return this->Entries.size();
 }
 
+std::vector<cmListFileContext> cmListFileBacktrace::ConvertFrameIds(std::unordered_set<size_t> const & frameIds)
+{
+  std::vector<cmListFileContext> results;
+  for (auto id : frameIds) {
+    auto it = s_idToFrameMap.find(id);
+    if (it != s_idToFrameMap.end()) {
+      results.push_back(it->second);
+    }
+  }
+  return std::move(results);
+}
+
 std::ostream& operator<<(std::ostream& os, cmListFileContext const& lfc)
 {
   os << lfc.FilePath;
