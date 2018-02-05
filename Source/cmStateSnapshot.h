@@ -72,8 +72,6 @@ private:
                          const cmStateSnapshot& rhs);
   friend bool operator!=(const cmStateSnapshot& lhs,
                          const cmStateSnapshot& rhs);
-  friend bool operator<(const cmStateSnapshot& lhs,
-                        const cmStateSnapshot& rhs);
   friend class cmState;
   friend class cmStateDirectory;
   friend struct StrictWeakOrder;
@@ -86,7 +84,5 @@ private:
 
 bool operator==(const cmStateSnapshot& lhs, const cmStateSnapshot& rhs);
 bool operator!=(const cmStateSnapshot& lhs, const cmStateSnapshot& rhs);
-bool operator<(const cmStateSnapshot& lhs, const cmStateSnapshot& rhs);
-
 
 #endif

@@ -9,7 +9,6 @@
 #include <stddef.h>
 #include <string>
 #include <vector>
-#include <deque>
 #include <unordered_set>
 
 #include "cmStateSnapshot.h"
@@ -117,7 +116,7 @@ public:
   cmListFileBacktrace& operator=(cmListFileBacktrace const& r);
   ~cmListFileBacktrace();
 
-  cmStateSnapshot const& GetBottom() const;
+  cmStateSnapshot GetBottom() const { return this->Bottom; }
 
   // Get a backtrace with the given file scope added to the top.
   // May not be called until after construction with a valid snapshot.
@@ -145,14 +144,22 @@ public:
   size_t Depth() const;
 
   // Return a list of ids that can be used to query for traces later
-  std::deque<size_t> const & GetFrameIds() const { return this->Entries; }
+  std::vector<size_t> const & GetFrameIds() const;
 
   // Convert a list of frame ids into their actual representation
   static std::vector<std::pair<size_t, cmListFileContext>> ConvertFrameIds(std::unordered_set<size_t> const & frameIds);
 
 private:
-  std::deque<size_t> Entries;
-  size_t SnapshotId;
+  struct Entry;
+
+  cmStateSnapshot Bottom;
+  Entry* Cur;
+  cmListFileBacktrace(cmStateSnapshot const& bottom, Entry* up,
+                      cmListFileContext const& lfc);
+  cmListFileBacktrace(cmStateSnapshot const& bottom, Entry* cur);
+  
+  std::vector<size_t> mutable NonCompilingFrameIds;
+  std::vector<size_t> mutable CompilingFrameIds;
 };
 
 struct cmListFile
