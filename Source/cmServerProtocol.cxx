@@ -1162,10 +1162,11 @@ static Json::Value DumpConfigurationsList(const cmake* cm, std::unordered_set<si
   return result;
 }
 
-static Json::Value DumpFrame(const cmListFileContext & frame)
+static Json::Value DumpFrame(size_t id, const cmListFileContext & frame)
 {
   Json::Value entry = Json::objectValue;
 
+  entry[kID_KEY] = id;
   entry[kPATH_KEY] = frame.FilePath;
   if (frame.Line) {
     entry[kLINE_NUMBER_KEY] = static_cast<int>(frame.Line);
@@ -1183,8 +1184,8 @@ static Json::Value DumpReferencedTraces(std::unordered_set<size_t> & seenTraceId
 
   auto frames = cmListFileBacktrace::ConvertFrameIds(seenTraceIds);
 
-  for (const auto & frame : frames) {
-    result.append(DumpFrame(frame));
+  for (const auto & pair : frames) {
+    result.append(DumpFrame(pair.first, pair.second));
   }
 
   return result;
@@ -1209,10 +1210,13 @@ cmServerResponse cmServerProtocol2::ProcessCodeModel(
     return request.ReportError("No build system was generated yet.");
   }
 
+  auto includeTraces = request.Data[kINCLUDE_TRACES_KEY].asBool();
   std::unordered_set<size_t> seenTraceIds;
   Json::Value result = Json::objectValue;
-  result[kCONFIGURATIONS_KEY] = DumpConfigurationsList(this->CMakeInstance(), &seenTraceIds);
-  result[KREFERENCED_TRACES_KEY] = DumpReferencedTraces(seenTraceIds);
+  result[kCONFIGURATIONS_KEY] = DumpConfigurationsList(this->CMakeInstance(), includeTraces ? &seenTraceIds : nullptr);
+  if (includeTraces) {
+    result[KREFERENCED_TRACES_KEY] = DumpReferencedTraces(seenTraceIds);
+  }
   return request.Reply(result);
 }
 

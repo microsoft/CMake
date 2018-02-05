@@ -102,6 +102,7 @@ static const std::string kBACKTRACE_KEY = "backtrace";
 static const std::string kRELATED_STATEMENTS_KEY = "relatedStatements";
 static const std::string KREFERENCED_TRACES_KEY = "referencedTraces";
 static const std::string kID_KEY = "id";
+static const std::string kINCLUDE_TRACES_KEY = "includeTraces";
 
 static const std::string kSTART_MAGIC = "[== \"CMake Server\" ==[";
 static const std::string kEND_MAGIC = "]== \"CMake Server\" ==]";

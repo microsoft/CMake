@@ -432,13 +432,13 @@ size_t cmListFileBacktrace::Depth() const
   return this->Entries.size();
 }
 
-std::vector<cmListFileContext> cmListFileBacktrace::ConvertFrameIds(std::unordered_set<size_t> const & frameIds)
+std::vector<std::pair<size_t, cmListFileContext>> cmListFileBacktrace::ConvertFrameIds(std::unordered_set<size_t> const & frameIds)
 {
-  std::vector<cmListFileContext> results;
+  std::vector<std::pair<size_t, cmListFileContext>> results;
   for (auto id : frameIds) {
     auto it = s_idToFrameMap.find(id);
     if (it != s_idToFrameMap.end()) {
-      results.push_back(it->second);
+      results.push_back(std::make_pair(it->first, it->second));
     }
   }
   return std::move(results);

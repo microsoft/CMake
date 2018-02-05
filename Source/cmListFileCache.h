@@ -148,7 +148,7 @@ public:
   std::deque<size_t> const & GetFrameIds() const { return this->Entries; }
 
   // Convert a list of frame ids into their actual representation
-  static std::vector<cmListFileContext> ConvertFrameIds(std::unordered_set<size_t> const & frameIds);
+  static std::vector<std::pair<size_t, cmListFileContext>> ConvertFrameIds(std::unordered_set<size_t> const & frameIds);
 
 private:
   std::deque<size_t> Entries;
