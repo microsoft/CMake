@@ -139,7 +139,6 @@ void cmWarnUnusedCliWarning(const std::string& variable, int /*unused*/,
 
 cmake::cmake(Role role)
 {
-  this->RoleVal = role;
   this->Trace = false;
   this->TraceExpand = false;
   this->WarnUninitialized = false;

@@ -114,11 +114,6 @@ public:
       return !(*this == other);
     }
 
-    bool operator<(iterator other) const
-    {
-      return StrictWeakOrdered(other);
-    }
-
     bool IsValid() const
     {
       if (!this->Tree) {
@@ -130,11 +125,7 @@ public:
     bool StrictWeakOrdered(iterator other) const
     {
       assert(this->Tree);
-      assert(other.Tree);
-      
-      if (this->Tree != other.Tree)
-        return this->Tree->UpPositions.size() < other.Tree->UpPositions.size();
-
+      assert(this->Tree == other.Tree);
       return this->Position < other.Position;
     }
   };
