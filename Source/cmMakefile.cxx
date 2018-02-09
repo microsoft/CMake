@@ -198,20 +198,14 @@ cmListFileBacktrace cmMakefile::GetBacktrace() const
 
 cmListFileBacktrace cmMakefile::GetBacktrace(cmCommandContext const& cc) const
 {
-  cmListFileContext lfc;
-  lfc.Name = cc.Name;
-  lfc.Line = cc.Line;
-  lfc.FilePath = this->StateSnapshot.GetExecutionListFile();
+  cmListFileContext lfc(cc.Name, this->StateSnapshot.GetExecutionListFile(), cc.Line);
   return this->Backtrace.Push(lfc);
 }
 
 cmListFileContext cmMakefile::GetExecutionContext() const
 {
   cmListFileContext const& cur = this->Backtrace.Top();
-  cmListFileContext lfc;
-  lfc.Name = cur.Name;
-  lfc.Line = cur.Line;
-  lfc.FilePath = this->StateSnapshot.GetExecutionListFile();
+  cmListFileContext lfc(cur.Name(), this->StateSnapshot.GetExecutionListFile(), cur.Line);
   return lfc;
 }
 
@@ -1752,7 +1746,7 @@ void cmMakefile::LogUnused(const char* reason, const std::string& name) const
   if (this->WarnUnused) {
     std::string path;
     if (!this->ExecutionStatusStack.empty()) {
-      path = this->GetExecutionContext().FilePath;
+      path = this->GetExecutionContext().FilePath();
     } else {
       path = this->GetCurrentSourceDirectory();
       path += "/CMakeLists.txt";
@@ -3072,7 +3066,7 @@ std::unique_ptr<cmFunctionBlocker> cmMakefile::RemoveFunctionBlocker(
       if (!(*pos)->ShouldRemove(lff, *this)) {
         cmListFileContext const& lfc = fb->GetStartingContext();
         cmListFileContext closingContext =
-          cmListFileContext::FromCommandContext(lff, lfc.FilePath);
+          cmListFileContext::FromCommandContext(lff, lfc.FilePath());
         std::ostringstream e;
         /* clang-format off */
         e << "A logical block opening on the line\n"

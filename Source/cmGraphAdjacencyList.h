@@ -26,7 +26,7 @@ public:
     }
   }
 
-  // Graph edges may be copied and assigned as values. (Move semantics not supported on all platforms?)
+  // Graph edges may be copied and assigned as values.
   cmGraphEdge(cmGraphEdge const& r)
      : Dest(r.Dest)
      , Strong(r.Strong)
@@ -46,7 +46,7 @@ public:
 
   bool IsStrong() const { return this->Strong; }
 
-  cmListFileBacktrace const & Backtrace() const { return this->backtrace; }
+  cmListFileBacktrace const& Backtrace() const { return this->backtrace; }
 
 private:
   int Dest;

@@ -66,25 +66,32 @@ struct cmListFileArgument
 class cmListFileContext
 {
 public:
-  std::string Name;
-  std::string FilePath;
+  const std::string & Name() const;
+  const std::string & FilePath() const;
   long Line;
   cmListFileContext()
-    : Name()
-    , FilePath()
+    : NameId(0)
+    , FilePathId(0)
     , Line(0)
   {
   }
+  cmListFileContext(const std::string & name, const std::string & file, long line);
+  cmListFileContext(const std::string & file, long line);
 
   static cmListFileContext FromCommandContext(cmCommandContext const& lfcc,
-                                              std::string const& fileName)
-  {
-    cmListFileContext lfc;
-    lfc.FilePath = fileName;
-    lfc.Line = lfcc.Line;
-    lfc.Name = lfcc.Name;
-    return lfc;
-  }
+    std::string const& fileName);
+
+  void UpdateFilePath(const std::string & newFile);
+
+  bool HasName() const { return NameId != 0; }
+  bool HasFilePath() const { return FilePathId != 0; }
+
+  friend bool operator<(const cmListFileContext& lhs, const cmListFileContext& rhs);
+  friend bool operator==(const cmListFileContext& lhs, const cmListFileContext& rhs);
+
+private:
+  size_t NameId;
+  size_t FilePathId;
 };
 
 std::ostream& operator<<(std::ostream&, cmListFileContext const&);
