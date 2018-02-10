@@ -156,6 +156,9 @@ public:
   // Convert a list of frame ids into their actual representation
   static std::vector<std::pair<size_t, cmListFileContext>> ConvertFrameIds(std::unordered_set<size_t> const & frameIds);
 
+  // Returns an empty backfile trace for when a callstack isn't practical to find.
+  static const cmListFileBacktrace & Empty();
+
 private:
   struct Entry;
 

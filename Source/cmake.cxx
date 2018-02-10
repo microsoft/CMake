@@ -569,7 +569,7 @@ bool cmake::FindPackage(const std::vector<std::string>& args)
     const char* targetName = "dummy";
     std::vector<std::string> srcs;
     cmTarget* tgt = mf->AddExecutable(targetName, srcs, true);
-    tgt->SetProperty("LINKER_LANGUAGE", language.c_str());
+    tgt->SetProperty("LINKER_LANGUAGE", language.c_str(), tgt->GetBacktrace());
 
     std::string libs = mf->GetSafeDefinition("PACKAGE_LIBRARIES");
     std::vector<std::string> libList;
@@ -1149,7 +1149,7 @@ int cmake::HandleDeleteCacheVariables(const std::string& var)
   std::vector<std::string> argsSplit;
   cmSystemTools::ExpandListArgument(std::string(var), argsSplit, true);
   // erase the property to avoid infinite recursion
-  this->State->SetGlobalProperty("__CMAKE_DELETE_CACHE_CHANGE_VARS_", "");
+  this->State->SetGlobalProperty("__CMAKE_DELETE_CACHE_CHANGE_VARS_", "", cmListFileBacktrace::Empty());
   if (this->State->GetIsInTryCompile()) {
     return 0;
   }
@@ -2098,15 +2098,15 @@ void cmake::GenerateGraphViz(const char* fileName) const
 #endif
 }
 
-void cmake::SetProperty(const std::string& prop, const char* value)
+void cmake::SetProperty(const std::string& prop, const char* value, const cmListFileBacktrace & backtrace)
 {
-  this->State->SetGlobalProperty(prop, value);
+  this->State->SetGlobalProperty(prop, value, backtrace);
 }
 
-void cmake::AppendProperty(const std::string& prop, const char* value,
+void cmake::AppendProperty(const std::string& prop, const char* value, const cmListFileBacktrace & backtrace,
                            bool asString)
 {
-  this->State->AppendGlobalProperty(prop, value, asString);
+  this->State->AppendGlobalProperty(prop, value, backtrace, asString);
 }
 
 const char* cmake::GetProperty(const std::string& prop)

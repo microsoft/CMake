@@ -52,7 +52,6 @@ const std::string & cmStringTable::GetString(size_t id)
     return *it->second;
   }
 
-  // Always return a valid string. Callers make assumptions
-  // about what they can do with the result.
-  return ""; 
+  static std::string empty;
+  return empty;
 }

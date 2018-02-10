@@ -1056,7 +1056,7 @@ cmTarget* cmMakefile::AddUtilityCommand(
   cmTarget* target = this->AddNewTarget(cmStateEnums::UTILITY, utilityName);
   target->SetIsGeneratorProvided(origin == TargetOrigin::Generator);
   if (excludeFromAll) {
-    target->SetProperty("EXCLUDE_FROM_ALL", "TRUE");
+    target->SetProperty("EXCLUDE_FROM_ALL", "TRUE", Backtrace);
   }
   if (!comment) {
     // Use an empty comment to avoid generation of default comment.
@@ -1816,6 +1816,7 @@ void cmMakefile::AddGlobalLinkInformation(cmTarget& target)
   if (const char* linkLibsProp = this->GetProperty("LINK_LIBRARIES")) {
     std::vector<std::string> linkLibs;
     cmSystemTools::ExpandListArgument(linkLibsProp, linkLibs);
+    auto & linkLibsBacktrace = this->GetPropertyBacktrace("LINK_LIBRARIES");
 
     for (std::vector<std::string>::iterator j = linkLibs.begin();
          j != linkLibs.end(); ++j) {
@@ -1834,7 +1835,8 @@ void cmMakefile::AddGlobalLinkInformation(cmTarget& target)
       target.AddLinkLibrary(*this, libraryName, libType);
       target.AppendProperty(
         "INTERFACE_LINK_LIBRARIES",
-        target.GetDebugGeneratorExpressions(libraryName, libType).c_str());
+        target.GetDebugGeneratorExpressions(libraryName, libType).c_str(),
+        linkLibsBacktrace);
     }
   }
 }
@@ -1862,7 +1864,7 @@ cmTarget* cmMakefile::AddLibrary(const std::string& lname,
   // hence useless.
   target->ClearDependencyInformation(*this, lname);
   if (excludeFromAll) {
-    target->SetProperty("EXCLUDE_FROM_ALL", "TRUE");
+    target->SetProperty("EXCLUDE_FROM_ALL", "TRUE", target->GetBacktrace());
   }
   target->AddSources(srcs);
   this->AddGlobalLinkInformation(*target);
@@ -1875,7 +1877,7 @@ cmTarget* cmMakefile::AddExecutable(const char* exeName,
 {
   cmTarget* target = this->AddNewTarget(cmStateEnums::EXECUTABLE, exeName);
   if (excludeFromAll) {
-    target->SetProperty("EXCLUDE_FROM_ALL", "TRUE");
+    target->SetProperty("EXCLUDE_FROM_ALL", "TRUE", target->GetBacktrace());
   }
   target->AddSources(srcs);
   this->AddGlobalLinkInformation(*target);
@@ -2111,6 +2113,7 @@ void cmMakefile::ExpandVariablesCMP0019()
       continue;
     }
     includeDirs = t.GetProperty("INCLUDE_DIRECTORIES");
+    auto & bt = t.GetPropertyBacktrace("INCLUDE_DIRECTORIES");
     if (mightExpandVariablesCMP0019(includeDirs)) {
       std::string dirs = includeDirs;
       this->ExpandVariablesInString(dirs, true, true);
@@ -2122,7 +2125,7 @@ void cmMakefile::ExpandVariablesCMP0019()
           << "  " << dirs << "\n";
         /* clang-format on */
       }
-      t.SetProperty("INCLUDE_DIRECTORIES", dirs.c_str());
+      t.SetProperty("INCLUDE_DIRECTORIES", dirs.c_str(), bt);
     }
   }
 
@@ -3637,6 +3640,12 @@ std::vector<std::string> cmMakefile::GetPropertyKeys() const
   return this->StateSnapshot.GetDirectory().GetPropertyKeys();
 }
 
+const cmListFileBacktrace & cmMakefile::GetPropertyBacktrace(const std::string & prop) const
+{
+  return this->StateSnapshot.GetDirectory().GetPropertyBacktrace(prop);
+}
+
+
 cmTarget* cmMakefile::FindLocalNonAliasTarget(const std::string& name) const
 {
   cmTargets::iterator i = this->Targets.find(name);
@@ -4147,7 +4156,8 @@ bool cmMakefile::AddRequiredTargetFeature(cmTarget* target,
                                           std::string* error) const
 {
   if (cmGeneratorExpression::Find(feature) != std::string::npos) {
-    target->AppendProperty("COMPILE_FEATURES", feature.c_str());
+    target->AppendProperty("COMPILE_FEATURES", feature.c_str(), 
+                           target->GetPropertyBacktrace("COMPILE_FEATURES"));
     return true;
   }
 
@@ -4180,7 +4190,7 @@ bool cmMakefile::AddRequiredTargetFeature(cmTarget* target,
     return false;
   }
 
-  target->AppendProperty("COMPILE_FEATURES", feature.c_str());
+  target->AppendProperty("COMPILE_FEATURES", feature.c_str(), target->GetPropertyBacktrace("COMPILE_FEATURES"));
 
   return lang == "C"
     ? this->AddRequiredTargetCFeature(target, feature, error)
@@ -4526,17 +4536,17 @@ bool cmMakefile::AddRequiredTargetCxxFeature(cmTarget* target,
   }
 
   if (setCxx17) {
-    target->SetProperty("CXX_STANDARD", "17");
-    target->SetProperty("CUDA_STANDARD", "17");
+    target->SetProperty("CXX_STANDARD", "17", target->GetBacktrace());
+    target->SetProperty("CUDA_STANDARD", "17", target->GetBacktrace());
   } else if (setCxx14) {
-    target->SetProperty("CXX_STANDARD", "14");
-    target->SetProperty("CUDA_STANDARD", "14");
+    target->SetProperty("CXX_STANDARD", "14", target->GetBacktrace());
+    target->SetProperty("CUDA_STANDARD", "14", target->GetBacktrace());
   } else if (setCxx11) {
-    target->SetProperty("CXX_STANDARD", "11");
-    target->SetProperty("CUDA_STANDARD", "11");
+    target->SetProperty("CXX_STANDARD", "11", target->GetBacktrace());
+    target->SetProperty("CUDA_STANDARD", "11", target->GetBacktrace());
   } else if (setCxx98) {
-    target->SetProperty("CXX_STANDARD", "98");
-    target->SetProperty("CUDA_STANDARD", "98");
+    target->SetProperty("CXX_STANDARD", "98", target->GetBacktrace());
+    target->SetProperty("CUDA_STANDARD", "98", target->GetBacktrace());
   }
   return true;
 }
@@ -4617,11 +4627,11 @@ bool cmMakefile::AddRequiredTargetCFeature(cmTarget* target,
   }
 
   if (setC11) {
-    target->SetProperty("C_STANDARD", "11");
+    target->SetProperty("C_STANDARD", "11", target->GetBacktrace());
   } else if (setC99) {
-    target->SetProperty("C_STANDARD", "99");
+    target->SetProperty("C_STANDARD", "99", target->GetBacktrace());
   } else if (setC90) {
-    target->SetProperty("C_STANDARD", "90");
+    target->SetProperty("C_STANDARD", "90", target->GetBacktrace());
   }
   return true;
 }

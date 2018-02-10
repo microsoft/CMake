@@ -531,6 +531,12 @@ cmListFileBacktrace::ConvertFrameIds(
   return std::move(results);
 }
 
+const cmListFileBacktrace & cmListFileBacktrace::Empty()
+{
+  static cmListFileBacktrace empty;
+  return empty;
+}
+
 std::ostream& operator<<(std::ostream& os, cmListFileContext const& lfc)
 {
   os << lfc.FilePath();
