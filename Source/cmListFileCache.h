@@ -168,8 +168,7 @@ private:
                       cmListFileContext const& lfc);
   cmListFileBacktrace(cmStateSnapshot const& bottom, Entry* cur);
   
-  std::vector<size_t> mutable NonCompilingFrameIds;
-  std::vector<size_t> mutable CompilingFrameIds;
+  std::vector<size_t> mutable FrameIds;
 };
 
 struct cmListFile

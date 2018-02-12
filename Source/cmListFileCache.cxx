@@ -499,22 +499,13 @@ size_t cmListFileBacktrace::Depth() const
 
 std::vector<size_t> const& cmListFileBacktrace::GetFrameIds() const
 {
-  cmState* state = this->Bottom.GetState();
-  bool inTryCompile = state && state->GetIsInTryCompile();
-  auto& frameIds =
-    inTryCompile ? this->CompilingFrameIds : this->NonCompilingFrameIds;
-  if (this->Cur != nullptr && frameIds.empty()) {
-    cmOutputConverter converter(this->Bottom);
+  if (this->Cur != nullptr && FrameIds.empty()) {
     for (Entry* i = this->Cur; i; i = i->Up) {
       cmListFileContext lfc = *i;
-      if (!inTryCompile && state) {
-        lfc.UpdateFilePath(converter.ConvertToRelativePath(
-          state->GetSourceDirectory(), lfc.FilePath()));
-      }
-      frameIds.emplace_back(ComputeFrameId(lfc));
+      FrameIds.emplace_back(ComputeFrameId(lfc));
     }
   }
-  return frameIds;
+  return FrameIds;
 }
 
 std::vector<std::pair<size_t, cmListFileContext>>
