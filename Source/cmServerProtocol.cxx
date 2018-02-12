@@ -262,7 +262,7 @@ std::pair<int, int> cmServerProtocol1::ProtocolVersion() const
 
 std::pair<int, int> cmServerProtocol2::ProtocolVersion() const
 {
-  return std::make_pair(2, 0);
+  return std::make_pair(2, 1);
 }
 
 static void setErrorMessage(std::string* errorMessage, const std::string& text)
