@@ -1832,7 +1832,7 @@ void cmMakefile::AddGlobalLinkInformation(cmTarget& target)
         libraryName = *j;
       }
       // This is equivalent to the target_link_libraries plain signature.
-      target.AddLinkLibrary(*this, libraryName, libType);
+      target.AddLinkLibrary(*this, libraryName, libType, linkLibsBacktrace);
       target.AppendProperty(
         "INTERFACE_LINK_LIBRARIES",
         target.GetDebugGeneratorExpressions(libraryName, libType).c_str(),

@@ -575,7 +575,7 @@ bool cmake::FindPackage(const std::vector<std::string>& args)
     std::vector<std::string> libList;
     cmSystemTools::ExpandListArgument(libs, libList);
     for (std::string const& lib : libList) {
-      tgt->AddLinkLibrary(*mf, lib, GENERAL_LibraryType);
+      tgt->AddLinkLibrary(*mf, lib, GENERAL_LibraryType, mf->GetBacktrace());
     }
 
     std::string buildType = mf->GetSafeDefinition("CMAKE_BUILD_TYPE");

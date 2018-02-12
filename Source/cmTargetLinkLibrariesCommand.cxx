@@ -406,7 +406,7 @@ bool cmTargetLinkLibrariesCommand::HandleLibrary(const std::string& lib,
         this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
       }
 
-      this->Target->AddLinkLibrary(*this->Makefile, lib, llt);
+      this->Target->AddLinkLibrary(*this->Makefile, lib, llt, this->GetBacktrace());
     }
 
     if (this->CurrentProcessingState == ProcessingLinkLibraries) {

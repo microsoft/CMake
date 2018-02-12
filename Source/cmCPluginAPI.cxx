@@ -365,7 +365,7 @@ static void addLinkLibrary(cmMakefile* mf, std::string const& target,
     mf->IssueMessage(cmake::FATAL_ERROR, e.str());
   }
 
-  t->AddLinkLibrary(*mf, lib, llt);
+  t->AddLinkLibrary(*mf, lib, llt, mf->GetBacktrace());
 }
 
 void CCONV cmAddLinkLibraryForTarget(void* arg, const char* tgt,

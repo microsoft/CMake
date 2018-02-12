@@ -721,7 +721,8 @@ void cmTarget::GetTllSignatureTraces(std::ostream& s, TLLSignature sig) const
 }
 
 void cmTarget::AddLinkLibrary(cmMakefile& mf, const std::string& lib,
-                              cmTargetLinkLibraryType llt)
+                              cmTargetLinkLibraryType llt,
+                              const cmListFileBacktrace & bt)
 {
   cmTarget* tgt = this->Makefile->FindTargetToUse(lib);
   {
@@ -734,7 +735,7 @@ void cmTarget::AddLinkLibrary(cmMakefile& mf, const std::string& lib,
     this->AppendProperty(
       "LINK_LIBRARIES",
       this->GetDebugGeneratorExpressions(libName, llt).c_str(),
-      mf.GetBacktrace());
+      bt);
   }
 
   if (cmGeneratorExpression::Find(lib) != std::string::npos ||
