@@ -4,7 +4,6 @@ file Copyright.txt or https://cmake.org/licensing for details.  */
 
 #include <list>
 #include <unordered_map>
-#include <allocators>
 
 struct string_hasher
 {
