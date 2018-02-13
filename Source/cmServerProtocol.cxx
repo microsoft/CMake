@@ -1466,11 +1466,14 @@ cmServerResponse cmServerProtocol2::ProcessCTests(
     return request.ReportError("This instance was not yet computed.");
   }
 
+  auto includeTraces = request.Data[kINCLUDE_TRACES_KEY].asBool();
   Json::Value result = Json::objectValue;
   std::unordered_set<size_t> seenTraceIds;
   result[kCONFIGURATIONS_KEY] =
-    DumpCTestConfigurationsList(this->CMakeInstance(), &seenTraceIds);
-  result[KREFERENCED_TRACES_KEY] = DumpReferencedTraces(seenTraceIds);
+    DumpCTestConfigurationsList(this->CMakeInstance(), includeTraces ? &seenTraceIds : nullptr);
+  if (includeTraces) {
+    result[KREFERENCED_TRACES_KEY] = DumpReferencedTraces(seenTraceIds);
+  }
   return request.Reply(result);
 }
 
