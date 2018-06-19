@@ -856,16 +856,17 @@ static Json::Value DumpSourceFilesListForInterfaceTarget(
     }
   }
 
-  // Next pick up sources from INTERFACE_INCLUDE_DIRECTORIES and
+  // Next pick up directories from INTERFACE_INCLUDE_DIRECTORIES and
   // INTERFACE_SYSTEM_INCLUDE_DIRECTORIES if defined for this target.
-  std::unordered_set<std::string> includeDirs;
+  // Note that we send back the directory names rather than expanding 
+  // them here.
   targetProp = target->Target->GetProperty("INTERFACE_INCLUDE_DIRECTORIES");
   if (targetProp != nullptr) {
     const char* evaluatedIncludes =
       genexInterpreter.Evaluate(targetProp, "INTERFACE_INCLUDE_DIRECTORIES");
     auto components = cmsys::SystemTools::SplitString(evaluatedIncludes, ';');
     if (!components.empty()) {
-      includeDirs.insert(components.begin(), components.end());
+      sources.insert(components.begin(), components.end());
     }
   }
   targetProp = target->Target->GetProperty("INTERFACE_SYSTEM_INCLUDE_DIRECTORIES");
@@ -874,28 +875,7 @@ static Json::Value DumpSourceFilesListForInterfaceTarget(
       genexInterpreter.Evaluate(targetProp, "INTERFACE_SYSTEM_INCLUDE_DIRECTORIES");
     auto components = cmsys::SystemTools::SplitString(evaluatedIncludes, ';');
     if (!components.empty()) {
-      includeDirs.insert(components.begin(), components.end());
-    }
-  }
-  
-  if (!includeDirs.empty()) {
-    for (auto path : includeDirs) {
-      cmsys::Directory dir;
-      if (dir.Load(path) == 0) {
-        continue;
-      }
-
-      unsigned long numFiles =
-        static_cast<unsigned long>(dir.GetNumberOfFiles());
-      for (unsigned long fileNum = 0; fileNum < numFiles; ++fileNum) {
-		auto sourceFile = dir.GetFile(fileNum);
-        if (strcmp(sourceFile, ".") != 0 &&
-			strcmp(sourceFile, "..") != 0 &&
-			!cmSystemTools::FileIsDirectory(sourceFile)) {
-                  sources.insert(
-                    cmsys::SystemTools::CollapseFullPath(sourceFile, path));
-        }
-      }
+      sources.insert(components.begin(), components.end());
     }
   }
 
