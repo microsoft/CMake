@@ -1462,6 +1462,7 @@ syn keyword cmakeVariable contained
             \ CMAKE_TRY_COMPILE_CONFIGURATION
             \ CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
             \ CMAKE_TRY_COMPILE_TARGET_TYPE
+            \ CMAKE_TRY_COMPILE_TARGET_VARIABLES
             \ CMAKE_TWEAK_VERSION
             \ CMAKE_UNITY_BUILD
             \ CMAKE_UNITY_BUILD_BATCH_SIZE

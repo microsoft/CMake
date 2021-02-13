@@ -221,6 +221,8 @@ std::string const kCMAKE_TRY_COMPILE_OSX_ARCHITECTURES =
   "CMAKE_TRY_COMPILE_OSX_ARCHITECTURES";
 std::string const kCMAKE_TRY_COMPILE_PLATFORM_VARIABLES =
   "CMAKE_TRY_COMPILE_PLATFORM_VARIABLES";
+std::string const kCMAKE_TRY_COMPILE_TARGET_VARIABLES =
+  "CMAKE_TRY_COMPILE_TARGET_VARIABLES";
 std::string const kCMAKE_WARN_DEPRECATED = "CMAKE_WARN_DEPRECATED";
 
 /* GHS Multi platform variables */
@@ -834,7 +836,20 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
       }
     }
     fprintf(fout, ")\n");
-
+    
+    if (cmProp tgtVarListStr = this->Makefile->GetDefinition(
+          kCMAKE_TRY_COMPILE_TARGET_VARIABLES)) {
+      std::vector<std::string> tgtVarList = cmExpandedList(*tgtVarListStr);
+      for (std::string const& var : tgtVarList) {
+        if (cmProp val = this->Makefile->GetDefinition(var)) {
+          fprintf(fout, "set_property(TARGET %s PROPERTY %s %s)\n",
+                  targetName.c_str(),
+                  cmOutputConverter::EscapeForCMake(var).c_str(),
+                  cmOutputConverter::EscapeForCMake(*val).c_str());
+        }
+      }
+    }
+    
     cState.Enabled(testLangs.find("C") != testLangs.end());
     cxxState.Enabled(testLangs.find("CXX") != testLangs.end());
     cudaState.Enabled(testLangs.find("CUDA") != testLangs.end());
