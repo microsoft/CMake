@@ -15,3 +15,9 @@ source file signature.  Valid values are:
   source file in the generated project.  This avoids running the
   linker and is intended for use with cross-compiling toolchains
   that cannot link without custom flags or linker scripts.
+
+``SHARED_LIBRARY``
+  Use :command:`add_library` with the ``SHARED`` option to name the
+  source file in the generated project.  This avoids running the
+  linker and is intended for use with cross-compiling toolchains
+  that cannot link without custom flags or linker scripts.

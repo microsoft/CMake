@@ -59,10 +59,10 @@ In this form, one or more source files must be provided.  If
 :variable:`CMAKE_TRY_COMPILE_TARGET_TYPE` is unset or is set to ``EXECUTABLE``,
 the sources must include a definition for ``main`` and CMake will create a
 ``CMakeLists.txt`` file to build the source(s) as an executable.
-If :variable:`CMAKE_TRY_COMPILE_TARGET_TYPE` is set to ``STATIC_LIBRARY``,
-a static library will be built instead and no definition for ``main`` is
-required.  For an executable, the generated ``CMakeLists.txt`` file would
-contain something like the following:
+If :variable:`CMAKE_TRY_COMPILE_TARGET_TYPE` is set to ``STATIC_LIBRARY`` or
+``SHARED_LIBRARY``, a static/shared library will be built instead and no definition
+for ``main`` is required.  For an executable, the generated ``CMakeLists.txt``
+file would contain something like the following:
 
 .. code-block:: cmake
 

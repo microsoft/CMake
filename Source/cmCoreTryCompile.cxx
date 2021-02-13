@@ -247,14 +247,19 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
     } else if (*tt ==
                cmState::GetTargetTypeName(cmStateEnums::STATIC_LIBRARY)) {
       targetType = cmStateEnums::STATIC_LIBRARY;
+    } else if (*tt ==
+               cmState::GetTargetTypeName(cmStateEnums::SHARED_LIBRARY)) {
+      targetType = cmStateEnums::SHARED_LIBRARY;
     } else {
       this->Makefile->IssueMessage(
         MessageType::FATAL_ERROR,
         cmStrCat("Invalid value '", *tt,
                  "' for CMAKE_TRY_COMPILE_TARGET_TYPE.  Only '",
                  cmState::GetTargetTypeName(cmStateEnums::EXECUTABLE),
-                 "' and '",
+                 "', '",
                  cmState::GetTargetTypeName(cmStateEnums::STATIC_LIBRARY),
+                 "' and '",
+                 cmState::GetTargetTypeName(cmStateEnums::SHARED_LIBRARY),
                  "' are allowed."));
       return -1;
     }
@@ -805,13 +810,20 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
               this->BinaryDirectory.c_str());
       /* Create the actual executable.  */
       fprintf(fout, "add_executable(%s", targetName.c_str());
-    } else // if (targetType == cmStateEnums::STATIC_LIBRARY)
+    } else if (targetType == cmStateEnums::STATIC_LIBRARY)
     {
       /* Put the static library at a known location (for COPY_FILE).  */
       fprintf(fout, "set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY \"%s\")\n",
               this->BinaryDirectory.c_str());
       /* Create the actual static library.  */
       fprintf(fout, "add_library(%s STATIC", targetName.c_str());
+    } else // if (targetType == cmStateEnums::SHARED_LIBRARY)
+    {
+      /* Put the static library at a known location (for COPY_FILE).  */
+      fprintf(fout, "set(CMAKE_LIBRARY_OUTPUT_DIRECTORY \"%s\")\n",
+              this->BinaryDirectory.c_str());
+      /* Create the actual shared library.  */
+      fprintf(fout, "add_library(%s SHARED", targetName.c_str());
     }
     for (std::string const& si : sources) {
       fprintf(fout, " \"%s\"", si.c_str());
@@ -1043,13 +1055,20 @@ void cmCoreTryCompile::FindOutputFile(const std::string& targetName,
     tmpOutputFile += targetName;
     tmpOutputFile +=
       this->Makefile->GetSafeDefinition("CMAKE_EXECUTABLE_SUFFIX");
-  } else // if (targetType == cmStateEnums::STATIC_LIBRARY)
+  } else if (targetType == cmStateEnums::STATIC_LIBRARY)
   {
     tmpOutputFile +=
       this->Makefile->GetSafeDefinition("CMAKE_STATIC_LIBRARY_PREFIX");
     tmpOutputFile += targetName;
     tmpOutputFile +=
       this->Makefile->GetSafeDefinition("CMAKE_STATIC_LIBRARY_SUFFIX");
+  } else // if (targetType == cmStateEnums::SHARED_LIBRARY)
+  {
+    tmpOutputFile +=
+      this->Makefile->GetSafeDefinition("CMAKE_SHARED_LIBRARY_PREFIX");
+    tmpOutputFile += targetName;
+    tmpOutputFile +=
+      this->Makefile->GetSafeDefinition("CMAKE_SHARED_LIBRARY_SUFFIX");
   }
 
   // a list of directories where to search for the compilation result
