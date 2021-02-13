@@ -34,6 +34,12 @@ add_library(${exportTargetName}Safe SHARED
 set_target_properties(${exportTargetName}Safe PROPERTIES
   COMMON_LANGUAGE_RUNTIME "safe")
 
+# netcore c++ dll
+add_library(${exportTargetName}NetCore SHARED
+  ImportLibNetCore.cxx)
+set_target_properties(${exportTargetName}Safe PROPERTIES
+  COMMON_LANGUAGE_RUNTIME "netcore")
+
 # generate export file
 export(TARGETS
   ${exportTargetName}CSharp
@@ -41,5 +47,6 @@ export(TARGETS
   ${exportTargetName}Mixed
   ${exportTargetName}Pure
   ${exportTargetName}Safe
+  ${exportTargetName}NetCore
   NAMESPACE "${exportNameSpace}:"
   FILE "${exportFileName}")

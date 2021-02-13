@@ -13,7 +13,7 @@ the value of ``COMMON_LANGUAGE_RUNTIME``:
 * property set but empty: mixed unmanaged/managed C++
 * property set to any non empty value: managed C++
 
-Supported values: ``""``, ``"pure"``, ``"safe"``
+Supported values: ``""``, ``"pure"``, ``"safe"``, ``"netcore"``
 
 This property is only evaluated :ref:`Visual Studio Generators` for
 VS 2010 and above.

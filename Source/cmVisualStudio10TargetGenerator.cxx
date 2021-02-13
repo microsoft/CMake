@@ -1258,6 +1258,10 @@ void cmVisualStudio10TargetGenerator::WriteMSToolConfigurationValues(
   } else if (const char* toolset = gg->GetPlatformToolset()) {
     e1.Element("PlatformToolset", toolset);
   }
+  if (cmProp commonLanguageRuntime =
+        this->GeneratorTarget->GetProperty("COMMON_LANGUAGE_RUNTIME")) {
+    e1.Element("CLRSupport", *commonLanguageRuntime);
+  }
   if (this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_COMPONENT") ||
       this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_EXTENSIONS")) {
     e1.Element("WindowsAppContainer", "true");

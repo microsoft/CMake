@@ -3,20 +3,13 @@
 using namespace System;
 
 #using <ImportLibMixed.dll>
-#using <ImportLibPure.dll>
-#using <ImportLibSafe.dll>
 #using <ImportLibNetCore.dll>
 #using <ImportLibCSharp.dll>
 
-#include "ImportLibNative.h"
-
 int main()
 {
-  Console::WriteLine("ReferenceImportMixed");
-  ImportLibNative::Message();
+  Console::WriteLine("ReferenceImportNetCore");
   ImportLibMixed::Message();
-  ImportLibPure::Message();
-  ImportLibSafe::Message();
   ImportLibNetCore::Message();
   ImportLibCSharp::Message();
 };
