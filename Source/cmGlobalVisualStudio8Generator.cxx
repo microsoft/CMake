@@ -227,9 +227,10 @@ void cmGlobalVisualStudio8Generator::WriteSolutionConfigurations(
   std::ostream& fout, std::vector<std::string> const& configs)
 {
   fout << "\tGlobalSection(SolutionConfigurationPlatforms) = preSolution\n";
-   std::vector<std::string> platforms = { this->GetPlatformName() };
-  if (this->GetBuildAsX())
+  std::vector<std::string> platforms = { this->GetPlatformName() };
+  if (this->GetBuildAsX()) {
     platforms.push_back("ARM64");
+  }
   for (std::string const& p : platforms) {
     for (std::string const& i : configs) {
       fout << "\t\t" << i << "|" << p << " = " << i << "|"
@@ -247,8 +248,9 @@ void cmGlobalVisualStudio8Generator::WriteProjectConfigurations(
 {
   std::string guid = this->GetGUID(name);
   std::vector<std::string> platforms = { this->GetPlatformName() };
-  if (this->GetBuildAsX())
+  if (this->GetBuildAsX()) {
     platforms.push_back("ARM64");
+  }
   for (std::string const& p : platforms) {
     for (std::string const& i : configs) {
       std::vector<std::string> mapConfig;
