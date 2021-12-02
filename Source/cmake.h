@@ -358,7 +358,7 @@ public:
   bool GetIsInTryCompile() const;
   void SetIsInTryCompile(bool b);
 
-  //! Return if building as ARM64X
+  //! Return if building as ARM64X is set
   bool GetBuildAsX()
   {
     return this->BuildAsX;
