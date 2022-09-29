@@ -1593,7 +1593,9 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 				YY_FATAL_ERROR(
 				"fatal error - scanner input buffer overflow" );
 
-			yyg->yy_c_buf_p = &b->yy_ch_buf[yy_c_buf_p_offset];
+			if (yy_c_buf_p_offset >= 0 && yy_c_buf_p_offset < YY_CURRENT_BUFFER_LVALUE->yy_buf_size) {
+			    yyg->yy_c_buf_p = &b->yy_ch_buf[yy_c_buf_p_offset];
+			}
 
 			num_to_read = YY_CURRENT_BUFFER_LVALUE->yy_buf_size -
 						number_to_move - 1;
