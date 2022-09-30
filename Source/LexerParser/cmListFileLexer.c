@@ -1643,10 +1643,9 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 	}
 
 	yyg->yy_n_chars += number_to_move;
-    if (yyg->yy_n_chars > YY_CURRENT_BUFFER_LVALUE->yy_buf_size) {
+	if (yyg->yy_n_chars > YY_CURRENT_BUFFER_LVALUE->yy_buf_size) {
 		yyg->yy_n_chars = YY_CURRENT_BUFFER_LVALUE->yy_buf_size;
 	}
-
 	YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[yyg->yy_n_chars] = YY_END_OF_BUFFER_CHAR;
 	YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[yyg->yy_n_chars + 1] = YY_END_OF_BUFFER_CHAR;
 
