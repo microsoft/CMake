@@ -179,6 +179,8 @@ add_library(
   cmCustomCommandTypes.h
   cmCxxModuleMapper.cxx
   cmCxxModuleMapper.h
+  cmDebugger.cxx
+  cmDebugger.h
   cmDefinitions.cxx
   cmDefinitions.h
   cmDependencyProvider.h
@@ -761,6 +763,10 @@ target_link_libraries(
     Threads::Threads
     ZLIB::ZLIB
   )
+
+# Hardcoded CppDap dependency will be fixed later.
+INCLUDE_DIRECTORIES("C:/git/cppdap/include")
+target_link_libraries(CMakeLib PRIVATE "C:/git/cppdap/out/build/x64-Debug/cppdap.lib")
 
 # Check if we can build the Mach-O parser.
 if(CMake_USE_MACH_PARSER)

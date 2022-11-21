@@ -76,6 +76,32 @@ struct cmDocumentationEntry;
 class cmake
 {
 public:
+  //int dbgLine2 = 0;
+  //int cmakeLine2 = 0;
+  //std::string dbgSrc2 = "";
+  int dbgTypeIndex = 0;
+  typedef struct
+  {
+    int dbgLine;
+    int cmakeLine;
+    int dbgSrcIndex;
+    std::string dbgSrc;
+  } DbgType;
+  DbgType curDbg[10] = {
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+    { 0, 0, 0, "" },
+  };
+  void SendStepInEvent(std::string dbgSrc, int line);
+  //Debugger myDbg;
+
   enum Role
   {
     RoleInternal, // no commands

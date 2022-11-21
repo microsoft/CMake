@@ -1086,6 +1086,15 @@ int main(int ac, char const* const* av)
       return do_command(ac, av, std::move(consoleBuf));
     }
   }
+
+  static bool bbb = true;
+  while (bbb) {
+    int x = 0;
+    x++;
+    x--;
+    // break here
+  }
+
   int ret = do_cmake(ac, av);
 #ifndef CMAKE_BOOTSTRAP
   cmDynamicLoader::FlushCache();

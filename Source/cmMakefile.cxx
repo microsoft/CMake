@@ -3,6 +3,20 @@
 #include "cmConfigure.h" // IWYU pragma: keep
 
 #include "cmMakefile.h"
+#include "cmDebugger.h"
+
+#include "dap/io.h"
+#include "dap/protocol.h"
+#include "dap/session.h"
+
+#ifdef _MSC_VER
+#  define OS_WINDOWS 1
+#endif
+
+#ifdef OS_WINDOWS
+#  include <fcntl.h> // _O_BINARY
+#  include <io.h>    // _setmode
+#endif               // OS_WINDOWS
 
 #include <algorithm>
 #include <cassert>
@@ -12,6 +26,8 @@
 #include <cstring>
 #include <sstream>
 #include <utility>
+#include <iostream>
+#include <string>
 
 #include <cm/iterator>
 #include <cm/memory>
@@ -74,12 +90,94 @@ cmDirectoryId::cmDirectoryId(std::string s)
 {
 }
 
+  // Hard-coded identifiers for the one thread, frame, variable and source.
+// These numbers have no meaning, and just need to remain constant for the
+// duration of the service.
+const dap::integer threadId = 100;
+const dap::integer frameId = 200;
+const dap::integer variablesReferenceId = 300;
+const dap::integer sourceReferenceId = 400;
+
+
 // default is not to be building executables
 cmMakefile::cmMakefile(cmGlobalGenerator* globalGenerator,
                        cmStateSnapshot const& snapshot)
   : GlobalGenerator(globalGenerator)
   , StateSnapshot(snapshot)
 {
+//  // start Debugger
+//
+//#ifdef OS_WINDOWS
+//  // Change stdin & stdout from text mode to binary mode.
+//  // This ensures sequences of \r\n are not changed to \n.
+  //_setmode(_fileno(stdin), _O_BINARY);
+//  _setmode(_fileno(stdout), _O_BINARY);
+//#endif // OS_WINDOWS
+//
+//// Uncomment the line below and change <path-to-log-file> to a file path to
+//// write all DAP communications to the given path.
+////
+//#define LOG_TO_FILE "c:\\git\\dap\\dap.log"
+//#ifdef LOG_TO_FILE
+//  _log = dap::file(LOG_TO_FILE);
+//#endif
+//
+//  // Create the DAP session.
+//  // This is used to implement the DAP server.
+//  //session = dap::Session::create();
+//
+//  // Event handlers from the Debugger.
+//   auto onDebuggerEvent = [&](Debugger::Event onEvent) {
+//     switch (onEvent) {
+//       case Debugger::Event::Stepped: {
+//         // The debugger has single-line stepped. Inform the client.
+//         dap::StoppedEvent event;
+//         event.reason = "step";
+//         event.threadId = threadId;
+//         session->send(event);
+//         break;
+//       }
+//       case Debugger::Event::BreakpointHit: {
+//         // The debugger has hit a breakpoint. Inform the client.
+//         dap::StoppedEvent event;
+//         event.reason = "breakpoint";
+//         event.threadId = threadId;
+//         session->send(event);
+//         break;
+//       }
+//       case Debugger::Event::Paused: {
+//         // The debugger has been suspended. Inform the client.
+//         dap::StoppedEvent event;
+//         event.reason = "pause";
+//         event.threadId = threadId;
+//         session->send(event);
+//         break;
+//       }
+//       case Debugger::Event::Terminate: {
+//         //dap::ThreadEvent threadEndedEvent;
+//         //threadEndedEvent.reason = "exited";
+//         //threadEndedEvent.threadId = threadId;
+//         //session->send(threadEndedEvent);
+//
+//        //// Terminate debugger (example: for end of program)
+//        //dap::DisconnectRequest req;
+//        //req.terminateDebuggee = true;
+//        //session->send(req);
+//
+//        //dap::ExitedEvent exitEvent;
+//        //dap::TerminatedEvent termEvent;
+//        //exitEvent.exitCode = 0;
+//        //termEvent.restart = false;
+//        //session->send(exitEvent);
+//        //session->send(termEvent);
+//        _terminate.fire();
+//  
+//        break;
+//      }
+//    }
+//  };
+//  Debugger debugger(onDebuggerEvent);
+
   this->IsSourceFileTryCompile = false;
 
   this->CheckSystemVars = this->GetCMakeInstance()->GetCheckSystemVars();
@@ -416,6 +514,157 @@ bool cmMakefile::ExecuteCommand(const cmListFileFunction& lff,
   if (this->IsFunctionBlocked(lff, status)) {
     // No error.
     return result;
+  }
+
+  static bool breakOnNext = false; //true;
+  static std::string breakOnFile;
+  static std::set<std::pair<std::string, long>> breakpoints;
+  static std::set<std::pair<std::string, cmVariableWatch::WatchMethod>> dataBps;
+
+  const auto fullPath = this->StateSnapshot.GetExecutionListFile();
+  const auto filename = cmSystemTools::GetFilenameName(fullPath);
+  bool breakNow = false;
+  if (breakOnNext) {
+    breakNow = true;
+    breakOnNext = false;
+  } else if (breakpoints.find(std::make_pair(fullPath, lff.Line())) !=
+             breakpoints.end()) {
+    breakNow = true;
+  } else if (filename == breakOnFile) {
+    breakOnFile.clear();
+    breakNow = true;
+  }
+
+  if (breakNow) {
+    std::cout << "Breakpoint hit at " << fullPath << ":" << lff.Line() << " ("
+              << lff.OriginalName() << ")\n";
+
+    bool debugContinue = false;
+    while (!debugContinue) {
+      std::string line;
+      std::cout << ">>> ";
+      std::getline(std::cin, line);
+
+      // Why the fuck is there no string split in C++?
+      std::istringstream iss(line);
+      std::vector<std::string> tokens{
+        std::istream_iterator<std::string>(iss),
+        std::istream_iterator<std::string>()
+      };
+      const auto& command = tokens[0];
+    
+      if (command == "c") {
+        debugContinue = true;
+      } else if (command == "s") {
+        // TODO: doesn't correctly handle leaving a file
+        breakOnFile = filename;
+        debugContinue = true;
+      } else if (command == "si") {
+        breakOnNext = true;
+        debugContinue = true;
+      } else if (command == "cbp") {
+        if (tokens.size() >= 2) {
+          std::replace(tokens[1].begin(), tokens[1].end(), '\\', '/');
+          tokens[1][0] = std::toupper(tokens[1][0]);
+          for (auto &it = breakpoints.begin(); it != breakpoints.end();) {
+            if ((*it).first == tokens[1]) {
+              it = breakpoints.erase(it);
+            } else {
+              ++it;
+            }
+          }
+        } else {
+          breakpoints.clear();
+        }
+      } else if (command == "bp" && tokens.size() == 1) {
+        for (const auto &pair : breakpoints) {
+          std::cout << pair.first << " " << pair.second << "\n";
+        }
+      } else if (command == "bp" && tokens.size() >= 3) {
+        long line;
+        try {
+          line = std::stol(tokens[2]);
+        } catch (const std::exception& e) {
+          std::cout << "Breakpoint line number could not be parsed\n";
+        }
+        std::replace(tokens[1].begin(), tokens[1].end(), '\\', '/');
+        tokens[1][0] = std::toupper(tokens[1][0]);
+        breakpoints.insert(std::make_pair(tokens[1], line));
+      } else if (command == "dbp") {
+        cmVariableWatch::WatchMethod method =
+          [](const std::string& variable, int method, void* data,
+             const char* newValue, const cmMakefile* mf) {
+            if (method == cmVariableWatch::VARIABLE_MODIFIED_ACCESS)
+              breakOnNext = true;
+          };
+        this->GetVariableWatch()->AddWatch(tokens[1], method);
+        dataBps.insert(std::make_pair(tokens[1], method));
+      } else if (command == "cdbp") {
+        for (const auto& pair : dataBps) {
+          this->GetVariableWatch()->RemoveWatch(pair.first, pair.second);
+        }
+        dataBps.clear();
+      } else if (command == "v") {
+        if (tokens.size() >= 2) {
+          const auto definition = this->StateSnapshot.GetDefinition(tokens[1]);
+          if (definition != nullptr) {
+            std::cout << *definition << "\n";
+          } else {
+            std::cout << "Variable " << tokens[1] << " is not defined\n";
+          }
+        } else {
+          for (auto key : this->StateSnapshot.ClosureKeys()) {
+            std::cout << key << ": \""
+                      << *this->StateSnapshot.GetDefinition(key) << "\"\n";
+          }
+        }
+      } else if (command == "sv" && tokens.size() >= 3) {
+        this->StateSnapshot.SetDefinition(tokens[1], tokens[2]);
+      } else if (command == "bt") {
+        // kuchung needs to fix this conflict.
+        // this->Backtrace.PrintCallStack(std::cout);
+      } else if (command == "t") {
+        cmGlobalGenerator* gg = this->GetGlobalGenerator();
+        for (const auto& mf : gg->GetMakefiles()) {
+          for (const auto& target : mf->GetTargets()) {
+            std::cout << target.second.GetName() << "\n";
+          }
+        }
+      } else if (command == "tp") {
+        cmTarget* target = this->GetGlobalGenerator()->FindTarget(tokens[1]);
+        if (target == nullptr) {
+          std::cout << "Target " << tokens[1] << " is not defined.\n";
+        } else {
+          if (tokens.size() >= 3) {
+            cmValue property = target->GetProperty(tokens[2]);
+            if (property == nullptr) {
+              std::cout << "Target " << tokens[1] << " has no property "
+                        << tokens[2] << "\n";
+            } else {
+              std::cout << &property << "\n";
+            }
+          } else {
+            for (const auto& pair : target->GetProperties().GetList()) {
+              std::cout << pair.first << ": \"" << pair.second << "\"\n";
+            }
+          }
+        }
+      } else if (command == "stp") {
+        this->GetGlobalGenerator()->FindTarget(tokens[1])->SetProperty(
+          tokens[2], tokens[3]);
+      } else if (command == "tco") {
+        cmTarget* target = this->GetGlobalGenerator()->FindTarget(tokens[1]);
+        if (target == nullptr) {
+          std::cout << "Target " << tokens[1] << " is not defined.\n";
+        } else {
+          for (const auto& option : target->GetCompileOptionsEntries()) {
+            std::cout << option << "\n";
+          }
+        }
+      } else {
+        std::cout << "Command " << command << " is not defined\n";
+      }
+    }
   }
 
   if (this->ExecuteCommandCallback) {
@@ -783,7 +1032,58 @@ void cmMakefile::RunListFile(cmListFile const& listFile,
   // Run the parsed commands.
   const size_t numberFunctions = listFile.Functions.size();
   for (size_t i = 0; i < numberFunctions; ++i) {
+    if (this->GetCMakeInstance()->curDbg[this->GetCMakeInstance()->dbgTypeIndex].dbgSrc.compare(
+          filenametoread) == 0) {
+          int x = 0;
+          x++;
+          x--;
+    }
+    int dbgLine = this->GetCMakeInstance()->curDbg[this->GetCMakeInstance()->dbgTypeIndex].dbgLine;
+    std::string dbgSrc = this->GetCMakeInstance()->curDbg[this->GetCMakeInstance()->dbgTypeIndex].dbgSrc;
+    if (dbgSrc.compare("???") == 0) {
+        dbgSrc = filenametoread;
+      int dbgTypeIndex = this->GetCMakeInstance()->dbgTypeIndex;
+        if (dbgTypeIndex > 0 &&
+            listFile.Functions[i].Line() ==
+            this->GetCMakeInstance()->curDbg[dbgTypeIndex - 1].dbgLine &&
+            filenametoread.compare(this->GetCMakeInstance()->curDbg[dbgTypeIndex-1].dbgSrc) == 0) {
+        // we reached in one stepin to the next line in the current source, so this is a stepin that acts like stepout
+          this->GetCMakeInstance()->dbgTypeIndex--;
+        dbgTypeIndex = this->GetCMakeInstance()->dbgTypeIndex;
+      }
+      this->GetCMakeInstance()->curDbg[this->GetCMakeInstance()->dbgTypeIndex].dbgSrc = filenametoread;
+        this->GetCMakeInstance()->curDbg[this->GetCMakeInstance()->dbgTypeIndex].cmakeLine = listFile.Functions[i].Line();
+      this->GetCMakeInstance()->curDbg[this->GetCMakeInstance()->dbgTypeIndex].dbgLine = listFile.Functions[i].Line();
+        this->GetCMakeInstance()->SendStepInEvent(filenametoread, listFile.Functions[i].Line());
+    }
+
+    if (this->GetCMakeInstance()->curDbg[this->GetCMakeInstance()->dbgTypeIndex].dbgSrc.compare(filenametoread) == 0) {
+      this->GetCMakeInstance()->curDbg[this->GetCMakeInstance()->dbgTypeIndex].cmakeLine = listFile.Functions[i].Line();
+  }
+
+    int dbgTypeIndex = this->GetCMakeInstance()->dbgTypeIndex;
+    for (int idx = 0; idx <= dbgTypeIndex; idx++) {
+    dbgSrc = this->GetCMakeInstance()->curDbg[idx].dbgSrc;
+      dbgLine = this->GetCMakeInstance()->curDbg[idx].dbgLine;
+    while (dbgSrc.compare(filenametoread) == 0 &&
+           listFile.Functions[i].Line() > dbgLine - 1) {
+      dbgLine = this->GetCMakeInstance()->curDbg[idx].dbgLine;
+      int x = 0;
+      x++;
+      x--;
+      dbgTypeIndex = this->GetCMakeInstance()->dbgTypeIndex;
+      if (idx > dbgTypeIndex) {
+          // release the loop
+        break;
+      }
+    }
+  }
     cmExecutionStatus status(*this);
+    if (dbgSrc.compare(filenametoread) != 0) {
+        int x = 0;
+        x++;
+        x--;
+    }
     this->ExecuteCommand(listFile.Functions[i], status);
     if (cmSystemTools::GetFatalErrorOccurred()) {
       break;
@@ -1706,6 +2006,394 @@ void cmMakefile::Configure()
     }
   }
 
+//  // start Debugger
+//  static bool bb = true;
+//  while (bb) {
+//    int x = 0;
+//    x++;
+//    x--;
+//    // break here
+//  }
+//
+//
+//
+//  static bool entryPoint = true;
+//  Event terminate;
+//  if (entryPoint) {
+//    this->dbgSrc = currentStart;
+//    entryPoint = false;
+//  } // if (entryPoint)
+//
+////  auto session = dap::Session::create();
+//  //if (this->dbgSrc.compare(currentStart) == 0) {
+//#ifdef OS_WINDOWS
+//  // Change stdin & stdout from text mode to binary mode.
+//  // This ensures sequences of \r\n are not changed to \n.
+//  _setmode(_fileno(stdin), _O_BINARY);
+//  _setmode(_fileno(stdout), _O_BINARY);
+//#endif // OS_WINDOWS
+//
+//  std::shared_ptr<dap::Writer> log;
+//// Uncomment the line below and change <path-to-log-file> to a file path to
+//// write all DAP communications to the given path.
+////
+//#define LOG_TO_FILE "c:\\git\\dap\\dap.log"
+//#ifdef LOG_TO_FILE
+//  log = dap::file(LOG_TO_FILE);
+//#endif
+//
+//  // Create the DAP session.
+//  // This is used to implement the DAP server.
+//  auto session = dap::Session::create();
+//
+//  // Hard-coded identifiers for the one thread, frame, variable and source.
+//  // These numbers have no meaning, and just need to remain constant for the
+//  // duration of the service.
+//  const dap::integer threadId = 100;
+//  const dap::integer frameId = 200;
+//  const dap::integer variablesReferenceId = 300;
+//  const dap::integer sourceReferenceId = 400;
+//
+//  // Signal events
+//  Event configured;
+//
+//  // Event handlers from the Debugger.
+//  auto onDebuggerEvent = [&](Debugger::Event onEvent) {
+//    switch (onEvent) {
+//      case Debugger::Event::Stepped: {
+//        // The debugger has single-line stepped. Inform the client.
+//        dap::StoppedEvent event;
+//        event.reason = "step";
+//        event.threadId = threadId;
+//        session->send(event);
+//        break;
+//      }
+//      case Debugger::Event::BreakpointHit: {
+//        // The debugger has hit a breakpoint. Inform the client.
+//        dap::StoppedEvent event;
+//        event.reason = "breakpoint";
+//        event.threadId = threadId;
+//        session->send(event);
+//        break;
+//      }
+//      case Debugger::Event::Paused: {
+//        // The debugger has been suspended. Inform the client.
+//        dap::StoppedEvent event;
+//        event.reason = "pause";
+//        event.threadId = threadId;
+//        session->send(event);
+//        break;
+//      }
+//      case Debugger::Event::Terminate: {
+//        // dap::ThreadEvent threadEndedEvent;
+//        // threadEndedEvent.reason = "exited";
+//        // threadEndedEvent.threadId = threadId;
+//        // session->send(threadEndedEvent);
+//
+//        //// Terminate debugger (example: for end of program)
+//        // dap::DisconnectRequest req;
+//        // req.terminateDebuggee = true;
+//        // session->send(req);
+//
+//        // dap::ExitedEvent exitEvent;
+//        // dap::TerminatedEvent termEvent;
+//        // exitEvent.exitCode = 0;
+//        // termEvent.restart = false;
+//        // session->send(exitEvent);
+//        // session->send(termEvent);
+//        terminate.fire();
+//
+//        break;
+//      }
+//    }
+//  };
+//
+//  // Construct the debugger.
+//  Debugger debugger(onDebuggerEvent);
+//
+//  // Handle errors reported by the Session. These errors include protocol
+//  // parsing errors and receiving messages with no handler.
+//  session->onError([&](const char* msg) {
+//    if (log) {
+//      dap::writef(log, "dap::Session error: %s\n", msg);
+//      log->close();
+//    }
+//    terminate.fire();
+//  });
+//
+//  // The Initialize request is the first message sent from the client and
+//  // the response reports debugger capabilities.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Initialize
+//  session->registerHandler([](const dap::InitializeRequest&) {
+//    dap::InitializeResponse response;
+//    response.supportsConfigurationDoneRequest = true;
+//    return response;
+//  });
+//
+//  // When the Initialize response has been sent, we need to send the
+//  // initialized event. We use the registerSentHandler() to ensure the event is
+//  // sent *after* the initialize response.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Events_Initialized
+//  session->registerSentHandler(
+//    [&](const dap::ResponseOrError<dap::InitializeResponse>&) {
+//      session->send(dap::InitializedEvent());
+//    });
+//
+//  // The Threads request queries the debugger's list of active threads.
+//  // This example debugger only exposes a single thread.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Threads
+//  session->registerHandler([&](const dap::ThreadsRequest&) {
+//    dap::ThreadsResponse response;
+//    dap::Thread thread;
+//    thread.id = threadId;
+//    thread.name = "TheThread";
+//    response.threads.push_back(thread);
+//    return response;
+//  });
+//
+//  // The StackTrace request reports the stack frames (call stack) for a given
+//  // thread. This example debugger only exposes a single stack frame for the
+//  // single thread.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_StackTrace
+//  session->registerHandler([&](const dap::StackTraceRequest& request)
+//                             -> dap::ResponseOrError<dap::StackTraceResponse> {
+//    if (request.threadId != threadId) {
+//      return dap::Error("Unknown threadId '%d'", int(request.threadId));
+//    }
+//
+//    dap::Source source;
+//    source.sourceReference = sourceReferenceId;
+//    source.name = this->dbgSrc ; ///**/ currentStart; /**/ //"HelloDebuggerSource";
+//    //this->dbgSrc = currentStart;
+//
+//    dap::StackFrame frame;
+//    frame.line = debugger.currentLine();
+//    dbgLine = frame.line;
+//    frame.column = 1;
+//    frame.name = "HelloDebugger";
+//    frame.id = frameId;
+//    frame.source = source;
+//
+//    dap::StackTraceResponse response;
+//    response.stackFrames.push_back(frame);
+//    return response;
+//  });
+//
+//  // The Scopes request reports all the scopes of the given stack frame.
+//  // This example debugger only exposes a single 'Locals' scope for the single
+//  // frame.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Scopes
+//  session->registerHandler([&](const dap::ScopesRequest& request)
+//                             -> dap::ResponseOrError<dap::ScopesResponse> {
+//    if (request.frameId != frameId) {
+//      return dap::Error("Unknown frameId '%d'", int(request.frameId));
+//    }
+//
+//    dap::Scope scope;
+//    scope.name = "Locals";
+//    scope.presentationHint = "locals";
+//    scope.variablesReference = variablesReferenceId;
+//
+//    dap::ScopesResponse response;
+//    response.scopes.push_back(scope);
+//    return response;
+//  });
+//
+//  // The Variables request reports all the variables for the given scope.
+//  // This example debugger only exposes a single 'currentLine' variable for the
+//  // single 'Locals' scope.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Variables
+//  session->registerHandler([&](const dap::VariablesRequest& request)
+//                             -> dap::ResponseOrError<dap::VariablesResponse> {
+//    if (request.variablesReference != variablesReferenceId) {
+//      return dap::Error("Unknown variablesReference '%d'",
+//                        int(request.variablesReference));
+//    }
+//
+//    dap::Variable currentLineVar;
+//    currentLineVar.name = "currentLine";
+//    currentLineVar.value = std::to_string(debugger.currentLine());
+//    currentLineVar.type = "int";
+//    dbgLine = debugger.currentLine();
+//
+//    dap::VariablesResponse response;
+//    response.variables.push_back(currentLineVar);
+//    return response;
+//  });
+//
+//  // The Pause request instructs the debugger to pause execution of one or all
+//  // threads.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Pause
+//  session->registerHandler([&](const dap::PauseRequest&) {
+//    debugger.pause();
+//    dbgLine = debugger.currentLine();
+//    return dap::PauseResponse();
+//  });
+//
+//  // The Continue request instructs the debugger to resume execution of one or
+//  // all threads.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Continue
+//  session->registerHandler([&](const dap::ContinueRequest&) {
+//    debugger.run();
+//    dbgLine = debugger.currentLine();
+//    return dap::ContinueResponse();
+//  });
+//
+//  // The Next request instructs the debugger to single line step for a specific
+//  // thread.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Next
+//  session->registerHandler([&](const dap::NextRequest&) {
+//    debugger.stepForward();
+//    return dap::NextResponse();
+//  });
+//
+//  // The StepIn request instructs the debugger to step-in for a specific
+//  // thread.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_StepIn
+//  session->registerHandler([&](const dap::StepInRequest&) {
+//    // Step-in treated as step-over as there's only one stack frame.
+//    debugger.stepForward();
+//    dbgLine = debugger.currentLine();
+//    return dap::StepInResponse();
+//  });
+//
+//  // The StepOut request instructs the debugger to step-out for a specific
+//  // thread.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_StepOut
+//  session->registerHandler([&](const dap::StepOutRequest&) {
+//    // Step-out is not supported as there's only one stack frame.
+//    return dap::StepOutResponse();
+//  });
+//
+//  // The SetExceptionBreakpoints request configures the debugger's handling of
+//  // thrown exceptions.
+//  // This example debugger does not use any exceptions, so this is a no-op.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_SetExceptionBreakpoints
+//  session->registerHandler([&](const dap::SetExceptionBreakpointsRequest&) {
+//    return dap::SetExceptionBreakpointsResponse();
+//  });
+//
+//  // The Source request retrieves the source code for a given source file.
+//  // This example debugger only exposes one synthetic source file.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Source
+//  session->registerHandler([&](const dap::SourceRequest& request)
+//                             -> dap::ResponseOrError<dap::SourceResponse> {
+//    if (request.sourceReference != sourceReferenceId) {
+//      return dap::Error("Unknown source reference '%d'",
+//                        int(request.sourceReference));
+//    }
+//
+//    dap::SourceResponse response;
+//    // response.content = sourceContent;
+//    std::ifstream fileCMakeLists(currentStart);
+//    if (fileCMakeLists.is_open()) {
+//      std::string line;
+//      std::stringstream buffer;
+//      int count = 0;
+//      while (std::getline(fileCMakeLists, line)) {
+//        count++;
+//        buffer << line << "\n";
+//      }
+//      response.content = buffer.str();
+//      debugger.numSourceLines = count;
+//      fileCMakeLists.close();
+//    }
+//    return response;
+//  });
+//
+//  // The SetBreakpoints request instructs the debugger to clear and set a
+//  // number of line breakpoints for a specific source file. This example
+//  // debugger only exposes a single source file.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_SetBreakpoints
+//  session->registerHandler([&](const dap::SetBreakpointsRequest& request) {
+//    dap::SetBreakpointsResponse response;
+//
+//    auto breakpoints = request.breakpoints.value({});
+//    if (request.source.sourceReference.value(0) == sourceReferenceId ||
+//        request.source.path.value() == currentStart ||
+//        true /*find api to compare the paths*/) {
+//      debugger.clearBreakpoints();
+//      response.breakpoints.resize(breakpoints.size());
+//      for (size_t i = 0; i < breakpoints.size(); i++) {
+//        debugger.addBreakpoint(breakpoints[i].line);
+//        response.breakpoints[i].verified =
+//          breakpoints[i].line < debugger.numSourceLines;
+//        response.breakpoints[i].id = i;
+//        response.breakpoints[i].line = breakpoints[i].line;
+//        dap::Source dapSrc;
+//        dapSrc.sourceReference = sourceReferenceId;
+//        dapSrc.path = currentStart;
+//        response.breakpoints[i].source = dapSrc;
+//      }
+//    } else {
+//      response.breakpoints.resize(breakpoints.size());
+//    }
+//
+//    return response;
+//  });
+//
+//  // The Launch request is made when the client instructs the debugger adapter
+//  // to start the debuggee. This request contains the launch arguments.
+//  // This example debugger does nothing with this request.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Launch
+//  session->registerHandler(
+//    [&](const dap::LaunchRequest&) { return dap::LaunchResponse(); });
+//
+//  // Handler for disconnect requests
+//  session->registerHandler([&](const dap::DisconnectRequest& request) {
+//    if (request.terminateDebuggee.value(false)) {
+//      terminate.fire();
+//    }
+//    return dap::DisconnectResponse();
+//  });
+//
+//  // Handler for evaluate requests
+//  session->registerHandler([&](const dap::EvaluateRequest& request) {
+//    return dap::EvaluateResponse();
+//  });
+//
+//  // The ConfigurationDone request is made by the client once all configuration
+//  // requests have been made.
+//  // This example debugger uses this request to 'start' the debugger.
+//  // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_ConfigurationDone
+//  session->registerHandler([&](const dap::ConfigurationDoneRequest&) {
+//    configured.fire();
+//    return dap::ConfigurationDoneResponse();
+//  });
+//
+//  // All the handlers we care about have now been registered.
+//  // We now bind the session to stdin and stdout to connect to the client.
+//  // After the call to bind() we should start receiving requests, starting with
+//  // the Initialize request.
+//  std::shared_ptr<dap::Reader> in = dap::file(stdin, false);
+//  std::shared_ptr<dap::Writer> out = dap::file(stdout, false);
+//  if (log) {
+//    session->bind(spy(in, log), spy(out, log));
+//  } else {
+//    session->bind(in, out);
+//  }
+//
+//  // Wait for the ConfigurationDone request to be made.
+//  configured.wait();
+//
+//  // Broadcast the existance of the single thread to the client.
+//  dap::ThreadEvent threadStartedEvent;
+//  threadStartedEvent.reason = "started";
+//  threadStartedEvent.threadId = threadId;
+//  session->send(threadStartedEvent);
+//
+//  // Start the debugger in a paused state.
+//  // This sends a stopped event to the client.
+//  debugger.pause();
+//
+//  //// Block until we receive a 'terminateDebuggee' request or encounter a
+//  //// session error.
+//  // terminate.wait();
+//  //
+//  //// end Debugger
+//
+//  dbgLine = debugger.currentLine();
+//  //} // if if (this->dbgSrc.compare(currentStart) == 0) // if entrypoint
   this->Defer = cm::make_unique<DeferCommands>();
   this->RunListFile(listFile, currentStart, this->Defer.get());
   this->Defer.reset();
@@ -1724,6 +2412,14 @@ void cmMakefile::Configure()
   }
 
   this->AddCMakeDependFilesFromUser();
+
+  //// Block until we receive a 'terminateDebuggee' request or encounter a
+  //// session error.
+  //if (this->dbgSrc.compare(currentStart) == 0) {
+  //  terminate.wait();
+  //}
+  //
+  //// end Debugger
 }
 
 void cmMakefile::ConfigureSubDirectory(cmMakefile* mf)
