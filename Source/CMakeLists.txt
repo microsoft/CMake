@@ -751,6 +751,7 @@ target_include_directories(
 target_link_libraries(
   CMakeLib
   PUBLIC
+    cppdap::cppdap
     cmstd
     cmsys
     CURL::libcurl
@@ -760,13 +761,10 @@ target_link_libraries(
     LibArchive::LibArchive
     LibRHash::LibRHash
     LibUV::LibUV
+    nlohmann_json::nlohmann_json
     Threads::Threads
     ZLIB::ZLIB
   )
-
-# Hardcoded CppDap dependency will be fixed later.
-INCLUDE_DIRECTORIES("C:/git/cppdap/include")
-target_link_libraries(CMakeLib PRIVATE "C:/git/cppdap/out/build/x64-Debug/cppdap.lib")
 
 # Check if we can build the Mach-O parser.
 if(CMake_USE_MACH_PARSER)

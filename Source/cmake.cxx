@@ -14,9 +14,9 @@
 #include <utility>
 
 #include "cmDebugger.h"
-#include "dap/io.h"
-#include "dap/protocol.h"
-#include "dap/session.h"
+#include <cm3p/cppdap/io.h>
+#include <cm3p/cppdap/protocol.h>
+#include <cm3p/cppdap/session.h>
 #ifdef _MSC_VER
 #  define OS_WINDOWS 1
 #endif

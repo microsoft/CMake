@@ -2,9 +2,9 @@
 
 #include "cmDebugger.h"
 
-#include "dap/io.h"
-#include "dap/protocol.h"
-#include "dap/session.h"
+#include <cm3p/cppdap/io.h>
+#include <cm3p/cppdap/protocol.h>
+#include <cm3p/cppdap/session.h>
 
 #include <cstring>
 #include <iostream>
