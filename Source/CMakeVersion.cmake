@@ -40,7 +40,7 @@ if(CMake_VERSION_MICROSOFT_SCHEME)
     # Revision starts with 1 by default.
     set(MICROSOFT_REVISION "1")
 
-    if(microsoft_tags MATCHES "^v${CMake_VERSION_MAJOR}.${CMake_VERSION_MINOR}.${CMake_VERSION_PATCH}-msvc([0-9]*)")
+    if(microsoft_tags MATCHES "^v${CMake_VERSION_MAJOR}.${CMake_VERSION_MINOR}.${CMake_VERSION_PATCH}-msvc([0-9]*)$")
       # Increase revision if previous ones exist.
       math(EXPR MICROSOFT_REVISION "${CMAKE_MATCH_1} + 1")
     endif()

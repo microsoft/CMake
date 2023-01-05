@@ -2,11 +2,6 @@
    file Copyright.txt or https://cmake.org/licensing for details.  */
 #pragma once
 
-//#include "dap/io.h"
-//#include "dap/protocol.h"
-//#include "dap/session.h"
-//#include "cmDebugger.h"
-
 #include "cmConfigure.h" // IWYU pragma: keep
 
 #include <cstddef>
@@ -74,7 +69,6 @@ public:
   std::string String;
 };
 
-
 /** \class cmMakefile
  * \brief Process the input CMakeLists.txt file.
  *
@@ -89,14 +83,6 @@ public:
   void MarkVariableAsUsed(const std::string& var);
   /* return true if a variable has been initialized */
   bool VariableInitialized(const std::string&) const;
-
-  //Debugger _debugger;
-  //std::unique_ptr<dap::Session> _session = dap::Session::create();
-  //Event _configured;
-  //Event _terminate;
-  //std::shared_ptr<dap::Writer> _log;
-  int dbgLine = 0;
-  std::string dbgSrc = "";
 
   /**
    * Construct an empty makefile.

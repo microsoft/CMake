@@ -9,6 +9,7 @@
 #include <cmext/string_view>
 
 #include "cmExecutionStatus.h"
+#include "cmDebuggerAdapter.h"
 #include "cmMakefile.h"
 #include "cmMessageType.h"
 #include "cmMessenger.h"
@@ -175,6 +176,11 @@ bool cmMessageCommand(std::vector<std::string> const& args,
 
     case Message::LogLevel::LOG_NOTICE:
       cmSystemTools::Message(IndentText(message, mf));
+      if (mf.GetCMakeInstance()->GetDebugAdapter() != nullptr)
+      {
+        mf.GetCMakeInstance()->GetDebugAdapter()->CheckException(type,
+                                                                 message);
+      }
       break;
 
     case Message::LogLevel::LOG_STATUS:
