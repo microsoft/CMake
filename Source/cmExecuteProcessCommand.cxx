@@ -18,6 +18,7 @@
 
 #include "cmsys/Process.h"
 
+#include "cmake.h"
 #include "cmArgumentParser.h"
 #include "cmExecutionStatus.h"
 #include "cmMakefile.h"
@@ -145,6 +146,18 @@ bool cmExecuteProcessCommand(std::vector<std::string> const& args,
   std::unique_ptr<cmsysProcess, void (*)(cmsysProcess*)> cp_ptr(
     cmsysProcess_New(), cmsysProcess_Delete);
   cmsysProcess* cp = cp_ptr.get();
+
+  if (status.GetMakefile().GetCMakeInstance()->GetDebuggerOn()) {
+    // In debugger mode, we use stdin and stdout to communicate with IDE,
+    // the cppdap thread would fget stdin as fast as it can.
+    // Most of the time, fget would be blocked, which seems to be blocking
+    // child processes that have shared stdin from completing until some
+    // data coming from the IDE and unblock fget, then the child process
+    // can complete.
+    //
+    // As a workaround until I discuss with Kitware, we will pass no stdin.
+    cmsysProcess_SetPipeShared(cp, cmsysProcess_Pipe_STDIN, 0);
+  }
 
   // Set the command sequence.
   for (std::vector<std::string> const& cmd : arguments.Commands) {

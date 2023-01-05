@@ -6,6 +6,7 @@
 
 #include "cmsys/Process.h"
 
+#include "cmake.h"
 #include "cmExecutionStatus.h"
 #include "cmMakefile.h"
 #include "cmProcessOutput.h"
@@ -16,7 +17,8 @@ using Encoding = cmProcessOutput::Encoding;
 
 namespace {
 bool RunCommand(std::string command, std::string& output, int& retVal,
-                const char* directory = nullptr, bool verbose = true,
+                cmExecutionStatus& status, const char* directory = nullptr,
+                bool verbose = true,
                 Encoding encoding = cmProcessOutput::Auto);
 }
 
@@ -90,9 +92,10 @@ bool cmExecProgramCommand(std::vector<std::string> const& args,
   bool result = true;
   if (args.size() - count == 2) {
     cmSystemTools::MakeDirectory(args[1]);
-    result = RunCommand(command, output, retVal, args[1].c_str(), verbose);
+    result =
+      RunCommand(command, output, retVal, status, args[1].c_str(), verbose);
   } else {
-    result = RunCommand(command, output, retVal, nullptr, verbose);
+    result = RunCommand(command, output, retVal, status, nullptr, verbose);
   }
   if (!result) {
     retVal = -1;
@@ -123,7 +126,8 @@ bool cmExecProgramCommand(std::vector<std::string> const& args,
 
 namespace {
 bool RunCommand(std::string command, std::string& output, int& retVal,
-                const char* dir, bool verbose, Encoding encoding)
+                cmExecutionStatus& status, const char* dir, bool verbose,
+                Encoding encoding)
 {
   if (cmSystemTools::GetRunCommandOutput()) {
     verbose = false;
@@ -178,6 +182,18 @@ bool RunCommand(std::string command, std::string& output, int& retVal,
   if (!cp) {
     cmSystemTools::Error("Error allocating process instance.");
     return false;
+  }
+
+    if (status.GetMakefile().GetCMakeInstance()->GetDebuggerOn()) {
+    // In debugger mode, we use stdin and stdout to communicate with IDE,
+    // the cppdap thread would fget stdin as fast as it can.
+    // Most of the time, fget would be blocked, which seems to be blocking
+    // child processes that have shared stdin from completing until some
+    // data coming from the IDE and unblock fget, then the child process
+    // can complete.
+    //
+    // As a workaround until I discuss with Kitware, we will pass no stdin.
+    cmsysProcess_SetPipeShared(cp, cmsysProcess_Pipe_STDIN, 0);
   }
 
 #if defined(_WIN32) && !defined(__CYGWIN__)

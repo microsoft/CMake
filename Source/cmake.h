@@ -35,6 +35,9 @@
 #  include "cmCMakePresetsGraph.h"
 #endif
 
+namespace cmDebugger {
+class cmDebuggerAdapter;
+}
 class cmExternalMakefileProjectGeneratorFactory;
 class cmFileAPI;
 class cmFileTimeCache;
@@ -76,32 +79,6 @@ struct cmDocumentationEntry;
 class cmake
 {
 public:
-  //int dbgLine2 = 0;
-  //int cmakeLine2 = 0;
-  //std::string dbgSrc2 = "";
-  int dbgTypeIndex = 0;
-  typedef struct
-  {
-    int dbgLine;
-    int cmakeLine;
-    int dbgSrcIndex;
-    std::string dbgSrc;
-  } DbgType;
-  DbgType curDbg[10] = {
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-    { 0, 0, 0, "" },
-  };
-  void SendStepInEvent(std::string dbgSrc, int line);
-  //Debugger myDbg;
-
   enum Role
   {
     RoleInternal, // no commands
@@ -800,6 +777,25 @@ private:
 #if !defined(CMAKE_BOOTSTRAP)
   std::unique_ptr<cmMakefileProfilingData> ProfilingOutput;
 #endif
+
+public:
+  bool GetDebuggerOn() const { return this->DebuggerOn; }
+  std::string GetDebuggerDapLogFile() const
+  {
+    return this->DebuggerDapLogFile;
+  }
+  void SetDebuggerOn(bool b) { this->DebuggerOn = b; }
+  void StartDebuggerIfEnabled();
+  void StopDebuggerIfNeeded(int exitCode);
+  std::shared_ptr<cmDebugger::cmDebuggerAdapter> GetDebugAdapter() const noexcept
+  {
+      return this->DebugAdapter;
+  }
+
+private:
+  std::shared_ptr<cmDebugger::cmDebuggerAdapter> DebugAdapter;
+  bool DebuggerOn = false;
+  std::string DebuggerDapLogFile;
 };
 
 #define CMAKE_STANDARD_OPTIONS_TABLE                                          \

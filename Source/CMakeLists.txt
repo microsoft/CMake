@@ -179,8 +179,22 @@ add_library(
   cmCustomCommandTypes.h
   cmCxxModuleMapper.cxx
   cmCxxModuleMapper.h
-  cmDebugger.cxx
-  cmDebugger.h
+  cmDebuggerAdapter.cxx
+  cmDebuggerAdapter.h
+  cmDebuggerBreakpointManager.cxx
+  cmDebuggerBreakpointManager.h
+  cmDebuggerExceptionManager.cxx
+  cmDebuggerExceptionManager.h
+  cmDebuggerProtocol.cxx
+  cmDebuggerProtocol.h
+  cmDebuggerSourceBreakpoint.cxx
+  cmDebuggerSourceBreakpoint.h
+  cmDebuggerStackFrame.cxx
+  cmDebuggerStackFrame.h
+  cmDebuggerThread.cxx
+  cmDebuggerThread.h
+  cmDebuggerThreadManager.cxx
+  cmDebuggerThreadManager.h
   cmDefinitions.cxx
   cmDefinitions.h
   cmDependencyProvider.h
