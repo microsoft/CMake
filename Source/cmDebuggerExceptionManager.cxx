@@ -47,7 +47,7 @@ cmDebuggerExceptionManager::cmDebuggerExceptionManager(
 
 dap::SetExceptionBreakpointsResponse
 cmDebuggerExceptionManager::HandleSetExceptionBreakpointsRequest(
-    const dap::SetExceptionBreakpointsRequest& request)
+  dap::SetExceptionBreakpointsRequest const& request)
 {
   std::unique_lock<std::mutex> lock(Mutex);
   dap::SetExceptionBreakpointsResponse response;
@@ -62,7 +62,7 @@ cmDebuggerExceptionManager::HandleSetExceptionBreakpointsRequest(
 
 dap::ExceptionInfoResponse
 cmDebuggerExceptionManager::HandleExceptionInfoRequest(
-  const dap::ExceptionInfoRequest& request)
+  dap::ExceptionInfoRequest const& request)
 {
   std::unique_lock<std::mutex> lock(Mutex);
 

@@ -7,22 +7,26 @@
 #include <atomic>
 #include <string>
 
+class cmListFileFunction;
+class cmMakefile;
+
 namespace cmDebugger {
 
 class cmDebuggerStackFrame
 {
   static std::atomic<int64_t> NextId;
   int64_t Id;
+  std::string FileName;
+  cmListFileFunction const& Function;
+  cmMakefile* Makefile;
 
 public:
-  std::string FileName;
-  std::string FunctionName;
-  int64_t Line;
-
-  cmDebuggerStackFrame(std::string fileName);
-  cmDebuggerStackFrame(std::string fileName, std::string functionName,
-                       int64_t line);
+  cmDebuggerStackFrame(cmMakefile* mf, std::string const& sourcePath,
+                       cmListFileFunction const& lff);
   int64_t GetId() const noexcept { return this->Id; }
+  std::string const& GetFileName() const noexcept { return this->FileName; }
+  int64_t GetLine() const noexcept;
+  cmMakefile* GetMakefile() const noexcept { return this->Makefile; }
 };
 
 } // namespace cmDebugger

@@ -382,9 +382,8 @@ public:
     }
 #endif
     if (this->Makefile->GetCMakeInstance()->GetDebugAdapter() != nullptr) {
-      this->Makefile->GetCMakeInstance()
-        ->GetDebugAdapter()->BeginFunction(
-        lfc.FilePath, lff.OriginalName(), lff.Line());
+      this->Makefile->GetCMakeInstance()->GetDebugAdapter()->BeginFunction(
+        mf, lfc.FilePath, lff);
     }
   }
 
@@ -1657,11 +1656,6 @@ void cmMakefile::Configure()
                                                                   listFile);
   }
 
-  if (this->GetCMakeInstance()->GetDebugAdapter() != nullptr) {
-    this->GetCMakeInstance()->GetDebugAdapter()->BeginFunction(
-      currentStart, currentStart, 0);
-  }
-
   if (this->IsRootMakefile()) {
     bool hasVersion = false;
     // search for the right policy command
@@ -1759,10 +1753,6 @@ void cmMakefile::Configure()
   }
 
   this->AddCMakeDependFilesFromUser();
-
-  if (this->GetCMakeInstance()->GetDebugAdapter() != nullptr) {
-    this->GetCMakeInstance()->GetDebugAdapter()->EndFunction();
-  }
 }
 
 void cmMakefile::ConfigureSubDirectory(cmMakefile* mf)

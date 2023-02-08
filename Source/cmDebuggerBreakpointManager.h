@@ -15,8 +15,8 @@
 #include <cm3p/cppdap/protocol.h>
 #include <cm3p/cppdap/session.h>
 
-#include "cmListFileCache.h"
 #include "cmDebuggerSourceBreakpoint.h"
+#include "cmListFileCache.h"
 
 namespace cmDebugger {
 
@@ -35,7 +35,7 @@ class cmDebuggerBreakpointManager
   int64_t NextBreakpointId;
 
   dap::SetBreakpointsResponse HandleSetBreakpointsRequest(
-    const dap::SetBreakpointsRequest& request);
+    dap::SetBreakpointsRequest const& request);
   int64_t FindFunctionStartLine(std::string const& sourcePath, int64_t line);
 
 public:
