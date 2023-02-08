@@ -2491,7 +2491,6 @@ void cmake::StartDebuggerIfEnabled()
 #endif
     DebugAdapter = std::make_shared<cmDebugger::cmDebuggerAdapter>(
       dap::file(stdin, false), dap::file(stdout, false),
-      [this]() { return this->GetCurrentSnapshot(); },
       this->GetDebuggerDapLogFile());
     Messenger->SetDebuggerAdapter(DebugAdapter);
   }

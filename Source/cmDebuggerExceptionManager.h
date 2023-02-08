@@ -36,10 +36,10 @@ class cmDebuggerExceptionManager
   std::optional<cmDebuggerException> TheException;
 
   dap::SetExceptionBreakpointsResponse HandleSetExceptionBreakpointsRequest(
-    const dap::SetExceptionBreakpointsRequest& request);
+    dap::SetExceptionBreakpointsRequest const& request);
 
   dap::ExceptionInfoResponse HandleExceptionInfoRequest(
-    const dap::ExceptionInfoRequest& request);
+    dap::ExceptionInfoRequest const& request);
 
 public:
   cmDebuggerExceptionManager(dap::Session* dapSession);

@@ -1,3 +1,6 @@
+/* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
+   file Copyright.txt or https://cmake.org/licensing for details.  */
+
 #include <future>
 #include <iostream>
 #include <stddef.h>
@@ -58,12 +61,10 @@ int testCMDebuggerAdapter(int, char*[])
 
   client->bind(debugger2Client, client2Debugger);
 
-  cmStateSnapshot currentSnapshot;
   std::thread debuggerThread([&]() {
     std::shared_ptr<cmDebugger::cmDebuggerAdapter> debuggerAdapter =
       std::make_shared<cmDebugger::cmDebuggerAdapter>(
-        client2Debugger, debugger2Client,
-        [currentSnapshot]() { return currentSnapshot; }, "");
+        client2Debugger, debugger2Client, "");
 
     debuggerAdapterInitializedPromise.set_value(true);
 

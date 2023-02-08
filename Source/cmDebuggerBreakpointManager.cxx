@@ -35,7 +35,7 @@ int64_t cmDebuggerBreakpointManager::FindFunctionStartLine(
 
 dap::SetBreakpointsResponse
 cmDebuggerBreakpointManager::HandleSetBreakpointsRequest(
-  const dap::SetBreakpointsRequest& request)
+  dap::SetBreakpointsRequest const& request)
 {
   std::unique_lock<std::mutex> lock(Mutex);
 

@@ -13,101 +13,49 @@
 #include <cm3p/cppdap/protocol.h>
 #include <cm3p/cppdap/session.h>
 
-#include "cmDebuggerBreakpointManager.h"
-#include "cmDebuggerExceptionManager.h"
-#include "cmDebuggerThreadManager.h"
+#include "cmMessageType.h"
 
+class cmListFile;
+class cmListFileFunction;
 class cmStateSnapshot;
+class cmMakefile;
 
 namespace cmDebugger {
+class cmDebuggerBreakpointManager;
+class cmDebuggerExceptionManager;
+class cmDebuggerThread;
+class cmDebuggerThreadManager;
+class Semaphore;
+class SyncEvent;
 
 class cmDebuggerAdapter
 {
-  // Event provides a basic wait and signal synchronization primitive.
-  class SyncEvent
-  {
-  public:
-    // Wait() blocks until the event is fired.
-    void Wait()
-    {
-      std::unique_lock<std::mutex> lock(Mutex);
-      Cv.wait(lock, [&] { return Fired; });
-    }
-
-    // Fire() sets signals the event, and unblocks any calls to Wait().
-    void Fire()
-    {
-      std::unique_lock<std::mutex> lock(Mutex);
-      Fired = true;
-      Cv.notify_all();
-    }
-
-  private:
-    std::mutex Mutex;
-    std::condition_variable Cv;
-    bool Fired = false;
-  };
-
-  class Semaphore
-  {
-  public:
-    Semaphore(int count_ = 0)
-      : Count(count_)
-    {
-    }
-
-    inline void Notify()
-    {
-      std::unique_lock<std::mutex> lock(Mutex);
-      Count++;
-      // notify the waiting thread
-      Cv.notify_one();
-    }
-
-    inline void Wait()
-    {
-      std::unique_lock<std::mutex> lock(Mutex);
-      while (Count == 0) {
-        // wait on the mutex until notify is called
-        Cv.wait(lock);
-      }
-      Count--;
-    }
-
-  private:
-    std::mutex Mutex;
-    std::condition_variable Cv;
-    int Count;
-  };
-
 public:
-  cmDebuggerAdapter(std::shared_ptr<dap::Reader> reader,
-                    std::shared_ptr<dap::Writer> writer,
-                    std::function<cmStateSnapshot()> getCurrentSnapshot,
-                    std::string dapLogPath);
+  cmDebuggerAdapter(std::shared_ptr<dap::Reader> const& reader,
+                    std::shared_ptr<dap::Writer> const& writer,
+                    std::string const& dapLogPath);
   ~cmDebuggerAdapter();
 
   void ReportExitCode(int exitCode);
 
   void SourceFileLoaded(std::string const& sourcePath,
                         cmListFile const& listFile);
-  void BeginFunction(std::string const& sourcePath,
-                     std::string const& functionName, int64_t line);
+  void BeginFunction(cmMakefile* mf, std::string const& sourcePath,
+                     cmListFileFunction const& lff);
   void EndFunction();
 
   void CheckException(MessageType t, std::string const& text);
 
 private:
   void ClearStepRequests();
-  std::function<cmStateSnapshot()> GetCurrentSnapshot;
   std::unique_ptr<dap::Session> Session;
   std::shared_ptr<dap::Writer> SessionLog;
   std::thread SessionThread;
   std::atomic<bool> SessionActive;
   std::mutex Mutex;
-  SyncEvent DisconnectEvent;
-  SyncEvent ConfigurationDoneEvent;
-  Semaphore ContinueSem;
+  std::unique_ptr<SyncEvent> DisconnectEvent;
+  std::unique_ptr<SyncEvent> ConfigurationDoneEvent;
+  std::unique_ptr<Semaphore> ContinueSem;
   std::atomic<int64_t> NextStepFrom;
   std::atomic<bool> StepInRequest;
   std::atomic<int64_t> StepOutDepth;

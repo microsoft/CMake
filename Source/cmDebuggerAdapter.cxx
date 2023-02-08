@@ -10,54 +10,84 @@
 
 #include "cmake.h"
 #include "cmDebuggerAdapter.h"
+#include "cmDebuggerBreakpointManager.h"
+#include "cmDebuggerExceptionManager.h"
 #include "cmDebuggerProtocol.h"
+#include "cmDebuggerStackFrame.h"
 #include "cmDebuggerThread.h"
 #include "cmDebuggerThreadManager.h"
+#include "cmListFileCache.h"
+#include "cmMakefile.h"
 #include "cmVersionConfig.h"
 
 namespace cmDebugger {
 
-// More refactoring work needed for variable stuff.
-namespace {
-dap::Variable CreateVariable(
-  std::string const& name, std::string const& value, std::string const& type,
-  bool supportsVariableType, std::optional<std::string> evaluateName = {},
-  std::optional<dap::integer> variablesReference = {},
-  std::optional<dap::VariablePresentationHint> presentationHint = {})
+// Event provides a basic wait and signal synchronization primitive.
+class SyncEvent
 {
-  dap::Variable variable;
-  variable.name = name;
-  variable.value = value;
-  if (supportsVariableType) {
-    variable.type = type;
+public:
+  // Wait() blocks until the event is fired.
+  void Wait()
+  {
+     std::unique_lock<std::mutex> lock(Mutex);
+    Cv.wait(lock, [&] { return Fired; });
   }
-  if (evaluateName.has_value()) {
-    variable.evaluateName = evaluateName.value();
-  }
-  if (variablesReference.has_value()) {
-    variable.variablesReference = variablesReference.value();
-  }
-  if (presentationHint.has_value()) {
-    variable.presentationHint = presentationHint.value();
-  }
-  return variable;
-}
 
-static const dap::VariablePresentationHint PublicPropertyHint = { {},
-                                                                  "property",
-                                                                  {},
-                                                                  "public" };
-static const int64_t CMakeCacheVariableReference = 123;
-static const dap::integer VariablesReferenceId = 300;
-}
+  // Fire() sets signals the event, and unblocks any calls to Wait().
+  void Fire()
+  {
+    std::unique_lock<std::mutex> lock(Mutex);
+    Fired = true;
+    Cv.notify_all();
+  }
+
+private:
+  std::mutex Mutex;
+  std::condition_variable Cv;
+  bool Fired = false;
+};
+
+class Semaphore
+{
+public:
+  Semaphore(int count_ = 0)
+    : Count(count_)
+  {
+  }
+
+  inline void Notify()
+  {
+    std::unique_lock<std::mutex> lock(Mutex);
+    Count++;
+    // notify the waiting thread
+    Cv.notify_one();
+  }
+
+  inline void Wait()
+  {
+    std::unique_lock<std::mutex> lock(Mutex);
+    while (Count == 0) {
+      // wait on the mutex until notify is called
+      Cv.wait(lock);
+    }
+    Count--;
+  }
+
+private:
+  std::mutex Mutex;
+  std::condition_variable Cv;
+  int Count;
+};
 
 cmDebuggerAdapter::cmDebuggerAdapter(
-  std::shared_ptr<dap::Reader> reader, std::shared_ptr<dap::Writer> writer,
-  std::function<cmStateSnapshot()> getCurrentSnapshot,
-  std::string dapLogPath)
-  : GetCurrentSnapshot(getCurrentSnapshot)
-  , ThreadManager(std::make_unique<cmDebuggerThreadManager>())
+  std::shared_ptr<dap::Reader> const& reader,
+  std::shared_ptr<dap::Writer> const& writer,
+  std::string const& dapLogPath)
+  : ThreadManager(std::make_unique<cmDebuggerThreadManager>())
   , SessionActive(true)
+  , DisconnectEvent(std::make_unique<SyncEvent>())
+  , ConfigurationDoneEvent(std::make_unique<SyncEvent>())
+  , ContinueSem(std::make_unique<Semaphore>())
 {
   if (!dapLogPath.empty()) {
     SessionLog = dap::file(dapLogPath.c_str());
@@ -82,8 +112,8 @@ cmDebuggerAdapter::cmDebuggerAdapter(
     BreakpointManager->ClearAll();
     ExceptionManager->ClearAll();
     ClearStepRequests();
-    ContinueSem.Notify();
-    DisconnectEvent.Fire();
+    ContinueSem->Notify();
+    DisconnectEvent->Fire();
     SessionActive.store(false);
   });
 
@@ -118,77 +148,32 @@ cmDebuggerAdapter::cmDebuggerAdapter(
   });
 
   // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_StackTrace
-  Session->registerHandler(
-    [this](const dap::StackTraceRequest& request)
-      -> dap::ResponseOrError<dap::StackTraceResponse> {
-      std::unique_lock<std::mutex> lock(Mutex);
+  Session->registerHandler([this](const dap::StackTraceRequest& request)
+                             -> dap::ResponseOrError<dap::StackTraceResponse> {
+    std::unique_lock<std::mutex> lock(Mutex);
 
-      cm::optional<dap::StackTraceResponse> respone =
-        ThreadManager->GetThreadStackTraceResponse(request.threadId);
-      if (respone.has_value()) {
-        return respone.value();
-      }
+    cm::optional<dap::StackTraceResponse> response =
+      ThreadManager->GetThreadStackTraceResponse(request.threadId);
+    if (response.has_value()) {
+      return response.value();
+    }
 
-      return dap::Error("Unknown threadId '%d'", int(request.threadId));
-    });
+    return dap::Error("Unknown threadId '%d'", int(request.threadId));
+  });
 
-  // The Scopes request reports all the scopes of the given stack frame.
   // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Scopes
-  Session->registerHandler(
-    [this](const dap::ScopesRequest& request)
-      -> dap::ResponseOrError<dap::ScopesResponse> {
-      std::unique_lock<std::mutex> lock(Mutex);
-      dap::Scope scope;
-      scope.name = "Locals";
-      scope.presentationHint = "locals";
-      scope.variablesReference = VariablesReferenceId;
-
-      dap::Source source;
-      source.name = DefaultThread->GetTopStackFrame()->FileName;
-      source.path = source.name;
-      scope.source = source;
-
-      dap::ScopesResponse response;
-      response.scopes.push_back(scope);
-      return response;
-    });
+  Session->registerHandler([this](const dap::ScopesRequest& request)
+                             -> dap::ResponseOrError<dap::ScopesResponse> {
+    std::unique_lock<std::mutex> lock(Mutex);
+    return DefaultThread->GetScopesResponse(request.frameId,
+                                            SupportsVariableType);
+  });
 
   // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Variables
-  // More refactoring work needed for variable stuff.
-  Session->registerHandler(
-    [this](const dap::VariablesRequest& request)
-      -> dap::ResponseOrError<dap::VariablesResponse> {
-      std::unique_lock<std::mutex> lock(Mutex);
-      dap::VariablesResponse response;
-      if (request.variablesReference == VariablesReferenceId) {
-        response.variables.push_back(CreateVariable(
-          "CurrentLine",
-          std::to_string(DefaultThread->GetTopStackFrame()->Line), "int",
-          SupportsVariableType));
-
-        response.variables.push_back(CreateVariable(
-          "CMAKE CACHE VARIABLES", "", "collection", SupportsVariableType, {},
-          std::make_optional(CMakeCacheVariableReference),
-          PublicPropertyHint));
-      }
-
-      if (request.variablesReference == CMakeCacheVariableReference) {
-        std::vector<std::string> closureKeys =
-          GetCurrentSnapshot().ClosureKeys();
-        std::sort(closureKeys.begin(), closureKeys.end());
-
-        for (auto& varStr : closureKeys) {
-          auto val = GetCurrentSnapshot().GetDefinition(varStr);
-          if (val) {
-            response.variables.push_back(CreateVariable(
-              varStr, *val, "string", SupportsVariableType,
-              std::make_optional(varStr)));
-          }
-        }
-      }
-
-      return response;
-    });
+  Session->registerHandler([this](const dap::VariablesRequest& request)
+                             -> dap::ResponseOrError<dap::VariablesResponse> {
+    return DefaultThread->GetVariablesResponse(request);
+  });
 
   // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Pause
   Session->registerHandler([this](const dap::PauseRequest& req) {
@@ -198,14 +183,14 @@ cmDebuggerAdapter::cmDebuggerAdapter(
 
   // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Continue
   Session->registerHandler([this](const dap::ContinueRequest& req) {
-    ContinueSem.Notify();
+    ContinueSem->Notify();
     return dap::ContinueResponse();
   });
 
   // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Next
   Session->registerHandler([this](const dap::NextRequest& req) {
     NextStepFrom.store(DefaultThread->GetStackFrameSize());
-    ContinueSem.Notify();
+    ContinueSem->Notify();
     return dap::NextResponse();
   });
 
@@ -213,14 +198,14 @@ cmDebuggerAdapter::cmDebuggerAdapter(
   Session->registerHandler([this](const dap::StepInRequest& req) {
     // This would stop after stepped in, single line stepped or stepped out.
     StepInRequest.store(true);
-    ContinueSem.Notify();
+    ContinueSem->Notify();
     return dap::StepInResponse();
   });
 
   // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_StepOut
   Session->registerHandler([this](const dap::StepOutRequest& req) {
     StepOutDepth.store(DefaultThread->GetStackFrameSize() - 1);
-    ContinueSem.Notify();
+    ContinueSem->Notify();
     return dap::StepOutResponse();
   });
 
@@ -233,30 +218,36 @@ cmDebuggerAdapter::cmDebuggerAdapter(
     BreakpointManager->ClearAll();
     ExceptionManager->ClearAll();
     ClearStepRequests();
-    ContinueSem.Notify();
-    DisconnectEvent.Fire();
+    ContinueSem->Notify();
+    DisconnectEvent->Fire();
     SessionActive.store(false);
     return dap::DisconnectResponse();
   });
 
   Session->registerHandler([this](const dap::EvaluateRequest& request) {
     dap::EvaluateResponse response;
-    auto var = GetCurrentSnapshot().GetDefinition(request.expression);
-    if (var) {
-      response.type = "string";
-      response.result = var->c_str();
+    if (request.frameId.has_value()) {
+      std::shared_ptr<cmDebuggerStackFrame> frame =
+        DefaultThread->GetStackFrame(request.frameId.value());
+
+      auto var = frame->GetMakefile()->GetDefinition(request.expression);
+      if (var) {
+        response.type = "string";
+        response.result = var->c_str();
+        return response;
+      }
     }
+
     return response;
   });
 
   // The ConfigurationDone request is made by the client once all configuration
   // requests have been made.
   // https://microsoft.github.io/debug-adapter-protocol/specification#Requests_ConfigurationDone
-  Session->registerHandler(
-    [this](const dap::ConfigurationDoneRequest& req) {
-      ConfigurationDoneEvent.Fire();
-      return dap::ConfigurationDoneResponse();
-    });
+  Session->registerHandler([this](const dap::ConfigurationDoneRequest& req) {
+    ConfigurationDoneEvent->Fire();
+    return dap::ConfigurationDoneResponse();
+  });
 
   // Connect to the client.
   if (SessionLog) {
@@ -274,7 +265,7 @@ cmDebuggerAdapter::cmDebuggerAdapter(
     }
   });
 
-  ConfigurationDoneEvent.Wait();
+  ConfigurationDoneEvent->Wait();
 
   DefaultThread = ThreadManager->StartThread("CMake script");
   dap::ThreadEvent threadEvent;
@@ -315,7 +306,7 @@ void cmDebuggerAdapter::ReportExitCode(int exitCode)
   }
 
   // Wait until disconnected or error.
-  DisconnectEvent.Wait();
+  DisconnectEvent->Wait();
 }
 
 void cmDebuggerAdapter::SourceFileLoaded(std::string const& sourcePath,
@@ -324,20 +315,17 @@ void cmDebuggerAdapter::SourceFileLoaded(std::string const& sourcePath,
   BreakpointManager->SourceFileLoaded(sourcePath, listFile);
 }
 
-void cmDebuggerAdapter::BeginFunction(std::string const& sourcePath,
-                                      std::string const& functionName,
-                                      int64_t line)
+void cmDebuggerAdapter::BeginFunction(cmMakefile* mf, std::string const& sourcePath, cmListFileFunction const& lff)
 {
   std::unique_lock<std::mutex> lock(Mutex);
-  cmDebuggerStackFrame frame(sourcePath, functionName, line);
-  DefaultThread->PushStackFrame(frame);
+  DefaultThread->PushStackFrame(mf, sourcePath, lff);
 
-  if (line == 0) {
+  if (lff.Line() == 0) {
     // File just loaded, continue to first valid function call.
     return;
   }
 
-  auto hits = BreakpointManager->GetBreakpoints(sourcePath, line);
+  auto hits = BreakpointManager->GetBreakpoints(sourcePath, lff.Line());
   lock.unlock();
 
   bool waitSem = false;
@@ -374,7 +362,7 @@ void cmDebuggerAdapter::BeginFunction(std::string const& sourcePath,
 
   if (waitSem) {
     Session->send(stoppedEvent);
-    ContinueSem.Wait();
+    ContinueSem->Wait();
   }
 }
 
@@ -390,7 +378,7 @@ void cmDebuggerAdapter::CheckException(MessageType t, std::string const& text)
   if (stoppedEvent.has_value()) {
     stoppedEvent->threadId = DefaultThread->GetId();
     Session->send(*stoppedEvent);
-    ContinueSem.Wait();
+    ContinueSem->Wait();
   }
 }
 

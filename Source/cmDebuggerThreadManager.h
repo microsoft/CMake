@@ -4,15 +4,16 @@
 
 #include "cmConfigure.h" // IWYU pragma: keep
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <string>
 
 #include <cm/optional>
-
-#include "cmDebuggerThread.h"
+#include <cm3p/cppdap/protocol.h>
 
 namespace cmDebugger {
+class cmDebuggerThread;
 
 class cmDebuggerThreadManager
 {
@@ -21,8 +22,8 @@ class cmDebuggerThreadManager
 
 public:
   cmDebuggerThreadManager();
-  std::shared_ptr<cmDebuggerThread> StartThread(const std::string& name);
-  void EndThread(std::shared_ptr<cmDebuggerThread> thread);
+  std::shared_ptr<cmDebuggerThread> StartThread(std::string const& name);
+  void EndThread(std::shared_ptr<cmDebuggerThread> const& thread);
   cm::optional<dap::StackTraceResponse> GetThreadStackTraceResponse(
     int64_t id);
 };
