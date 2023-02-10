@@ -39,6 +39,7 @@
 #include "cmCommandLineArgument.h"
 #include "cmCommands.h"
 #include "cmDebuggerAdapter.h"
+#include "cmDebuggerAdapterFactory.h"
 #include "cmDocumentation.h"
 #include "cmDocumentationEntry.h"
 #include "cmDocumentationFormatter.h"
@@ -136,11 +137,6 @@
 #  endif
 #  include <sys/resource.h>
 #  include <sys/time.h>
-#endif
-
-#if defined(_WIN32)
-#  include <fcntl.h> // _O_BINARY
-#  include <io.h>    // _setmode
 #endif
 
 namespace {
@@ -1113,13 +1109,19 @@ void cmake::SetArgs(const std::vector<std::string>& args)
         return true;
       } },
 #if defined(_WIN32)
-    CommandArgument{
-      "--debugger", CommandArgument::Values::Zero,
-      [](std::string const&, cmake* state) -> bool {
-        std::cout << "Running with debugger on.\n";
-        state->SetDebuggerOn(true);
-        return true;
-      } },
+    CommandArgument{ "--debugger", CommandArgument::Values::Zero,
+                     [](std::string const&, cmake* state) -> bool {
+                       std::cout << "Running with debugger on.\n";
+                       state->SetDebuggerOn(true);
+                       return true;
+                     } },
+    CommandArgument{ "--debugger-pipe",
+                     "No path specified for --debugger-pipe",
+                     CommandArgument::Values::One,
+                     [](std::string const& value, cmake* state) -> bool {
+                       state->DebuggerPipe = value;
+                       return true;
+                     } },
     CommandArgument{
       "--debugger-dap-log", "No file specified for --debugger-dap-log",
       CommandArgument::Values::One,
@@ -2475,25 +2477,23 @@ void cmake::PreLoadCMakeFiles()
   }
 }
 
-void cmake::StartDebuggerIfEnabled()
+bool cmake::StartDebuggerIfEnabled()
 {
-  if (!this->GetDebuggerOn())
-  {
-    return;
+  if (!this->GetDebuggerOn()) {
+    return true;
   }
 
   if (DebugAdapter == nullptr) {
-#if defined(_WIN32)
-    // Change from text mode to binary mode for all Windows OS.
-    // This ensures sequences of \r\n are not changed to \n.
-    _setmode(_fileno(stdin), _O_BINARY);
-    _setmode(_fileno(stdout), _O_BINARY);
-#endif
-    DebugAdapter = std::make_shared<cmDebugger::cmDebuggerAdapter>(
-      dap::file(stdin, false), dap::file(stdout, false),
-      this->GetDebuggerDapLogFile());
+    DebugAdapter = cmDebugger::cmDebuggerAdapterFactory::CreateAdapter(
+      this->GetDebuggerPipe(), this->GetDebuggerDapLogFile());
+    if (DebugAdapter == nullptr) {
+      std::cerr << "Error: Failed to create debugger adapter!" << std::endl;
+      return false;
+    }
     Messenger->SetDebuggerAdapter(DebugAdapter);
   }
+
+  return true;
 }
 
 void cmake::StopDebuggerIfNeeded(int exitCode)
@@ -2595,7 +2595,9 @@ int cmake::Run(const std::vector<std::string>& args, bool noconfigure)
     return 0;
   }
 
-  this->StartDebuggerIfEnabled();
+  if (!this->StartDebuggerIfEnabled()) {
+      return -1;
+  }
 
   int ret = this->Configure();
   if (ret) {

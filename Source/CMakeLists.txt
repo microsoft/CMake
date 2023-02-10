@@ -185,6 +185,8 @@ add_library(
   cmDebuggerBreakpointManager.h
   cmDebuggerExceptionManager.cxx
   cmDebuggerExceptionManager.h
+  cmDebuggerAdapterFactory.cxx
+  cmDebuggerAdapterFactory.h
   cmDebuggerProtocol.cxx
   cmDebuggerProtocol.h
   cmDebuggerSourceBreakpoint.cxx
@@ -759,6 +761,16 @@ add_library(
 
   bindexplib.cxx
   )
+
+if(WIN32)
+  # Use the Windows implementation.
+  target_sources(
+    CMakeLib
+    PRIVATE
+      cmDebuggerNamedPipeWin32.cxx
+    )
+endif()
+
 target_include_directories(
   CMakeLib
   PUBLIC
