@@ -787,9 +787,10 @@ public:
   void SetDebuggerOn(bool b) { this->DebuggerOn = b; }
   void StartDebuggerIfEnabled();
   void StopDebuggerIfNeeded(int exitCode);
-  std::shared_ptr<cmDebugger::cmDebuggerAdapter> GetDebugAdapter() const noexcept
+  std::shared_ptr<cmDebugger::cmDebuggerAdapter> GetDebugAdapter()
+    const noexcept
   {
-      return this->DebugAdapter;
+    return this->DebugAdapter;
   }
 
 private:

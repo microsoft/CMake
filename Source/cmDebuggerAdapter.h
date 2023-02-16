@@ -4,6 +4,7 @@
 
 #include "cmConfigure.h" // IWYU pragma: keep
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -39,7 +40,7 @@ public:
   void ReportExitCode(int exitCode);
 
   void SourceFileLoaded(std::string const& sourcePath,
-                        cmListFile const& listFile);
+                        std::vector<cmListFileFunction> const& functions);
   void BeginFunction(cmMakefile* mf, std::string const& sourcePath,
                      cmListFileFunction const& lff);
   void EndFunction();

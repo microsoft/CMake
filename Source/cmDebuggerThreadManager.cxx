@@ -1,8 +1,9 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
 
-#include "cmDebuggerThread.h"
 #include "cmDebuggerThreadManager.h"
+
+#include "cmDebuggerThread.h"
 
 namespace cmDebugger {
 
@@ -15,8 +16,9 @@ cmDebuggerThreadManager::cmDebuggerThreadManager()
 std::shared_ptr<cmDebuggerThread> cmDebuggerThreadManager::StartThread(
   std::string const& name)
 {
-  std::shared_ptr<cmDebuggerThread> thread = std::make_shared<cmDebuggerThread>(
-    cmDebuggerThreadManager::NextThreadId.fetch_add(1), name);
+  std::shared_ptr<cmDebuggerThread> thread =
+    std::make_shared<cmDebuggerThread>(
+      cmDebuggerThreadManager::NextThreadId.fetch_add(1), name);
   Threads.emplace_back(thread);
   return thread;
 }

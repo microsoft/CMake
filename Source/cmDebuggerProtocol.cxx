@@ -4,8 +4,7 @@
 #include "cmDebuggerProtocol.h"
 
 namespace dap {
-DAP_IMPLEMENT_STRUCT_TYPEINFO(
-                              CMakeVersion, "", DAP_FIELD(major, "major"),
+DAP_IMPLEMENT_STRUCT_TYPEINFO(CMakeVersion, "", DAP_FIELD(major, "major"),
                               DAP_FIELD(minor, "minor"),
                               DAP_FIELD(patch, "patch"),
                               DAP_FIELD(full, "full"));

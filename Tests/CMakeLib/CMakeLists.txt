@@ -32,6 +32,8 @@ set(CMakeLib_TESTS
   testCMExtEnumSet.cxx
   testCMDebuggerAdapter.cxx
   testCMDebuggerVariables.cxx
+  testCMDebuggerVariablesHelper.cxx
+  testCMDebuggerVariablesManager.cxx
   )
 if (CMake_TEST_FILESYSTEM_PATH OR NOT CMake_HAVE_CXX_FILESYSTEM)
   list(APPEND CMakeLib_TESTS testCMFilesystemPath.cxx)

@@ -642,7 +642,7 @@ bool cmMakefile::ReadDependentFile(const std::string& filename,
 
   if (this->GetCMakeInstance()->GetDebugAdapter() != nullptr) {
     this->GetCMakeInstance()->GetDebugAdapter()->SourceFileLoaded(
-      filenametoread, listFile);
+      filenametoread, listFile.Functions);
   }
 
   this->RunListFile(listFile, filenametoread);
@@ -748,7 +748,7 @@ bool cmMakefile::ReadListFile(const std::string& filename)
 
   if (this->GetCMakeInstance()->GetDebugAdapter() != nullptr) {
     this->GetCMakeInstance()->GetDebugAdapter()->SourceFileLoaded(
-      filenametoread, listFile);
+      filenametoread, listFile.Functions);
   }
 
   this->RunListFile(listFile, filenametoread);
@@ -774,7 +774,7 @@ bool cmMakefile::ReadListFileAsString(const std::string& content,
 
   if (this->GetCMakeInstance()->GetDebugAdapter() != nullptr) {
     this->GetCMakeInstance()->GetDebugAdapter()->SourceFileLoaded(
-      filenametoread, listFile);
+      filenametoread, listFile.Functions);
   }
 
   this->RunListFile(listFile, filenametoread);
@@ -1652,8 +1652,8 @@ void cmMakefile::Configure()
   }
 
   if (this->GetCMakeInstance()->GetDebugAdapter() != nullptr) {
-    this->GetCMakeInstance()->GetDebugAdapter()->SourceFileLoaded(currentStart,
-                                                                  listFile);
+    this->GetCMakeInstance()->GetDebugAdapter()->SourceFileLoaded(
+      currentStart, listFile.Functions);
   }
 
   if (this->IsRootMakefile()) {

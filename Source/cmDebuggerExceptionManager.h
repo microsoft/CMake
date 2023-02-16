@@ -4,11 +4,12 @@
 
 #include "cmConfigure.h" // IWYU pragma: keep
 
+#include <mutex>
 #include <string>
 #include <unordered_map>
-#include <mutex>
 
 #include <cm/optional>
+
 #include <cm3p/cppdap/io.h>
 #include <cm3p/cppdap/protocol.h>
 #include <cm3p/cppdap/session.h>
@@ -24,14 +25,19 @@ struct cmDebuggerException
   std::string Description;
 };
 
+struct cmDebuggerExceptionFilter
+{
+  std::string Filter;
+  std::string Label;
+};
+
 /** The exception manager. */
 class cmDebuggerExceptionManager
 {
   dap::Session* DapSession;
   std::mutex Mutex;
   std::unordered_map<std::string, bool> RaiseExceptions;
-  std::unordered_map<MessageType,
-    std::tuple<std::string, std::string>> ExceptionMap;
+  std::unordered_map<MessageType, cmDebuggerExceptionFilter> ExceptionMap;
   int64_t NextExceptionId;
   std::optional<cmDebuggerException> TheException;
 

@@ -18,6 +18,7 @@ class cmMakefile;
 namespace cmDebugger {
 class cmDebuggerStackFrame;
 class cmDebuggerVariables;
+class cmDebuggerVariablesManager;
 
 class cmDebuggerThread
 {
@@ -27,8 +28,10 @@ class cmDebuggerThread
   std::unordered_map<int64_t, std::shared_ptr<cmDebuggerStackFrame>> FrameMap;
   std::mutex Mutex;
   std::unordered_map<int64_t, std::vector<dap::Scope>> FrameScopes;
-  std::unordered_map<int64_t, std::vector<int64_t>> FrameVariables;
-  std::unordered_map<int64_t, std::shared_ptr<cmDebuggerVariables>> Variables;
+  std::unordered_map<int64_t,
+                     std::vector<std::shared_ptr<cmDebuggerVariables>>>
+    FrameVariables;
+  std::shared_ptr<cmDebuggerVariablesManager> VariablesManager;
 
 public:
   cmDebuggerThread(int64_t id, std::string const& name);
@@ -42,7 +45,7 @@ public:
   size_t GetStackFrameSize() const { return this->Frames.size(); }
   dap::ScopesResponse GetScopesResponse(int64_t frameId,
                                         bool supportsVariableType);
-  dap::VariablesResponse cmDebuggerThread::GetVariablesResponse(
+  dap::VariablesResponse GetVariablesResponse(
     dap::VariablesRequest const& request);
   friend dap::StackTraceResponse GetStackTraceResponse(
     std::shared_ptr<cmDebuggerThread> const& thread);

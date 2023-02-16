@@ -1,11 +1,16 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
 
+#include "cmDebuggerVariables.h"
+
 #include <algorithm>
+#include <iomanip>
+#include <iostream>
 #include <optional>
+#include <vector>
 
 #include "cmDebuggerStackFrame.h"
-#include "cmDebuggerVariables.h"
+#include "cmDebuggerVariablesManager.h"
 
 namespace cmDebugger {
 
@@ -14,95 +19,110 @@ static const dap::VariablePresentationHint PublicPropertyHint = { {},
                                                                   "property",
                                                                   {},
                                                                   "public" };
-
-dap::Variable CreateVariable(
-  std::string const& name, std::string const& value, std::string const& type,
-  bool supportsVariableType, std::optional<std::string> evaluateName = {},
-  std::optional<dap::integer> variablesReference = {},
-  std::optional<dap::VariablePresentationHint> presentationHint = {})
-{
-  dap::Variable variable;
-  variable.name = name;
-  variable.value = value;
-  if (supportsVariableType) {
-    variable.type = type;
-  }
-  if (evaluateName.has_value()) {
-    variable.evaluateName = evaluateName.value();
-  }
-  if (variablesReference.has_value()) {
-    variable.variablesReference = variablesReference.value();
-  }
-  if (presentationHint.has_value()) {
-    variable.presentationHint = presentationHint.value();
-  }
-  return variable;
-}
 }
 
 std::atomic<int64_t> cmDebuggerVariables::NextId = 1;
 
-cmDebuggerVariables::cmDebuggerVariables(bool supportsVariableType)
+cmDebuggerVariables::cmDebuggerVariables(
+  std::shared_ptr<cmDebuggerVariablesManager> const& variablesManager,
+  std::string name, bool supportsVariableType)
   : Id(NextId.fetch_add(1))
+  , Name(name)
   , SupportsVariableType(supportsVariableType)
+  , VariablesManager(variablesManager)
 {
+  VariablesManager->RegisterHandler(
+    Id, [this](dap::VariablesRequest const& request) {
+      return this->HandleVariablesRequest(request);
+    });
 }
 
-
-
-cmDebuggerVariablesLocal::cmDebuggerVariablesLocal(
-  bool supportsVariableType,
-  std::function<int64_t()> const& getLine,
-  int64_t cacheVariableReference)
-  : cmDebuggerVariables(supportsVariableType)
-  , GetLine(getLine)
-  , CacheVariableReference(cacheVariableReference)
+cmDebuggerVariables::cmDebuggerVariables(
+  std::shared_ptr<cmDebuggerVariablesManager> const& variablesManager,
+  std::string name, bool supportsVariableType,
+  std::function<std::vector<cmDebuggerVariableEntry>()> getKeyValuesFunction)
+  : Id(NextId.fetch_add(1))
+  , Name(name)
+  , SupportsVariableType(supportsVariableType)
+  , VariablesManager(variablesManager)
+  , GetKeyValuesFunction(getKeyValuesFunction)
 {
+  VariablesManager->RegisterHandler(
+    Id, [this](dap::VariablesRequest const& request) {
+      return this->HandleVariablesRequest(request);
+    });
 }
 
-dap::array<dap::Variable> cmDebuggerVariablesLocal::GetVariables(
+void cmDebuggerVariables::AddSubVariables(
+  std::shared_ptr<cmDebuggerVariables> const& variables)
+{
+  if (variables != nullptr) {
+    SubVariables.emplace_back(variables);
+  }
+}
+
+dap::array<dap::Variable> cmDebuggerVariables::HandleVariablesRequest(
   dap::VariablesRequest const& request)
 {
   dap::array<dap::Variable> variables;
-  variables.push_back(CreateVariable(
-    "CurrentLine",
-    std::to_string(GetLine()), "int",
-    SupportsVariableType));
 
-  variables.push_back(CreateVariable(
-    "CMAKE CACHE VARIABLES", "", "collection", SupportsVariableType, {},
-    std::make_optional(CacheVariableReference), PublicPropertyHint));
-
-  return variables;
-}
-
-cmDebuggerVariablesCache::cmDebuggerVariablesCache(
-  bool supportsVariableType,
-  std::function<std::vector<std::string>()> getKeys,
-  std::function<cmValue(std::string const&)> getDefinition)
-  : cmDebuggerVariables(supportsVariableType)
-  , GetKeys(getKeys)
-  , GetDefinition(getDefinition)
-{
-}
-
-dap::array<dap::Variable> cmDebuggerVariablesCache::GetVariables(
-  dap::VariablesRequest const& request)
-{
-  std::vector<std::string> keys = GetKeys();
-  std::sort(keys.begin(), keys.end());
-
-  dap::array<dap::Variable> variables;
-  for (auto& varStr : keys) {
-    auto val = GetDefinition(varStr);
-    if (val) {
-      variables.push_back(CreateVariable(varStr, *val, "string",
-                                         SupportsVariableType,
-                                         std::make_optional(varStr)));
+  if (GetKeyValuesFunction != nullptr) {
+    auto values = GetKeyValuesFunction();
+    for (auto const& entry : values) {
+      if (IgnoreEmptyStringEntries && entry.Type == "string" &&
+          entry.Value.empty()) {
+        continue;
+      }
+      variables.push_back(dap::Variable{ {},
+                                         {},
+                                         {},
+                                         entry.Name,
+                                         {},
+                                         PublicPropertyHint,
+                                         entry.Type,
+                                         entry.Value,
+                                         0 });
     }
   }
 
+  EnumerateSubVariablesIfAny(variables);
+
+  if (EnableSorting) {
+    std::sort(variables.begin(), variables.end(),
+              [](dap::Variable const& a, dap::Variable const& b) {
+                return a.name < b.name;
+              });
+  }
   return variables;
+}
+
+void cmDebuggerVariables::EnumerateSubVariablesIfAny(
+  dap::array<dap::Variable>& toBeReturned) const
+{
+  dap::array<dap::Variable> ret;
+  for (auto const& variables : SubVariables) {
+    toBeReturned.emplace_back(
+      dap::Variable{ {},
+                     {},
+                     {},
+                     variables->GetName(),
+                     {},
+                     PublicPropertyHint,
+                     SupportsVariableType ? "collection" : nullptr,
+                     variables->GetValue(),
+                     variables->GetId() });
+  }
+}
+
+void cmDebuggerVariables::ClearSubVariables()
+{
+  SubVariables.clear();
+}
+
+cmDebuggerVariables::~cmDebuggerVariables()
+{
+  ClearSubVariables();
+  VariablesManager->UnregisterHandler(Id);
 }
 
 } // namespace cmDebugger

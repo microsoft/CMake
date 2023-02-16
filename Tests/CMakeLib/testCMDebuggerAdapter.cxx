@@ -3,30 +3,19 @@
 
 #include <future>
 #include <iostream>
-#include <stddef.h>
 #include <string>
 #include <thread>
+
+#include <stddef.h>
 
 #include "cmDebuggerAdapter.h"
 #include "cmDebuggerProtocol.h"
 #include "cmStateSnapshot.h"
 #include "cmVersionConfig.h"
 
-#define cmPassed(m) std::cout << "Passed: " << (m) << "\n"
-#define cmFailed(m)                                                           \
-  std::cout << "FAILED: " << (m) << "\n";                                     \
-  failed = 1
+#include "testCommon.h"
 
-#define cmAssert(exp, m)                                                      \
-  do {                                                                        \
-    if ((exp)) {                                                              \
-      cmPassed(m);                                                            \
-    } else {                                                                  \
-      cmFailed(m);                                                            \
-    }                                                                         \
-  } while (false)
-
-int testCMDebuggerAdapter(int, char*[])
+bool testBasicProtocol()
 {
   std::promise<bool> debuggerAdapterInitializedPromise;
   std::future<bool> debuggerAdapterInitializedFuture =
@@ -45,13 +34,11 @@ int testCMDebuggerAdapter(int, char*[])
     initializedEventReceived.store(true);
   });
   client->registerHandler(
-    [&](const dap::ExitedEvent& e) { exitedEventReceived.store(true);
-  });
+    [&](const dap::ExitedEvent& e) { exitedEventReceived.store(true); });
   client->registerHandler([&](const dap::TerminatedEvent& e) {
     terminatedEventReceived.store(true);
   });
-  client->registerHandler(
-    [&](const dap::ThreadEvent& e) {
+  client->registerHandler([&](const dap::ThreadEvent& e) {
     if (e.reason == "started") {
       threadStarted.store(true);
     } else if (e.reason == "exited") {
@@ -63,8 +50,8 @@ int testCMDebuggerAdapter(int, char*[])
 
   std::thread debuggerThread([&]() {
     std::shared_ptr<cmDebugger::cmDebuggerAdapter> debuggerAdapter =
-      std::make_shared<cmDebugger::cmDebuggerAdapter>(
-        client2Debugger, debugger2Client, "");
+      std::make_shared<cmDebugger::cmDebuggerAdapter>(client2Debugger,
+                                                      debugger2Client, "");
 
     debuggerAdapterInitializedPromise.set_value(true);
 
@@ -74,49 +61,46 @@ int testCMDebuggerAdapter(int, char*[])
 
   dap::CMakeInitializeRequest initializeRequest;
   auto initializeResponse = client->send(initializeRequest).get();
-  cmAssert(initializeResponse.response.cmakeVersion.full == CMake_VERSION,
-           "CMakeInitializeRequest response contains correct CMake version");
-  cmAssert(
-    initializeResponse.response.cmakeVersion.major == CMake_VERSION_MAJOR,
-    "CMakeInitializeRequest response contains correct CMake major version");
-  cmAssert(
-    initializeResponse.response.cmakeVersion.minor == CMake_VERSION_MINOR,
-    "CMakeInitializeRequest response contains correct CMake minor version");
-  cmAssert(
-    initializeResponse.response.cmakeVersion.patch == CMake_VERSION_PATCH,
-    "CMakeInitializeRequest response contains correct CMake patch version");
-  cmAssert(
-    initializeResponse.response.supportsExceptionInfoRequest,
-    "CMakeInitializeRequest response contains supportsExceptionInfoRequest");
-  cmAssert(
-    initializeResponse.response.exceptionBreakpointFilters.has_value(),
-    "CMakeInitializeRequest response contains exceptionBreakpointFilters");
+  ASSERT_TRUE(initializeResponse.response.cmakeVersion.full == CMake_VERSION);
+  ASSERT_TRUE(initializeResponse.response.cmakeVersion.major ==
+              CMake_VERSION_MAJOR);
+  ASSERT_TRUE(initializeResponse.response.cmakeVersion.minor ==
+              CMake_VERSION_MINOR);
+  ASSERT_TRUE(initializeResponse.response.cmakeVersion.patch ==
+              CMake_VERSION_PATCH);
+  ASSERT_TRUE(initializeResponse.response.supportsExceptionInfoRequest);
+  ASSERT_TRUE(
+    initializeResponse.response.exceptionBreakpointFilters.has_value());
 
   dap::LaunchRequest launchRequest;
   auto launchResponse = client->send(launchRequest).get();
-  cmAssert(!launchResponse.error,
-           "LaunchRequest responded correctly");
+  ASSERT_TRUE(!launchResponse.error);
 
   dap::ConfigurationDoneRequest configurationDoneRequest;
-  auto configurationDoneResponse = client->send(configurationDoneRequest).get();
-  cmAssert(!configurationDoneResponse.error,
-           "ConfigurationDoneRequest responded correctly");
+  auto configurationDoneResponse =
+    client->send(configurationDoneRequest).get();
+  ASSERT_TRUE(!configurationDoneResponse.error);
 
   debuggerAdapterInitializedFuture.get();
 
-  cmAssert(initializedEventReceived.load(),
-           "Received initialized event");
+  ASSERT_TRUE(initializedEventReceived.load());
 
   dap::DisconnectRequest disconnectRequest;
   auto disconnectResponse = client->send(disconnectRequest).get();
-  cmAssert(!disconnectResponse.error,
-           "DisconnectRequest responded correctly");
+  ASSERT_TRUE(!disconnectResponse.error);
 
-  cmAssert(threadStarted.load(), "Received thread started event");
-  cmAssert(threadExited.load(), "Received thread exited event");
-  cmAssert(exitedEventReceived.load(), "Received exited event");
-  cmAssert(terminatedEventReceived.load(), "Received terminated event");
+  ASSERT_TRUE(threadStarted.load());
+  ASSERT_TRUE(threadExited.load());
+  ASSERT_TRUE(exitedEventReceived.load());
+  ASSERT_TRUE(terminatedEventReceived.load());
 
   debuggerThread.join();
-  return failed;
+  return true;
+}
+
+int testCMDebuggerAdapter(int, char*[])
+{
+  return runTests(std::vector<std::function<bool()>>{
+    testBasicProtocol,
+  });
 }

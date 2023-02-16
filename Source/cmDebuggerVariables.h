@@ -6,54 +6,112 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
+#include <set>
+#include <vector>
 
 #include <cm3p/cppdap/protocol.h>
 
-#include "cmValue.h"
-
 namespace cmDebugger {
+class cmDebuggerStackFrame;
+class cmDebuggerVariablesManager;
+
+struct cmDebuggerVariableEntry
+{
+  cmDebuggerVariableEntry()
+    : cmDebuggerVariableEntry("", "", "")
+  {
+  }
+  cmDebuggerVariableEntry(std::string name, std::string value,
+                          std::string type)
+    : Name(name)
+    , Value(value)
+    , Type(type)
+  {
+  }
+  cmDebuggerVariableEntry(std::string name, std::string value)
+    : Name(name)
+    , Value(value)
+    , Type("string")
+  {
+  }
+  cmDebuggerVariableEntry(std::string name, const char* value)
+    : Name(name)
+    , Value(value == nullptr ? "" : value)
+    , Type("string")
+  {
+  }
+  cmDebuggerVariableEntry(std::string name, bool value)
+    : Name(name)
+    , Value(value ? "TRUE" : "FALSE")
+    , Type("bool")
+  {
+  }
+  cmDebuggerVariableEntry(std::string name, int64_t value)
+    : Name(name)
+    , Value(std::to_string(value))
+    , Type("int")
+  {
+  }
+  cmDebuggerVariableEntry(std::string name, int value)
+    : Name(name)
+    , Value(std::to_string(value))
+    , Type("int")
+  {
+  }
+  std::string const Name;
+  std::string const Value;
+  std::string const Type;
+};
 
 class cmDebuggerVariables
 {
   static std::atomic<int64_t> NextId;
   int64_t Id;
+  std::string Name;
+  std::string Value;
+
+  std::function<std::vector<cmDebuggerVariableEntry>()> GetKeyValuesFunction;
+  std::vector<std::shared_ptr<cmDebuggerVariables>> SubVariables;
+  bool IgnoreEmptyStringEntries = false;
+  bool EnableSorting = true;
+
+  virtual dap::array<dap::Variable> HandleVariablesRequest(
+    dap::VariablesRequest const& request);
+  friend class cmDebuggerVariablesManager;
 
 protected:
-  bool SupportsVariableType;
+  const bool SupportsVariableType;
+  std::shared_ptr<cmDebuggerVariablesManager> VariablesManager;
+  void EnumerateSubVariablesIfAny(
+    dap::array<dap::Variable>& toBeReturned) const;
+  void ClearSubVariables();
 
 public:
-  cmDebuggerVariables(bool supportsVariableType);
-  int64_t GetId() const noexcept { return this->Id; }
-  virtual dap::array<dap::Variable> GetVariables(
-    dap::VariablesRequest const& request) = 0;
-  virtual ~cmDebuggerVariables() = default;
-};
-
-class cmDebuggerVariablesLocal : public cmDebuggerVariables
-{
-  int64_t CacheVariableReference;
-  std::function<int64_t()> GetLine;
-
-public:
-  cmDebuggerVariablesLocal(bool supportsVariableType,
-                           std::function<int64_t()> const& getLine,
-                           int64_t cacheVariableReference);
-  dap::array<dap::Variable> GetVariables(
-    dap::VariablesRequest const& request);
-};
-
-class cmDebuggerVariablesCache : public cmDebuggerVariables
-{
-  std::function<std::vector<std::string>()> GetKeys;
-  std::function<cmValue(std::string const&)> GetDefinition;
-
-public:
-  cmDebuggerVariablesCache(
-    bool supportsVariableType,
-    std::function<std::vector<std::string>()> getKeys,
-    std::function<cmValue(std::string const&)> getDefinition);
-  dap::array<dap::Variable> GetVariables(
-    dap::VariablesRequest const& request);
+  cmDebuggerVariables(
+    std::shared_ptr<cmDebuggerVariablesManager> const& variablesManager,
+    std::string name, bool supportsVariableType);
+  cmDebuggerVariables(
+    std::shared_ptr<cmDebuggerVariablesManager> const& variablesManager,
+    std::string name, bool supportsVariableType,
+    std::function<std::vector<cmDebuggerVariableEntry>()> getKeyValuesFunc);
+  inline int64_t GetId() const noexcept { return this->Id; }
+  inline std::string GetName() const noexcept { return this->Name; }
+  inline std::string GetValue() const noexcept { return this->Value; }
+  inline void SetValue(std::string const& value) noexcept
+  {
+    this->Value = value;
+  }
+  void AddSubVariables(std::shared_ptr<cmDebuggerVariables> const& variables);
+  inline void SetIgnoreEmptyStringEntries(bool value) noexcept
+  {
+    this->IgnoreEmptyStringEntries = value;
+  }
+  inline void SetEnableSorting(bool value) noexcept
+  {
+    this->EnableSorting = value;
+  }
+  virtual ~cmDebuggerVariables();
 };
 
 } // namespace cmDebugger

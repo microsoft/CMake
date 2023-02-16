@@ -197,6 +197,10 @@ add_library(
   cmDebuggerThreadManager.h
   cmDebuggerVariables.cxx
   cmDebuggerVariables.h
+  cmDebuggerVariablesHelper.cxx
+  cmDebuggerVariablesHelper.h
+  cmDebuggerVariablesManager.cxx
+  cmDebuggerVariablesManager.h
   cmDefinitions.cxx
   cmDefinitions.h
   cmDependencyProvider.h
