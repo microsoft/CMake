@@ -2,106 +2,243 @@
    file Copyright.txt or https://cmake.org/licensing for details.  */
 
 #include <iostream>
+#include <string>
 #include <unordered_set>
 
+#include "cmDebuggerStackFrame.h"
 #include "cmDebuggerVariables.h"
+#include "cmDebuggerVariablesManager.h"
 
-#define cmPassed(m) std::cout << "Passed: " << (m) << "\n"
-#define cmFailed(m)                                                           \
-  std::cout << "FAILED: " << (m) << "\n";                                     \
-  failed = 1
+#include "testCommon.h"
 
-#define cmAssert(exp, m)                                                      \
-  do {                                                                        \
-    if ((exp)) {                                                              \
-      cmPassed(m);                                                            \
-    } else {                                                                  \
-      cmFailed(m);                                                            \
-    }                                                                         \
-  } while (false)
-
-int testCMDebuggerVariables(int, char*[])
+static dap::VariablesRequest CreateVariablesRequest(int64_t reference)
 {
-  int failed = 0;
+  dap::VariablesRequest variableRequest;
+  variableRequest.variablesReference = reference;
+  return variableRequest;
+}
+
+static bool testUniqueIds()
+{
+  auto variablesManager =
+    std::make_shared<cmDebugger::cmDebuggerVariablesManager>();
+
   std::unordered_set<int64_t> variableIds;
   bool noDuplicateIds = true;
-  for (int i = 0; i < 100 && noDuplicateIds; ++i) {
-    auto variable = cmDebugger::cmDebuggerVariablesLocal(
-      true, [=]() { return i; }, i);
+  for (int i = 0; i < 10000 && noDuplicateIds; ++i) {
+    auto variable =
+      cmDebugger::cmDebuggerVariables(variablesManager, "Locals", true, []() {
+        return std::vector<cmDebugger::cmDebuggerVariableEntry>();
+      });
+
     if (variableIds.find(variable.GetId()) != variableIds.end()) {
       noDuplicateIds = false;
     }
     variableIds.insert(variable.GetId());
   }
 
-  cmAssert(noDuplicateIds,
-           "cmDebuggerVariables generates unique IDs.");
-  dap::VariablesRequest variableRequest;
-  {
-    int64_t expectedLine = 5;
-    int64_t expectedCacheVariableReference = 999;
-    auto local = cmDebugger::cmDebuggerVariablesLocal(
-      true, [=]() { return expectedLine; }, expectedCacheVariableReference);
+  ASSERT_TRUE(noDuplicateIds);
 
-    dap::array<dap::Variable> variables = local.GetVariables(variableRequest);
-    cmAssert(variables.size() == 2,
-             "cmDebuggerVariablesLocal returns expected variable array size.");
-    cmAssert(variables[0].name == "CurrentLine",
-             "cmDebuggerVariablesLocal returns expected variable[0].name.");
-    cmAssert(variables[0].value == std::to_string(expectedLine),
-             "cmDebuggerVariablesLocal returns expected variable[0].value.");
-    cmAssert(variables[0].type.value() == "int",
-             "cmDebuggerVariablesLocal returns expected variable[0].type.");
-    cmAssert(
-      variables[0].evaluateName.has_value() == false,
-      "cmDebuggerVariablesLocal returns expected variable[0].evaluateName.");
+  return true;
+}
 
-    cmAssert(variables[1].name == "CMAKE CACHE VARIABLES",
-             "cmDebuggerVariablesLocal returns expected variable[1].name.");
-    cmAssert(variables[1].value == "",
-             "cmDebuggerVariablesLocal returns expected variable[1].value.");
-    cmAssert(variables[1].type.value() == "collection",
-             "cmDebuggerVariablesLocal returns expected variable[1].type.");
-    cmAssert(
-      variables[1].evaluateName.has_value() == false,
-      "cmDebuggerVariablesLocal returns expected variable[1].evaluateName.");
-  }
+static bool testConstructors()
+{
+  auto variablesManager =
+    std::make_shared<cmDebugger::cmDebuggerVariablesManager>();
 
-  {
-    std::vector<std::string> expectedKeys = { "foo", "bar" };
-    std::unordered_map<std::string, cmValue> expectedCache = {
-      { "foo", cmValue("1234") },
-      { "bar", cmValue("9876") },
-    };
-    auto cache = cmDebugger::cmDebuggerVariablesCache(
-      true, [=]() { return expectedKeys; },
-      [=](std::string const& key) { return expectedCache.at(key); });
+  auto parent = std::make_shared<cmDebugger::cmDebuggerVariables>(
+    variablesManager, "Parent", true, [=]() {
+      return std::vector<cmDebugger::cmDebuggerVariableEntry>{
+        { "ParentKey", "ParentValue", "ParentType" }
+      };
+    });
 
-    dap::array<dap::Variable> sortedVariables = cache.GetVariables(variableRequest);
-    cmAssert(sortedVariables.size() == 2,
-             "cmDebuggerVariablesCache returns expected variable array size.");
-    cmAssert(sortedVariables[0].name == expectedKeys[1],
-             "cmDebuggerVariablesCache returns expected variables[0].name.");
-    cmAssert(sortedVariables[0].value ==
-               *expectedCache.at(expectedKeys[1]).Get(),
-             "cmDebuggerVariablesCache returns expected variables[0].value.");
-    cmAssert(sortedVariables[0].type.value() == "string",
-             "cmDebuggerVariablesCache returns expected variables[0].type.");
-    cmAssert(
-      sortedVariables[0].evaluateName.value() == expectedKeys[1],
-      "cmDebuggerVariablesCache returns expected variables[0].evaluateName.");
+  auto children1 = std::make_shared<cmDebugger::cmDebuggerVariables>(
+    variablesManager, "Children1", true, [=]() {
+      return std::vector<cmDebugger::cmDebuggerVariableEntry>{
+        { "ChildKey1", "ChildValue1", "ChildType1" },
+        { "ChildKey2", "ChildValue2", "ChildType2" }
+      };
+    });
 
-    cmAssert(sortedVariables[1].name == expectedKeys[0],
-             "cmDebuggerVariablesCache returns expected variables[1].name.");
-    cmAssert(sortedVariables[1].value ==
-               *expectedCache.at(expectedKeys[0]).Get(),
-             "cmDebuggerVariablesCache returns expected variables[1].value.");
-    cmAssert(sortedVariables[1].type.value() == "string",
-             "cmDebuggerVariablesCache returns expected variables[1].type.");
-    cmAssert(
-      sortedVariables[1].evaluateName.value() == expectedKeys[0],
-      "cmDebuggerVariablesCache returns expected variables[1].evaluateName.");
-  }
+  parent->AddSubVariables(children1);
 
-  return failed;
+  auto children2 = std::make_shared<cmDebugger::cmDebuggerVariables>(
+    variablesManager, "Children2", true);
+
+  auto grandChildren21 = std::make_shared<cmDebugger::cmDebuggerVariables>(
+    variablesManager, "GrandChildren21", true);
+  grandChildren21->SetValue("GrandChildren21 Value");
+  children2->AddSubVariables(grandChildren21);
+  parent->AddSubVariables(children2);
+
+  dap::array<dap::Variable> variables =
+    variablesManager->HandleVariablesRequest(
+      CreateVariablesRequest(parent->GetId()));
+  ASSERT_TRUE(variables.size() == 3);
+  ASSERT_TRUE(variables[0].name == "Children1");
+  ASSERT_TRUE(variables[0].value == "");
+  ASSERT_TRUE(variables[0].type.value() == "collection");
+  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[0].variablesReference == children1->GetId());
+  ASSERT_TRUE(variables[1].name == "Children2");
+  ASSERT_TRUE(variables[1].value == "");
+  ASSERT_TRUE(variables[1].type.value() == "collection");
+  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[1].variablesReference == children2->GetId());
+  ASSERT_TRUE(variables[2].name == "ParentKey");
+  ASSERT_TRUE(variables[2].value == "ParentValue");
+  ASSERT_TRUE(variables[2].type.value() == "ParentType");
+  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
+
+  variables = variablesManager->HandleVariablesRequest(
+    CreateVariablesRequest(children1->GetId()));
+  ASSERT_TRUE(variables.size() == 2);
+  ASSERT_TRUE(variables[0].name == "ChildKey1");
+  ASSERT_TRUE(variables[0].value == "ChildValue1");
+  ASSERT_TRUE(variables[0].type.value() == "ChildType1");
+  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[1].name == "ChildKey2");
+  ASSERT_TRUE(variables[1].value == "ChildValue2");
+  ASSERT_TRUE(variables[1].type.value() == "ChildType2");
+  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+
+  variables = variablesManager->HandleVariablesRequest(
+    CreateVariablesRequest(children2->GetId()));
+  ASSERT_TRUE(variables.size() == 1);
+  ASSERT_TRUE(variables[0].name == "GrandChildren21");
+  ASSERT_TRUE(variables[0].value == "GrandChildren21 Value");
+  ASSERT_TRUE(variables[0].type.value() == "collection");
+  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[0].variablesReference == grandChildren21->GetId());
+
+  return true;
+}
+
+static bool testIgnoreEmptyStringEntries()
+{
+  auto variablesManager =
+    std::make_shared<cmDebugger::cmDebuggerVariablesManager>();
+
+  auto vars = std::make_shared<cmDebugger::cmDebuggerVariables>(
+    variablesManager, "Variables", true, []() {
+      return std::vector<cmDebugger::cmDebuggerVariableEntry>{
+        { "IntValue1", 5 },           { "StringValue1", "" },
+        { "StringValue2", "foo" },    { "StringValue3", "" },
+        { "StringValue4", "bar" },    { "StringValue5", "" },
+        { "IntValue2", int64_t(99) }, { "BooleanTrue", true },
+        { "BooleanFalse", false },
+      };
+    });
+
+  vars->SetIgnoreEmptyStringEntries(true);
+  vars->SetEnableSorting(false);
+
+  dap::array<dap::Variable> variables =
+    variablesManager->HandleVariablesRequest(
+      CreateVariablesRequest(vars->GetId()));
+  ASSERT_TRUE(variables.size() == 6);
+  ASSERT_TRUE(variables[0].name == "IntValue1");
+  ASSERT_TRUE(variables[0].value == "5");
+  ASSERT_TRUE(variables[0].type.value() == "int");
+  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[1].name == "StringValue2");
+  ASSERT_TRUE(variables[1].value == "foo");
+  ASSERT_TRUE(variables[1].type.value() == "string");
+  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[2].name == "StringValue4");
+  ASSERT_TRUE(variables[2].value == "bar");
+  ASSERT_TRUE(variables[2].type.value() == "string");
+  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[3].name == "IntValue2");
+  ASSERT_TRUE(variables[3].value == "99");
+  ASSERT_TRUE(variables[3].type.value() == "int");
+  ASSERT_TRUE(variables[3].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[4].name == "BooleanTrue");
+  ASSERT_TRUE(variables[4].value == "TRUE");
+  ASSERT_TRUE(variables[4].type.value() == "bool");
+  ASSERT_TRUE(variables[4].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[5].name == "BooleanFalse");
+  ASSERT_TRUE(variables[5].value == "FALSE");
+  ASSERT_TRUE(variables[5].type.value() == "bool");
+  ASSERT_TRUE(variables[5].evaluateName.has_value() == false);
+
+  return true;
+}
+
+static bool testSortTheResult()
+{
+  auto variablesManager =
+    std::make_shared<cmDebugger::cmDebuggerVariablesManager>();
+
+  auto vars = std::make_shared<cmDebugger::cmDebuggerVariables>(
+    variablesManager, "Variables", true, []() {
+      return std::vector<cmDebugger::cmDebuggerVariableEntry>{
+        { "4", "4" }, { "2", "2" }, { "1", "1" }, { "3", "3" }, { "5", "5" },
+      };
+    });
+
+  dap::array<dap::Variable> variables =
+    variablesManager->HandleVariablesRequest(
+      CreateVariablesRequest(vars->GetId()));
+  ASSERT_TRUE(variables.size() == 5);
+  ASSERT_TRUE(variables[0].name == "1");
+  ASSERT_TRUE(variables[0].value == "1");
+  ASSERT_TRUE(variables[0].type.value() == "string");
+  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[1].name == "2");
+  ASSERT_TRUE(variables[1].value == "2");
+  ASSERT_TRUE(variables[1].type.value() == "string");
+  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[2].name == "3");
+  ASSERT_TRUE(variables[2].value == "3");
+  ASSERT_TRUE(variables[2].type.value() == "string");
+  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[3].name == "4");
+  ASSERT_TRUE(variables[3].value == "4");
+  ASSERT_TRUE(variables[3].type.value() == "string");
+  ASSERT_TRUE(variables[3].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[4].name == "5");
+  ASSERT_TRUE(variables[4].value == "5");
+  ASSERT_TRUE(variables[4].type.value() == "string");
+  ASSERT_TRUE(variables[4].evaluateName.has_value() == false);
+
+  vars->SetEnableSorting(false);
+
+  variables = variablesManager->HandleVariablesRequest(
+    CreateVariablesRequest(vars->GetId()));
+  ASSERT_TRUE(variables.size() == 5);
+  ASSERT_TRUE(variables[0].name == "4");
+  ASSERT_TRUE(variables[0].value == "4");
+  ASSERT_TRUE(variables[0].type.value() == "string");
+  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[1].name == "2");
+  ASSERT_TRUE(variables[1].value == "2");
+  ASSERT_TRUE(variables[1].type.value() == "string");
+  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[2].name == "1");
+  ASSERT_TRUE(variables[2].value == "1");
+  ASSERT_TRUE(variables[2].type.value() == "string");
+  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[3].name == "3");
+  ASSERT_TRUE(variables[3].value == "3");
+  ASSERT_TRUE(variables[3].type.value() == "string");
+  ASSERT_TRUE(variables[3].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables[4].name == "5");
+  ASSERT_TRUE(variables[4].value == "5");
+  ASSERT_TRUE(variables[4].type.value() == "string");
+  ASSERT_TRUE(variables[4].evaluateName.has_value() == false);
+
+  return true;
+}
+
+int testCMDebuggerVariables(int, char*[])
+{
+  return runTests(std::vector<std::function<bool()>>{
+    testUniqueIds,
+    testConstructors,
+    testIgnoreEmptyStringEntries,
+    testSortTheResult,
+  });
 }

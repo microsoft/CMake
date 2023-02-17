@@ -1,12 +1,13 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
-#include <algorithm>
-
 #include "cmDebuggerBreakpointManager.h"
+
+#include <algorithm>
 
 namespace cmDebugger {
 
-cmDebuggerBreakpointManager::cmDebuggerBreakpointManager(dap::Session* dapSession)
+cmDebuggerBreakpointManager::cmDebuggerBreakpointManager(
+  dap::Session* dapSession)
   : DapSession(dapSession)
   , NextBreakpointId(0)
 {
@@ -19,15 +20,15 @@ cmDebuggerBreakpointManager::cmDebuggerBreakpointManager(dap::Session* dapSessio
 int64_t cmDebuggerBreakpointManager::FindFunctionStartLine(
   std::string const& sourcePath, int64_t line)
 {
-  auto range =
+  auto location =
     find_if(ListFileFunctionLines[sourcePath].begin(),
             ListFileFunctionLines[sourcePath].end(),
-            [&](const std::tuple<int64_t, int64_t>& range) {
-              return std::get<0>(range) <= line && std::get<1>(range) >= line;
+            [=](cmDebuggerFunctionLocation const& location) {
+              return location.StartLine <= line && location.EndLine >= line;
             });
 
-  if (range != ListFileFunctionLines[sourcePath].end()) {
-    return std::get<0>(*range);
+  if (location != ListFileFunctionLines[sourcePath].end()) {
+    return location->StartLine;
   }
 
   return 0;
@@ -88,8 +89,9 @@ cmDebuggerBreakpointManager::HandleSetBreakpointsRequest(
   return response;
 }
 
-void cmDebuggerBreakpointManager::SourceFileLoaded(std::string const& sourcePath,
-                                                   cmListFile const& listFile)
+void cmDebuggerBreakpointManager::SourceFileLoaded(
+  std::string const& sourcePath,
+  std::vector<cmListFileFunction> const& functions)
 {
   std::unique_lock<std::mutex> lock(Mutex);
   if (ListFileFunctionLines.find(sourcePath) != ListFileFunctionLines.end()) {
@@ -97,9 +99,9 @@ void cmDebuggerBreakpointManager::SourceFileLoaded(std::string const& sourcePath
     return;
   }
 
-  for (cmListFileFunction const& func : listFile.Functions) {
+  for (cmListFileFunction const& func : functions) {
     ListFileFunctionLines[sourcePath].emplace_back(
-      std::make_tuple<int64_t, int64_t>(func.Line(), func.LineEnd()));
+      cmDebuggerFunctionLocation{ func.Line(), func.LineEnd() });
   }
 
   if (ListFilePendingValidations.find(sourcePath) ==
@@ -140,13 +142,11 @@ std::vector<int64_t> cmDebuggerBreakpointManager::GetBreakpoints(
     return breakpoints;
   }
 
-  std::vector<cmDebuggerSourceBreakpoint>::const_iterator it =
-    all.begin();
+  std::vector<cmDebuggerSourceBreakpoint>::const_iterator it = all.begin();
 
-  while (
-    (it = std::find_if(it, all.end(), [&](const auto& breakpoint) {
-       return (breakpoint.GetIsValid() && breakpoint.GetLine() == line);
-     })) != all.end()) {
+  while ((it = std::find_if(it, all.end(), [&](const auto& breakpoint) {
+            return (breakpoint.GetIsValid() && breakpoint.GetLine() == line);
+          })) != all.end()) {
     breakpoints.emplace_back(it->GetId());
     ++it;
   }
@@ -165,6 +165,5 @@ int64_t cmDebuggerBreakpointManager::GetLoadedFileNumber()
   std::unique_lock<std::mutex> lock(Mutex);
   return ListFileFunctionLines.size() + ListFilePendingValidations.size();
 }
-
 
 } // namespace cmDebugger

@@ -3,13 +3,13 @@
 
 #include "cmConfigure.h" // IWYU pragma: keep
 
+#include "cmDebuggerAdapter.h"
+
+#include <climits>
 #include <cstring>
 #include <iostream>
 #include <sstream>
-#include <climits>
 
-#include "cmake.h"
-#include "cmDebuggerAdapter.h"
 #include "cmDebuggerBreakpointManager.h"
 #include "cmDebuggerExceptionManager.h"
 #include "cmDebuggerProtocol.h"
@@ -19,6 +19,7 @@
 #include "cmListFileCache.h"
 #include "cmMakefile.h"
 #include "cmVersionConfig.h"
+#include "cmake.h"
 
 namespace cmDebugger {
 
@@ -29,7 +30,7 @@ public:
   // Wait() blocks until the event is fired.
   void Wait()
   {
-     std::unique_lock<std::mutex> lock(Mutex);
+    std::unique_lock<std::mutex> lock(Mutex);
     Cv.wait(lock, [&] { return Fired; });
   }
 
@@ -81,8 +82,7 @@ private:
 
 cmDebuggerAdapter::cmDebuggerAdapter(
   std::shared_ptr<dap::Reader> const& reader,
-  std::shared_ptr<dap::Writer> const& writer,
-  std::string const& dapLogPath)
+  std::shared_ptr<dap::Writer> const& writer, std::string const& dapLogPath)
   : ThreadManager(std::make_unique<cmDebuggerThreadManager>())
   , SessionActive(true)
   , DisconnectEvent(std::make_unique<SyncEvent>())
@@ -274,7 +274,8 @@ cmDebuggerAdapter::cmDebuggerAdapter(
   Session->send(threadEvent);
 }
 
-cmDebuggerAdapter::~cmDebuggerAdapter() {
+cmDebuggerAdapter::~cmDebuggerAdapter()
+{
   if (SessionThread.joinable()) {
     SessionThread.join();
   }
@@ -309,13 +310,16 @@ void cmDebuggerAdapter::ReportExitCode(int exitCode)
   DisconnectEvent->Wait();
 }
 
-void cmDebuggerAdapter::SourceFileLoaded(std::string const& sourcePath,
-                                         cmListFile const& listFile)
+void cmDebuggerAdapter::SourceFileLoaded(
+  std::string const& sourcePath,
+  std::vector<cmListFileFunction> const& functions)
 {
-  BreakpointManager->SourceFileLoaded(sourcePath, listFile);
+  BreakpointManager->SourceFileLoaded(sourcePath, functions);
 }
 
-void cmDebuggerAdapter::BeginFunction(cmMakefile* mf, std::string const& sourcePath, cmListFileFunction const& lff)
+void cmDebuggerAdapter::BeginFunction(cmMakefile* mf,
+                                      std::string const& sourcePath,
+                                      cmListFileFunction const& lff)
 {
   std::unique_lock<std::mutex> lock(Mutex);
   DefaultThread->PushStackFrame(mf, sourcePath, lff);

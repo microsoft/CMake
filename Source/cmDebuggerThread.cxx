@@ -1,17 +1,19 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
 
-#include "cmDebuggerStackFrame.h"
 #include "cmDebuggerThread.h"
+
+#include "cmDebuggerStackFrame.h"
 #include "cmDebuggerVariables.h"
-#include "cmMakefile.h"
-#include "cmStateSnapshot.h"
+#include "cmDebuggerVariablesHelper.h"
+#include "cmDebuggerVariablesManager.h"
 
 namespace cmDebugger {
 
 cmDebuggerThread::cmDebuggerThread(int64_t id, std::string const& name)
   : Id(id)
   , Name(name)
+  , VariablesManager(std::make_shared<cmDebuggerVariablesManager>())
 {
 }
 
@@ -30,9 +32,6 @@ void cmDebuggerThread::PopStackFrame()
   std::unique_lock<std::mutex> lock(Mutex);
   FrameMap.erase(Frames.back()->GetId());
   FrameScopes.erase(Frames.back()->GetId());
-  for (auto id : FrameVariables[Frames.back()->GetId()]) {
-    Variables.erase(id);
-  }
   FrameVariables.erase(Frames.back()->GetId());
   Frames.pop_back();
 }
@@ -47,7 +46,8 @@ std::shared_ptr<cmDebuggerStackFrame> cmDebuggerThread::GetTopStackFrame()
   return {};
 }
 
-std::shared_ptr<cmDebuggerStackFrame> cmDebuggerThread::GetStackFrame(int64_t frameId)
+std::shared_ptr<cmDebuggerStackFrame> cmDebuggerThread::GetStackFrame(
+  int64_t frameId)
 {
   std::unique_lock<std::mutex> lock(Mutex);
   auto it = FrameMap.find(frameId);
@@ -77,24 +77,14 @@ dap::ScopesResponse cmDebuggerThread::GetScopesResponse(
   }
 
   std::shared_ptr<cmDebuggerStackFrame> frame = it2->second;
-  auto cacheVariables = std::make_shared<cmDebuggerVariablesCache>(
-    supportsVariableType,
-    [=]() { return frame->GetMakefile()->GetStateSnapshot().ClosureKeys(); },
-    [=](std::string const& key) {
-      return frame->GetMakefile()->GetStateSnapshot().GetDefinition(key);
-    });
-  Variables.insert({ cacheVariables->GetId(), cacheVariables });
-  FrameVariables[frameId].push_back(cacheVariables->GetId());
+  std::shared_ptr<cmDebuggerVariables> localVariables =
+    cmDebuggerVariablesHelper::Create(VariablesManager, "Locals",
+                                      supportsVariableType, frame);
 
-  auto localVariables = std::make_shared<cmDebuggerVariablesLocal>(
-    supportsVariableType, [=]() { return frame->GetLine(); },
-    cacheVariables->GetId());
-
-  Variables.insert({ localVariables->GetId(), localVariables });
-  FrameVariables[frameId].push_back(localVariables->GetId());
+  FrameVariables[frameId].emplace_back(localVariables);
 
   dap::Scope scope;
-  scope.name = "Locals";
+  scope.name = localVariables->GetName();
   scope.presentationHint = "locals";
   scope.variablesReference = localVariables->GetId();
 
@@ -115,12 +105,7 @@ dap::VariablesResponse cmDebuggerThread::GetVariablesResponse(
 {
   std::unique_lock<std::mutex> lock(Mutex);
   dap::VariablesResponse response;
-  auto it = Variables.find(request.variablesReference);
-
-  if (it != Variables.end()) {
-    response.variables = it->second->GetVariables(request);
-  }
-
+  response.variables = VariablesManager->HandleVariablesRequest(request);
   return response;
 }
 
@@ -137,8 +122,7 @@ dap::StackTraceResponse GetStackTraceResponse(
     dap::StackFrame stackFrame;
     stackFrame.line = thread->Frames[i]->GetLine();
     stackFrame.column = 1;
-    stackFrame.name = thread->Frames[i]->GetFileName() +
-      " Line " +
+    stackFrame.name = thread->Frames[i]->GetFileName() + " Line " +
       std::to_string(stackFrame.line);
     stackFrame.id = thread->Frames[i]->GetId();
     stackFrame.source = source;
