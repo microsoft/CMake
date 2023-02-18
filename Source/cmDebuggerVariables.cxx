@@ -15,10 +15,14 @@
 namespace cmDebugger {
 
 namespace {
-static const dap::VariablePresentationHint PublicPropertyHint = { {},
-                                                                  "property",
-                                                                  {},
-                                                                  "public" };
+static const dap::VariablePresentationHint PrivatePropertyHint = { {},
+                                                                   "property",
+                                                                   {},
+                                                                   "private" };
+static const dap::VariablePresentationHint PrivateDataHint = { {},
+                                                               "data",
+                                                               {},
+                                                               "private" };
 }
 
 std::atomic<int64_t> cmDebuggerVariables::NextId = 1;
@@ -78,7 +82,7 @@ dap::array<dap::Variable> cmDebuggerVariables::HandleVariablesRequest(
                                          {},
                                          entry.Name,
                                          {},
-                                         PublicPropertyHint,
+                                         PrivateDataHint,
                                          entry.Type,
                                          entry.Value,
                                          0 });
@@ -107,7 +111,7 @@ void cmDebuggerVariables::EnumerateSubVariablesIfAny(
                      {},
                      variables->GetName(),
                      {},
-                     PublicPropertyHint,
+                     PrivatePropertyHint,
                      SupportsVariableType ? "collection" : nullptr,
                      variables->GetValue(),
                      variables->GetId() });

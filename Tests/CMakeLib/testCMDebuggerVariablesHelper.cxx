@@ -18,7 +18,7 @@
 #include "cmTest.h"
 #include "cmake.h"
 
-#include "testCommon.h"
+#include "testCMDebugger.h"
 
 static dap::VariablesRequest CreateVariablesRequest(int64_t reference)
 {
@@ -70,20 +70,9 @@ static bool testCreateFromPolicyMap()
     variablesManager->HandleVariablesRequest(
       CreateVariablesRequest(vars->GetId()));
   ASSERT_TRUE(variables.size() == 3);
-  ASSERT_TRUE(variables[0].name == "CMP0000");
-  ASSERT_TRUE(variables[0].value == "NEW");
-  ASSERT_TRUE(variables[0].type.value() == "string");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-
-  ASSERT_TRUE(variables[1].name == "CMP0003");
-  ASSERT_TRUE(variables[1].value == "WARN");
-  ASSERT_TRUE(variables[1].type.value() == "string");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
-
-  ASSERT_TRUE(variables[2].name == "CMP0005");
-  ASSERT_TRUE(variables[2].value == "OLD");
-  ASSERT_TRUE(variables[2].type.value() == "string");
-  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "CMP0000", "NEW", "string");
+  ASSERT_VARIABLE(variables[1], "CMP0003", "WARN", "string");
+  ASSERT_VARIABLE(variables[2], "CMP0005", "OLD", "string");
 
   return true;
 }
@@ -106,15 +95,8 @@ static bool testCreateFromPairVector()
 
   ASSERT_TRUE(vars->GetValue() == std::to_string(pairs.size()));
   ASSERT_TRUE(variables.size() == 2);
-  ASSERT_TRUE(variables[0].name == "Foo1");
-  ASSERT_TRUE(variables[0].value == "Bar1");
-  ASSERT_TRUE(variables[0].type.value() == "string");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-
-  ASSERT_TRUE(variables[1].name == "Foo2");
-  ASSERT_TRUE(variables[1].value == "Bar2");
-  ASSERT_TRUE(variables[1].type.value() == "string");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "Foo1", "Bar1", "string");
+  ASSERT_VARIABLE(variables[1], "Foo2", "Bar2", "string");
 
   auto none = cmDebugger::cmDebuggerVariablesHelper::CreateIfAny(
     variablesManager, "Locals", true,
@@ -141,15 +123,8 @@ static bool testCreateFromSet()
 
   ASSERT_TRUE(vars->GetValue() == std::to_string(set.size()));
   ASSERT_TRUE(variables.size() == 2);
-  ASSERT_TRUE(variables[0].name == "[0]");
-  ASSERT_TRUE(variables[0].value == "Bar");
-  ASSERT_TRUE(variables[0].type.value() == "string");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-
-  ASSERT_TRUE(variables[1].name == "[1]");
-  ASSERT_TRUE(variables[1].value == "Foo");
-  ASSERT_TRUE(variables[1].type.value() == "string");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "[0]", "Bar", "string");
+  ASSERT_VARIABLE(variables[1], "[1]", "Foo", "string");
 
   auto none = cmDebugger::cmDebuggerVariablesHelper::CreateIfAny(
     variablesManager, "Locals", true, std::set<std::string>());
@@ -175,15 +150,8 @@ static bool testCreateFromStringVector()
 
   ASSERT_TRUE(vars->GetValue() == std::to_string(list.size()));
   ASSERT_TRUE(variables.size() == 2);
-  ASSERT_TRUE(variables[0].name == "[0]");
-  ASSERT_TRUE(variables[0].value == "Foo");
-  ASSERT_TRUE(variables[0].type.value() == "string");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-
-  ASSERT_TRUE(variables[1].name == "[1]");
-  ASSERT_TRUE(variables[1].value == "Bar");
-  ASSERT_TRUE(variables[1].type.value() == "string");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "[0]", "Foo", "string");
+  ASSERT_VARIABLE(variables[1], "[1]", "Bar", "string");
 
   auto none = cmDebugger::cmDebuggerVariablesHelper::CreateIfAny(
     variablesManager, "Locals", true, std::vector<std::string>());
@@ -208,79 +176,33 @@ static bool testCreateFromTarget()
       CreateVariablesRequest(vars->GetId()));
 
   ASSERT_TRUE(variables.size() == 1);
-  ASSERT_TRUE(variables[0].name == "Foo");
-  ASSERT_TRUE(variables[0].value == "EXECUTABLE");
-  ASSERT_TRUE(variables[0].type.value() == "collection");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "Foo", "EXECUTABLE", "collection");
 
   variables = variablesManager->HandleVariablesRequest(
     CreateVariablesRequest(variables[0].variablesReference));
 
   ASSERT_TRUE(variables.size() == 15);
-  ASSERT_TRUE(variables[0].name == "GlobalGenerator");
-  ASSERT_TRUE(variables[0].value == "Generic");
-  ASSERT_TRUE(variables[0].type.value() == "collection");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[1].name == "IsAIX");
-  ASSERT_TRUE(variables[1].value == "FALSE");
-  ASSERT_TRUE(variables[1].type.value() == "bool");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[2].name == "IsAndroidGuiExecutable");
-  ASSERT_TRUE(variables[2].value == "FALSE");
-  ASSERT_TRUE(variables[2].type.value() == "bool");
-  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[3].name == "IsAppBundleOnApple");
-  ASSERT_TRUE(variables[3].value == "FALSE");
-  ASSERT_TRUE(variables[3].type.value() == "bool");
-  ASSERT_TRUE(variables[3].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[4].name == "IsDLLPlatform");
-  ASSERT_TRUE(variables[4].value == "FALSE");
-  ASSERT_TRUE(variables[4].type.value() == "bool");
-  ASSERT_TRUE(variables[4].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[5].name == "IsExecutableWithExports");
-  ASSERT_TRUE(variables[5].value == "FALSE");
-  ASSERT_TRUE(variables[5].type.value() == "bool");
-  ASSERT_TRUE(variables[5].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[6].name == "IsFrameworkOnApple");
-  ASSERT_TRUE(variables[6].value == "FALSE");
-  ASSERT_TRUE(variables[6].type.value() == "bool");
-  ASSERT_TRUE(variables[6].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[7].name == "IsImported");
-  ASSERT_TRUE(variables[7].value == "FALSE");
-  ASSERT_TRUE(variables[7].type.value() == "bool");
-  ASSERT_TRUE(variables[7].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[8].name == "IsImportedGloballyVisible");
-  ASSERT_TRUE(variables[8].value == "FALSE");
-  ASSERT_TRUE(variables[8].type.value() == "bool");
-  ASSERT_TRUE(variables[8].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[9].name == "IsPerConfig");
-  ASSERT_TRUE(variables[9].value == "TRUE");
-  ASSERT_TRUE(variables[9].type.value() == "bool");
-  ASSERT_TRUE(variables[9].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[10].name == "Makefile");
-  ASSERT_TRUE(!variables[10].value.empty());
-  ASSERT_TRUE(variables[10].type.value() == "collection");
-  ASSERT_TRUE(variables[10].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[11].name == "Name");
-  ASSERT_TRUE(variables[11].value == "Foo");
-  ASSERT_TRUE(variables[11].type.value() == "string");
-  ASSERT_TRUE(variables[11].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[12].name == "PolicyMap");
-  ASSERT_TRUE(variables[12].value == "");
-  ASSERT_TRUE(variables[12].type.value() == "collection");
-  ASSERT_TRUE(variables[12].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[13].name == "Properties");
-  ASSERT_TRUE(variables[13].value ==
-              std::to_string(dummies.Makefile->GetOrderedTargets()[0]
-                               ->GetProperties()
-                               .GetList()
-                               .size()));
-  ASSERT_TRUE(variables[13].type.value() == "collection");
-  ASSERT_TRUE(variables[13].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[14].name == "Type");
-  ASSERT_TRUE(variables[14].value == "EXECUTABLE");
-  ASSERT_TRUE(variables[14].type.value() == "string");
-  ASSERT_TRUE(variables[14].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "GlobalGenerator", "Generic", "collection");
+  ASSERT_VARIABLE(variables[1], "IsAIX", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[2], "IsAndroidGuiExecutable", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[3], "IsAppBundleOnApple", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[4], "IsDLLPlatform", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[5], "IsExecutableWithExports", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[6], "IsFrameworkOnApple", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[7], "IsImported", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[8], "IsImportedGloballyVisible", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[9], "IsPerConfig", "TRUE", "bool");
+  ASSERT_VARIABLE(variables[10], "Makefile",
+                  dummies.Makefile->GetDirectoryId().String, "collection");
+  ASSERT_VARIABLE(variables[11], "Name", "Foo", "string");
+  ASSERT_VARIABLE(variables[12], "PolicyMap", "", "collection");
+  ASSERT_VARIABLE(variables[13], "Properties",
+                  std::to_string(dummies.Makefile->GetOrderedTargets()[0]
+                                   ->GetProperties()
+                                   .GetList()
+                                   .size()),
+                  "collection");
+  ASSERT_VARIABLE(variables[14], "Type", "EXECUTABLE", "string");
 
   auto none = cmDebugger::cmDebuggerVariablesHelper::CreateIfAny(
     variablesManager, "Locals", true, std::vector<cmTarget*>());
@@ -305,46 +227,16 @@ static bool testCreateFromGlobalGenerator()
       CreateVariablesRequest(vars->GetId()));
 
   ASSERT_TRUE(variables.size() == 10);
-  ASSERT_TRUE(variables[0].name == "AllTargetName");
-  ASSERT_TRUE(variables[0].value == "ALL_BUILD");
-  ASSERT_TRUE(variables[0].type.value() == "string");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[1].name == "ForceUnixPaths");
-  ASSERT_TRUE(variables[1].value == "FALSE");
-  ASSERT_TRUE(variables[1].type.value() == "bool");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[2].name == "InstallTargetName");
-  ASSERT_TRUE(variables[2].value == "INSTALL");
-  ASSERT_TRUE(variables[2].type.value() == "string");
-  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[3].name == "IsMultiConfig");
-  ASSERT_TRUE(variables[3].value == "FALSE");
-  ASSERT_TRUE(variables[3].type.value() == "bool");
-  ASSERT_TRUE(variables[3].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[4].name == "MakefileEncoding");
-  ASSERT_TRUE(variables[4].value == "None");
-  ASSERT_TRUE(variables[4].type.value() == "string");
-  ASSERT_TRUE(variables[4].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[5].name == "Name");
-  ASSERT_TRUE(variables[5].value == "Generic");
-  ASSERT_TRUE(variables[5].type.value() == "string");
-  ASSERT_TRUE(variables[5].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[6].name == "NeedSymbolicMark");
-  ASSERT_TRUE(variables[6].value == "FALSE");
-  ASSERT_TRUE(variables[6].type.value() == "bool");
-  ASSERT_TRUE(variables[6].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[7].name == "PackageTargetName");
-  ASSERT_TRUE(variables[7].value == "PACKAGE");
-  ASSERT_TRUE(variables[7].type.value() == "string");
-  ASSERT_TRUE(variables[7].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[8].name == "TestTargetName");
-  ASSERT_TRUE(variables[8].value == "RUN_TESTS");
-  ASSERT_TRUE(variables[8].type.value() == "string");
-  ASSERT_TRUE(variables[8].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[9].name == "UseLinkScript");
-  ASSERT_TRUE(variables[9].value == "FALSE");
-  ASSERT_TRUE(variables[9].type.value() == "bool");
-  ASSERT_TRUE(variables[9].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "AllTargetName", "ALL_BUILD", "string");
+  ASSERT_VARIABLE(variables[1], "ForceUnixPaths", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[2], "InstallTargetName", "INSTALL", "string");
+  ASSERT_VARIABLE(variables[3], "IsMultiConfig", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[4], "MakefileEncoding", "None", "string");
+  ASSERT_VARIABLE(variables[5], "Name", "Generic", "string");
+  ASSERT_VARIABLE(variables[6], "NeedSymbolicMark", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[7], "PackageTargetName", "PACKAGE", "string");
+  ASSERT_VARIABLE(variables[8], "TestTargetName", "RUN_TESTS", "string");
+  ASSERT_VARIABLE(variables[9], "UseLinkScript", "FALSE", "bool");
 
   auto none = cmDebugger::cmDebuggerVariablesHelper::CreateIfAny(
     variablesManager, "Locals", true,
@@ -386,116 +278,68 @@ static bool testCreateFromTests()
 
   ASSERT_TRUE(vars->GetValue() == std::to_string(tests.size()));
   ASSERT_TRUE(variables.size() == 2);
-  ASSERT_TRUE(variables[0].name == test1.GetName());
-  ASSERT_TRUE(variables[0].value == "");
-  ASSERT_TRUE(variables[0].type.value() == "collection");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[0].variablesReference != 0);
-
-  ASSERT_TRUE(variables[1].name == test2.GetName());
-  ASSERT_TRUE(variables[1].value == "");
-  ASSERT_TRUE(variables[1].type.value() == "collection");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[0].variablesReference != 0);
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(variables[0], test1.GetName(), "",
+                                     "collection");
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(variables[1], test2.GetName(), "",
+                                     "collection");
 
   dap::array<dap::Variable> testVariables =
     variablesManager->HandleVariablesRequest(
       CreateVariablesRequest(variables[0].variablesReference));
   ASSERT_TRUE(testVariables.size() == 5);
-  ASSERT_TRUE(testVariables[0].name == "Command");
-  ASSERT_TRUE(testVariables[0].value ==
-              std::to_string(test1.GetCommand().size()));
-  ASSERT_TRUE(testVariables[0].type.value() == "collection");
-  ASSERT_TRUE(testVariables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[0].variablesReference != 0);
-  ASSERT_TRUE(testVariables[1].name == "CommandExpandLists");
-  ASSERT_TRUE(testVariables[1].value ==
-              BOOL_STRING(test1.GetCommandExpandLists()));
-  ASSERT_TRUE(testVariables[1].type.value() == "bool");
-  ASSERT_TRUE(testVariables[1].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[2].name == "Name");
-  ASSERT_TRUE(testVariables[2].value == test1.GetName());
-  ASSERT_TRUE(testVariables[2].type.value() == "string");
-  ASSERT_TRUE(testVariables[2].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[3].name == "OldStyle");
-  ASSERT_TRUE(testVariables[3].value == BOOL_STRING(test1.GetOldStyle()));
-  ASSERT_TRUE(testVariables[3].type.value() == "bool");
-  ASSERT_TRUE(testVariables[3].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[4].name == "Properties");
-  ASSERT_TRUE(testVariables[4].value == "1");
-  ASSERT_TRUE(testVariables[4].type.value() == "collection");
-  ASSERT_TRUE(testVariables[4].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[4].variablesReference != 0);
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(testVariables[0], "Command",
+                                     std::to_string(test1.GetCommand().size()),
+                                     "collection");
+  ASSERT_VARIABLE(testVariables[1], "CommandExpandLists",
+                  BOOL_STRING(test1.GetCommandExpandLists()), "bool");
+  ASSERT_VARIABLE(testVariables[2], "Name", test1.GetName(), "string");
+  ASSERT_VARIABLE(testVariables[3], "OldStyle",
+                  BOOL_STRING(test1.GetOldStyle()), "bool");
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(testVariables[4], "Properties", "1",
+                                     "collection");
 
   dap::array<dap::Variable> commandVariables =
     variablesManager->HandleVariablesRequest(
       CreateVariablesRequest(testVariables[0].variablesReference));
   ASSERT_TRUE(commandVariables.size() == test1.GetCommand().size());
   for (int i = 0; i < commandVariables.size(); ++i) {
-    ASSERT_TRUE(commandVariables[i].name == "[" + std::to_string(i) + "]");
-    ASSERT_TRUE(commandVariables[i].value == test1.GetCommand()[i]);
-    ASSERT_TRUE(commandVariables[i].type.value() == "string");
-    ASSERT_TRUE(commandVariables[i].evaluateName.has_value() == false);
+    ASSERT_VARIABLE(commandVariables[i], "[" + std::to_string(i) + "]",
+                    test1.GetCommand()[i], "string");
   }
 
   dap::array<dap::Variable> propertiesVariables =
     variablesManager->HandleVariablesRequest(
       CreateVariablesRequest(testVariables[4].variablesReference));
   ASSERT_TRUE(propertiesVariables.size() == 1);
-  ASSERT_TRUE(propertiesVariables[0].name == "Prop1");
-  ASSERT_TRUE(propertiesVariables[0].value == "Prop1");
-  ASSERT_TRUE(propertiesVariables[0].type.value() == "string");
-  ASSERT_TRUE(propertiesVariables[0].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(propertiesVariables[0], "Prop1", "Prop1", "string");
 
   testVariables = variablesManager->HandleVariablesRequest(
     CreateVariablesRequest(variables[1].variablesReference));
   ASSERT_TRUE(testVariables.size() == 5);
-  ASSERT_TRUE(testVariables[0].name == "Command");
-  ASSERT_TRUE(testVariables[0].value ==
-              std::to_string(test2.GetCommand().size()));
-  ASSERT_TRUE(testVariables[0].type.value() == "collection");
-  ASSERT_TRUE(testVariables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[0].variablesReference != 0);
-  ASSERT_TRUE(testVariables[1].name == "CommandExpandLists");
-  ASSERT_TRUE(testVariables[1].value ==
-              BOOL_STRING(test2.GetCommandExpandLists()));
-  ASSERT_TRUE(testVariables[1].type.value() == "bool");
-  ASSERT_TRUE(testVariables[1].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[2].name == "Name");
-  ASSERT_TRUE(testVariables[2].value == test2.GetName());
-  ASSERT_TRUE(testVariables[2].type.value() == "string");
-  ASSERT_TRUE(testVariables[2].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[3].name == "OldStyle");
-  ASSERT_TRUE(testVariables[3].value == BOOL_STRING(test2.GetOldStyle()));
-  ASSERT_TRUE(testVariables[3].type.value() == "bool");
-  ASSERT_TRUE(testVariables[3].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[4].name == "Properties");
-  ASSERT_TRUE(testVariables[4].value == "2");
-  ASSERT_TRUE(testVariables[4].type.value() == "collection");
-  ASSERT_TRUE(testVariables[4].evaluateName.has_value() == false);
-  ASSERT_TRUE(testVariables[4].variablesReference != 0);
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(testVariables[0], "Command",
+                                     std::to_string(test2.GetCommand().size()),
+                                     "collection");
+  ASSERT_VARIABLE(testVariables[1], "CommandExpandLists",
+                  BOOL_STRING(test2.GetCommandExpandLists()), "bool");
+  ASSERT_VARIABLE(testVariables[2], "Name", test2.GetName(), "string");
+  ASSERT_VARIABLE(testVariables[3], "OldStyle",
+                  BOOL_STRING(test2.GetOldStyle()), "bool");
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(testVariables[4], "Properties", "2",
+                                     "collection");
 
   commandVariables = variablesManager->HandleVariablesRequest(
     CreateVariablesRequest(testVariables[0].variablesReference));
   ASSERT_TRUE(commandVariables.size() == test2.GetCommand().size());
   for (int i = 0; i < commandVariables.size(); ++i) {
-    ASSERT_TRUE(commandVariables[i].name == "[" + std::to_string(i) + "]");
-    ASSERT_TRUE(commandVariables[i].value == test2.GetCommand()[i]);
-    ASSERT_TRUE(commandVariables[i].type.value() == "string");
-    ASSERT_TRUE(commandVariables[i].evaluateName.has_value() == false);
+    ASSERT_VARIABLE(commandVariables[i], "[" + std::to_string(i) + "]",
+                    test2.GetCommand()[i], "string");
   }
 
   propertiesVariables = variablesManager->HandleVariablesRequest(
     CreateVariablesRequest(testVariables[4].variablesReference));
   ASSERT_TRUE(propertiesVariables.size() == 2);
-  ASSERT_TRUE(propertiesVariables[0].name == "Prop2");
-  ASSERT_TRUE(propertiesVariables[0].value == "Prop2");
-  ASSERT_TRUE(propertiesVariables[0].type.value() == "string");
-  ASSERT_TRUE(propertiesVariables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(propertiesVariables[1].name == "Prop3");
-  ASSERT_TRUE(propertiesVariables[1].value == "Prop3");
-  ASSERT_TRUE(propertiesVariables[1].type.value() == "string");
-  ASSERT_TRUE(propertiesVariables[1].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(propertiesVariables[0], "Prop2", "Prop2", "string");
+  ASSERT_VARIABLE(propertiesVariables[1], "Prop3", "Prop3", "string");
 
   auto none = cmDebugger::cmDebuggerVariablesHelper::CreateIfAny(
     variablesManager, "Locals", true, std::vector<cmTest*>());
@@ -523,56 +367,23 @@ static bool testCreateFromMakefile()
       CreateVariablesRequest(vars->GetId()));
 
   ASSERT_TRUE(variables.size() == 12);
-  ASSERT_TRUE(variables[0].name == "AppleSDKType");
-  ASSERT_TRUE(variables[0].value == "MacOS");
-  ASSERT_TRUE(variables[0].type.value() == "string");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[1].name == "CurrentBinaryDirectory");
-  ASSERT_TRUE(variables[1].value ==
-              snapshot.GetDirectory().GetCurrentBinary());
-  ASSERT_TRUE(variables[1].type.value() == "string");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[2].name == "CurrentSourceDirectory");
-  ASSERT_TRUE(variables[2].value ==
-              snapshot.GetDirectory().GetCurrentSource());
-  ASSERT_TRUE(variables[2].type.value() == "string");
-  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[3].name == "DefineFlags");
-  ASSERT_TRUE(variables[3].value == " ");
-  ASSERT_TRUE(variables[3].type.value() == "string");
-  ASSERT_TRUE(variables[3].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[4].name == "DirectoryId");
-  ASSERT_TRUE(!variables[4].value.empty());
-  ASSERT_TRUE(variables[4].type.value() == "string");
-  ASSERT_TRUE(variables[4].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[5].name == "HomeDirectory");
-  ASSERT_TRUE(variables[5].value == state->GetSourceDirectory());
-  ASSERT_TRUE(variables[5].type.value() == "string");
-  ASSERT_TRUE(variables[5].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[6].name == "HomeOutputDirectory");
-  ASSERT_TRUE(variables[6].value == state->GetBinaryDirectory());
-  ASSERT_TRUE(variables[6].type.value() == "string");
-  ASSERT_TRUE(variables[6].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[7].name == "IsRootMakefile");
-  ASSERT_TRUE(variables[7].value == "TRUE");
-  ASSERT_TRUE(variables[7].type.value() == "bool");
-  ASSERT_TRUE(variables[7].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[8].name == "PlatformIs32Bit");
-  ASSERT_TRUE(variables[8].value == "FALSE");
-  ASSERT_TRUE(variables[8].type.value() == "bool");
-  ASSERT_TRUE(variables[8].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[9].name == "PlatformIs64Bit");
-  ASSERT_TRUE(variables[9].value == "FALSE");
-  ASSERT_TRUE(variables[9].type.value() == "bool");
-  ASSERT_TRUE(variables[9].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[10].name == "PlatformIsAppleEmbedded");
-  ASSERT_TRUE(variables[10].value == "FALSE");
-  ASSERT_TRUE(variables[10].type.value() == "bool");
-  ASSERT_TRUE(variables[10].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[11].name == "PlatformIsx32");
-  ASSERT_TRUE(variables[11].value == "FALSE");
-  ASSERT_TRUE(variables[11].type.value() == "bool");
-  ASSERT_TRUE(variables[11].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "AppleSDKType", "MacOS", "string");
+  ASSERT_VARIABLE(variables[1], "CurrentBinaryDirectory",
+                  snapshot.GetDirectory().GetCurrentBinary(), "string");
+  ASSERT_VARIABLE(variables[2], "CurrentSourceDirectory",
+                  snapshot.GetDirectory().GetCurrentSource(), "string");
+  ASSERT_VARIABLE(variables[3], "DefineFlags", " ", "string");
+  ASSERT_VARIABLE(variables[4], "DirectoryId",
+                  dummies.Makefile->GetDirectoryId().String, "string");
+  ASSERT_VARIABLE(variables[5], "HomeDirectory", state->GetSourceDirectory(),
+                  "string");
+  ASSERT_VARIABLE(variables[6], "HomeOutputDirectory",
+                  state->GetBinaryDirectory(), "string");
+  ASSERT_VARIABLE(variables[7], "IsRootMakefile", "TRUE", "bool");
+  ASSERT_VARIABLE(variables[8], "PlatformIs32Bit", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[9], "PlatformIs64Bit", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[10], "PlatformIsAppleEmbedded", "FALSE", "bool");
+  ASSERT_VARIABLE(variables[11], "PlatformIsx32", "FALSE", "bool");
 
   auto none = cmDebugger::cmDebuggerVariablesHelper::CreateIfAny(
     variablesManager, "Locals", true, static_cast<cmMakefile*>(nullptr));
@@ -592,6 +403,9 @@ static bool testCreateFromStackFrame()
   auto frame = std::make_shared<cmDebugger::cmDebuggerStackFrame>(
     dummies.Makefile.get(), "c:/CMakeLists.txt", lff);
 
+  dummies.CMake->AddCacheEntry("CMAKE_BUILD_TYPE", "Debug", "Build Type",
+                               cmStateEnums::CacheEntryType::STRING);
+
   auto locals = cmDebugger::cmDebuggerVariablesHelper::Create(
     variablesManager, "Locals", true, frame);
 
@@ -599,19 +413,29 @@ static bool testCreateFromStackFrame()
     variablesManager->HandleVariablesRequest(
       CreateVariablesRequest(locals->GetId()));
 
-  ASSERT_TRUE(variables.size() == 3);
-  ASSERT_TRUE(variables[0].name == "CacheVariables");
-  ASSERT_TRUE(variables[0].value == "2");
-  ASSERT_TRUE(variables[0].type.value() == "collection");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[1].name == "CurrentLine");
-  ASSERT_TRUE(variables[1].value == std::to_string(lff.Line()));
-  ASSERT_TRUE(variables[1].type.value() == "int");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[2].name == "Targets");
-  ASSERT_TRUE(variables[2].value == "1");
-  ASSERT_TRUE(variables[2].type.value() == "collection");
-  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
+  ASSERT_TRUE(variables.size() == 4);
+  ASSERT_VARIABLE(variables[0], "CacheVariables", "1", "collection");
+  ASSERT_VARIABLE(variables[1], "CurrentLine", std::to_string(lff.Line()),
+                  "int");
+  ASSERT_VARIABLE(variables[2], "Locals", "2", "collection");
+  ASSERT_VARIABLE(variables[3], "Targets", "1", "collection");
+
+  dap::array<dap::Variable> cacheVariables =
+    variablesManager->HandleVariablesRequest(
+      CreateVariablesRequest(variables[0].variablesReference));
+  ASSERT_TRUE(cacheVariables.size() == 1);
+  ASSERT_VARIABLE(cacheVariables[0], "CMAKE_BUILD_TYPE:STRING", "Debug",
+                  "collection");
+
+  dap::array<dap::Variable> propertiesVariables =
+    variablesManager->HandleVariablesRequest(
+      CreateVariablesRequest(cacheVariables[0].variablesReference));
+  ASSERT_TRUE(propertiesVariables.size() == 3);
+  ASSERT_VARIABLE(propertiesVariables[0], "HELPSTRING", "Build Type",
+                  "string");
+  ASSERT_VARIABLE(propertiesVariables[1], "TYPE", "STRING", "string");
+  ASSERT_VARIABLE(propertiesVariables[2], "VALUE", "Debug", "string");
+
   return true;
 }
 
@@ -633,15 +457,8 @@ static bool testCreateFromBTStringVector()
 
   ASSERT_TRUE(vars->GetValue() == std::to_string(list.size()));
   ASSERT_TRUE(variables.size() == 2);
-  ASSERT_TRUE(variables[0].name == "[0]");
-  ASSERT_TRUE(variables[0].value == "Foo");
-  ASSERT_TRUE(variables[0].type.value() == "string");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-
-  ASSERT_TRUE(variables[1].name == "[1]");
-  ASSERT_TRUE(variables[1].value == "Bar");
-  ASSERT_TRUE(variables[1].type.value() == "string");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(variables[0], "[0]", "Foo", "string");
+  ASSERT_VARIABLE(variables[1], "[1]", "Bar", "string");
 
   auto none = cmDebugger::cmDebuggerVariablesHelper::CreateIfAny(
     variablesManager, "Locals", true, std::vector<std::string>());
@@ -672,46 +489,24 @@ static bool testCreateFromFileSet()
       CreateVariablesRequest(vars->GetId()));
 
   ASSERT_TRUE(variables.size() == 5);
-  ASSERT_TRUE(variables[0].name == "Directories");
-  ASSERT_TRUE(variables[0].value == "1");
-  ASSERT_TRUE(variables[0].type.value() == "collection");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[0].variablesReference != 0);
-  ASSERT_TRUE(variables[1].name == "Files");
-  ASSERT_TRUE(variables[1].value == "1");
-  ASSERT_TRUE(variables[1].type.value() == "collection");
-  ASSERT_TRUE(variables[1].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[1].variablesReference != 0);
-  ASSERT_TRUE(variables[2].name == "Name");
-  ASSERT_TRUE(variables[2].value == "Foo");
-  ASSERT_TRUE(variables[2].type.value() == "string");
-  ASSERT_TRUE(variables[2].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[3].name == "Type");
-  ASSERT_TRUE(variables[3].value == "HEADERS");
-  ASSERT_TRUE(variables[3].type.value() == "string");
-  ASSERT_TRUE(variables[3].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[4].name == "Visibility");
-  ASSERT_TRUE(variables[4].value == "Public");
-  ASSERT_TRUE(variables[4].type.value() == "string");
-  ASSERT_TRUE(variables[4].evaluateName.has_value() == false);
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(variables[0], "Directories", "1",
+                                     "collection");
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(variables[1], "Files", "1", "collection");
+  ASSERT_VARIABLE(variables[2], "Name", "Foo", "string");
+  ASSERT_VARIABLE(variables[3], "Type", "HEADERS", "string");
+  ASSERT_VARIABLE(variables[4], "Visibility", "Public", "string");
 
   dap::array<dap::Variable> directoriesVariables =
     variablesManager->HandleVariablesRequest(
       CreateVariablesRequest(variables[0].variablesReference));
   ASSERT_TRUE(directoriesVariables.size() == 1);
-  ASSERT_TRUE(directoriesVariables[0].name == "[0]");
-  ASSERT_TRUE(directoriesVariables[0].value == directory.Value);
-  ASSERT_TRUE(directoriesVariables[0].type.value() == "string");
-  ASSERT_TRUE(directoriesVariables[0].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(directoriesVariables[0], "[0]", directory.Value, "string");
 
   dap::array<dap::Variable> filesVariables =
     variablesManager->HandleVariablesRequest(
       CreateVariablesRequest(variables[1].variablesReference));
   ASSERT_TRUE(filesVariables.size() == 1);
-  ASSERT_TRUE(filesVariables[0].name == "[0]");
-  ASSERT_TRUE(filesVariables[0].value == file.Value);
-  ASSERT_TRUE(filesVariables[0].type.value() == "string");
-  ASSERT_TRUE(filesVariables[0].evaluateName.has_value() == false);
+  ASSERT_VARIABLE(filesVariables[0], "[0]", file.Value, "string");
 
   return true;
 }
@@ -738,11 +533,7 @@ static bool testCreateFromFileSets()
       CreateVariablesRequest(vars->GetId()));
 
   ASSERT_TRUE(variables.size() == 1);
-  ASSERT_TRUE(variables[0].name == "Foo");
-  ASSERT_TRUE(variables[0].value == "");
-  ASSERT_TRUE(variables[0].type.value() == "collection");
-  ASSERT_TRUE(variables[0].evaluateName.has_value() == false);
-  ASSERT_TRUE(variables[0].variablesReference != 0);
+  ASSERT_VARIABLE_REFERENCE_NOT_ZERO(variables[0], "Foo", "", "collection");
 
   return true;
 }
