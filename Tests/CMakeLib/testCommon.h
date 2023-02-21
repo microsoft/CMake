@@ -1,5 +1,6 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
+#pragma once
 
 #include <iostream>
 #include <vector>
@@ -25,5 +26,4 @@ inline int runTests(std::vector<std::function<bool()>> const& tests)
   return 0;
 }
 
-#define BOOL_STRING(b) \
-  ((b) ? "TRUE" : "FALSE")
+#define BOOL_STRING(b) ((b) ? "TRUE" : "FALSE")

@@ -17,6 +17,7 @@
 #include "cmStringAlgorithms.h"
 #include "cmTarget.h"
 #include "cmTest.h"
+#include "cmake.h"
 
 namespace cmDebugger {
 
@@ -36,6 +37,7 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::Create(
   return std::make_shared<cmDebuggerVariables>(
     variablesManager, name, supportsVariableType, [=]() {
       std::vector<cmDebuggerVariableEntry> ret;
+      ret.reserve(cmPolicies::CMPCOUNT);
       for (int i = 0; i < cmPolicies::CMPCOUNT; ++i) {
         if (policyMap.IsDefined(static_cast<cmPolicies::PolicyID>(i))) {
           auto status = policyMap.Get(static_cast<cmPolicies::PolicyID>(i));
@@ -60,6 +62,7 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::CreateIfAny(
   auto listVariables = std::make_shared<cmDebuggerVariables>(
     variablesManager, name, supportsVariableType, [=]() {
       std::vector<cmDebuggerVariableEntry> ret;
+      ret.reserve(list.size());
       for (auto const& kv : list) {
         ret.emplace_back(kv.first, kv.second);
       }
@@ -86,6 +89,7 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::CreateIfAny(
       variablesManager, entry.Value, supportsVariableType, [=]() {
         std::vector<std::string> items = cmExpandedList(entry.Value);
         std::vector<cmDebuggerVariableEntry> ret;
+        ret.reserve(items.size());
         int i = 0;
         for (std::string const& item : items) {
           ret.emplace_back("[" + std::to_string(i++) + "]", item);
@@ -112,6 +116,7 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::CreateIfAny(
   auto arrayVariables = std::make_shared<cmDebuggerVariables>(
     variablesManager, name, supportsVariableType, [=]() {
       std::vector<cmDebuggerVariableEntry> ret;
+      ret.reserve(values.size());
       int i = 0;
       for (std::string const& value : values) {
         ret.emplace_back("[" + std::to_string(i++) + "]", value);
@@ -135,6 +140,7 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::CreateIfAny(
   auto arrayVariables = std::make_shared<cmDebuggerVariables>(
     variablesManager, name, supportsVariableType, [=]() {
       std::vector<cmDebuggerVariableEntry> ret;
+      ret.reserve(values.size());
       int i = 0;
       for (std::string const& value : values) {
         ret.emplace_back("[" + std::to_string(i++) + "]", value);
@@ -159,6 +165,7 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::CreateIfAny(
   auto variables = std::make_shared<cmDebuggerVariables>(
     variablesManager, name, supportsVariableType, [=]() {
       std::vector<cmDebuggerVariableEntry> ret;
+      ret.reserve(list.size());
       int i = 0;
       for (auto const& item : list) {
         ret.emplace_back("[" + std::to_string(i++) + "]", item.Value);
@@ -336,6 +343,7 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::CreateIfAny(
 
     std::vector<cmFileSet*> allFileSets;
     auto allFileSetNames = target->GetAllFileSetNames();
+    allFileSets.reserve(allFileSetNames.size());
     for (auto const& name : allFileSetNames) {
       allFileSets.emplace_back(target->GetFileSet(name));
     }
@@ -344,6 +352,7 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::CreateIfAny(
 
     std::vector<cmFileSet*> allInterfaceFileSets;
     auto allInterfaceFileSetNames = target->GetAllInterfaceFileSets();
+    allInterfaceFileSets.reserve(allInterfaceFileSetNames.size());
     for (auto const& name : allInterfaceFileSetNames) {
       allInterfaceFileSets.emplace_back(target->GetFileSet(name));
     }
@@ -370,18 +379,51 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::Create(
                                                      frame->GetLine() } };
     });
 
-  auto cacheVariables = std::make_shared<cmDebuggerVariables>(
-    variablesManager, "CacheVariables", supportsVariableType, [=]() {
+  auto locals = std::make_shared<cmDebuggerVariables>(
+    variablesManager, "Locals", supportsVariableType, [=]() {
       std::vector<cmDebuggerVariableEntry> ret;
       auto keys = frame->GetMakefile()->GetStateSnapshot().ClosureKeys();
+      ret.reserve(keys.size());
       for (auto const& key : keys) {
         ret.emplace_back(
           key, frame->GetMakefile()->GetStateSnapshot().GetDefinition(key));
       }
       return ret;
     });
-  cacheVariables->SetValue(std::to_string(
+  locals->SetValue(std::to_string(
     frame->GetMakefile()->GetStateSnapshot().ClosureKeys().size()));
+  variables->AddSubVariables(locals);
+
+  auto cacheVariables = std::make_shared<cmDebuggerVariables>(
+    variablesManager, "CacheVariables", supportsVariableType);
+  auto state = frame->GetMakefile()->GetCMakeInstance()->GetState();
+  auto keys = state->GetCacheEntryKeys();
+  for (auto const& key : keys) {
+    auto entry = std::make_shared<cmDebuggerVariables>(
+      variablesManager,
+      key + ":" +
+        cmState::CacheEntryTypeToString(state->GetCacheEntryType(key)),
+      supportsVariableType, [=]() {
+        std::vector<cmDebuggerVariableEntry> ret;
+        auto properties = state->GetCacheEntryPropertyList(key);
+        ret.reserve(properties.size() + 2);
+        for (auto const& propertyName : properties) {
+          ret.emplace_back(propertyName,
+                           state->GetCacheEntryProperty(key, propertyName));
+        }
+
+        ret.emplace_back(
+          "TYPE",
+          cmState::CacheEntryTypeToString(state->GetCacheEntryType(key)));
+        ret.emplace_back("VALUE", state->GetCacheEntryValue(key));
+        return ret;
+      });
+
+    entry->SetValue(state->GetCacheEntryValue(key));
+    cacheVariables->AddSubVariables(entry);
+  }
+
+  cacheVariables->SetValue(std::to_string(keys.size()));
   variables->AddSubVariables(cacheVariables);
 
   auto targetVariables =
