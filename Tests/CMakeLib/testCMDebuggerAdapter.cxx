@@ -1,6 +1,7 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
 
+#include <chrono>
 #include <future>
 #include <iostream>
 #include <string>
@@ -56,6 +57,11 @@ bool testBasicProtocol()
     debuggerAdapterInitializedPromise.set_value(true);
 
     debuggerAdapter->ReportExitCode(0);
+
+    // Give disconnectResponse some time to be received before
+    // destructing debuggerAdapter.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
     return 0;
   });
 

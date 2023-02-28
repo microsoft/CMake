@@ -42,6 +42,7 @@ class cmDebuggerBreakpointManager
   dap::SetBreakpointsResponse HandleSetBreakpointsRequest(
     dap::SetBreakpointsRequest const& request);
   int64_t FindFunctionStartLine(std::string const& sourcePath, int64_t line);
+  int64_t CalibrateBreakpointLine(std::string const& sourcePath, int64_t line);
 
 public:
   cmDebuggerBreakpointManager(dap::Session* dapSession);
@@ -50,7 +51,6 @@ public:
   std::vector<int64_t> GetBreakpoints(std::string const& sourcePath,
                                       int64_t line);
   void ClearAll();
-  int64_t GetLoadedFileNumber();
 };
 
 } // namespace cmDebugger
