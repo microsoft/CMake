@@ -2,6 +2,14 @@
    file Copyright.txt or https://cmake.org/licensing for details.  */
 #pragma once
 
+#include <memory>
+#include <vector>
+
+#include "cmDebuggerAdapter.h"
+#include "cmDebuggerProtocol.h"
+#include "cmListFileCache.h"
+#include "cmMessenger.h"
+
 #include "testCommon.h"
 
 #define ASSERT_VARIABLE(x, expectedName, expectedValue, expectedType)         \
@@ -28,3 +36,42 @@
     ASSERT_VARIABLE(x, expectedName, expectedValue, expectedType);            \
     ASSERT_TRUE(x.variablesReference != 0);                                   \
   } while (false)
+
+#define ASSERT_BREAKPOINT(x, expectedId, expectedLine, sourcePath,            \
+                          isVerified)                                         \
+  do {                                                                        \
+    ASSERT_TRUE(x.id.has_value());                                            \
+    ASSERT_TRUE(x.id.value() == expectedId);                                  \
+    ASSERT_TRUE(x.line.has_value());                                          \
+    ASSERT_TRUE(x.line.value() == expectedLine);                              \
+    ASSERT_TRUE(x.source.has_value());                                        \
+    ASSERT_TRUE(x.source.value().path.has_value());                           \
+    ASSERT_TRUE(x.source.value().path.value() == sourcePath);                 \
+    ASSERT_TRUE(x.verified == isVerified);                                    \
+  } while (false)
+
+class DebuggerTestHelper
+{
+  std::shared_ptr<dap::ReaderWriter> Client2Debugger = dap::pipe();
+  std::shared_ptr<dap::ReaderWriter> Debugger2Client = dap::pipe();
+
+public:
+  std::unique_ptr<dap::Session> Client = dap::Session::create();
+  std::unique_ptr<dap::Session> Debugger = dap::Session::create();
+  void bind()
+  {
+    auto client2server = dap::pipe();
+    auto server2client = dap::pipe();
+    Client->bind(server2client, client2server);
+    Debugger->bind(client2server, server2client);
+  }
+  std::vector<cmListFileFunction> CreateListFileFunctions(const char* str,
+                                                          const char* filename)
+  {
+    cmMessenger messenger;
+    cmListFileBacktrace backtrace;
+    cmListFile listfile;
+    listfile.ParseString(str, filename, &messenger, backtrace);
+    return listfile.Functions;
+  }
+};

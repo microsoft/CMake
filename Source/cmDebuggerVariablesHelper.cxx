@@ -379,20 +379,43 @@ std::shared_ptr<cmDebuggerVariables> cmDebuggerVariablesHelper::Create(
                                                      frame->GetLine() } };
     });
 
+  auto closureKeys = frame->GetMakefile()->GetStateSnapshot().ClosureKeys();
   auto locals = std::make_shared<cmDebuggerVariables>(
     variablesManager, "Locals", supportsVariableType, [=]() {
       std::vector<cmDebuggerVariableEntry> ret;
-      auto keys = frame->GetMakefile()->GetStateSnapshot().ClosureKeys();
-      ret.reserve(keys.size());
-      for (auto const& key : keys) {
+      ret.reserve(closureKeys.size());
+      for (auto const& key : closureKeys) {
         ret.emplace_back(
           key, frame->GetMakefile()->GetStateSnapshot().GetDefinition(key));
       }
       return ret;
     });
-  locals->SetValue(std::to_string(
-    frame->GetMakefile()->GetStateSnapshot().ClosureKeys().size()));
+  locals->SetValue(std::to_string(closureKeys.size()));
   variables->AddSubVariables(locals);
+
+  std::function<bool(std::string const&)> isDirectory =
+    [](std::string const& key) {
+      size_t pos1 = key.rfind("_DIR");
+      size_t pos2 = key.rfind("_DIRECTORY");
+      return !((pos1 == std::string::npos || pos1 != key.size() - 4) &&
+               (pos2 == std::string::npos || pos2 != key.size() - 10));
+    };
+  auto directorySize =
+    std::count_if(closureKeys.begin(), closureKeys.end(), isDirectory);
+  auto directories = std::make_shared<cmDebuggerVariables>(
+    variablesManager, "Directories", supportsVariableType, [=]() {
+      std::vector<cmDebuggerVariableEntry> ret;
+      ret.reserve(directorySize);
+      for (auto const& key : closureKeys) {
+        if (isDirectory(key)) {
+          ret.emplace_back(
+            key, frame->GetMakefile()->GetStateSnapshot().GetDefinition(key));
+        }
+      }
+      return ret;
+    });
+  directories->SetValue(std::to_string(directorySize));
+  variables->AddSubVariables(directories);
 
   auto cacheVariables = std::make_shared<cmDebuggerVariables>(
     variablesManager, "CacheVariables", supportsVariableType);

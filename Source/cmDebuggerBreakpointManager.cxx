@@ -34,6 +34,30 @@ int64_t cmDebuggerBreakpointManager::FindFunctionStartLine(
   return 0;
 }
 
+int64_t cmDebuggerBreakpointManager::CalibrateBreakpointLine(
+  std::string const& sourcePath,
+    int64_t line)
+{
+  auto location =
+    find_if(ListFileFunctionLines[sourcePath].begin(),
+            ListFileFunctionLines[sourcePath].end(),
+            [=](cmDebuggerFunctionLocation const& location) {
+              return location.StartLine >= line;
+            });
+
+  if (location != ListFileFunctionLines[sourcePath].end()) {
+    return location->StartLine;
+  }
+
+  if (ListFileFunctionLines[sourcePath].size() > 0 &&
+      ListFileFunctionLines[sourcePath].back().EndLine <= line) {
+    // return last function start line for any breakpoints after.
+    return ListFileFunctionLines[sourcePath].back().StartLine;
+  }
+
+  return 0;
+}
+
 dap::SetBreakpointsResponse
 cmDebuggerBreakpointManager::HandleSetBreakpointsRequest(
   dap::SetBreakpointsRequest const& request)
@@ -44,7 +68,7 @@ cmDebuggerBreakpointManager::HandleSetBreakpointsRequest(
 
   auto sourcePath =
     cmSystemTools::GetActualCaseForPath(request.source.path.value());
-  auto breakpoints = request.breakpoints.value({});
+  auto& breakpoints = request.breakpoints.value({});
   if (ListFileFunctionLines.find(sourcePath) != ListFileFunctionLines.end()) {
     // The file has loaded, we can validate breakpoints.
     if (Breakpoints.find(sourcePath) != Breakpoints.end()) {
@@ -53,7 +77,7 @@ cmDebuggerBreakpointManager::HandleSetBreakpointsRequest(
     response.breakpoints.resize(breakpoints.size());
     for (size_t i = 0; i < breakpoints.size(); i++) {
       int64_t correctedLine =
-        FindFunctionStartLine(sourcePath, breakpoints[i].line);
+        CalibrateBreakpointLine(sourcePath, breakpoints[i].line);
       if (correctedLine > 0) {
         Breakpoints[sourcePath].emplace_back(NextBreakpointId++,
                                              correctedLine);
@@ -115,8 +139,11 @@ void cmDebuggerBreakpointManager::SourceFileLoaded(
     dap::BreakpointEvent breakpointEvent;
     breakpointEvent.breakpoint.id = Breakpoints[sourcePath][i].GetId();
     breakpointEvent.breakpoint.line = Breakpoints[sourcePath][i].GetLine();
-    int64_t correctedLine =
-      FindFunctionStartLine(sourcePath, Breakpoints[sourcePath][i].GetLine());
+    auto source = dap::Source();
+    source.path = sourcePath;
+    breakpointEvent.breakpoint.source = source;
+    int64_t correctedLine = CalibrateBreakpointLine(
+      sourcePath, Breakpoints[sourcePath][i].GetLine());
     if (correctedLine != Breakpoints[sourcePath][i].GetLine()) {
       Breakpoints[sourcePath][i].ChangeLine(correctedLine);
     }
@@ -158,12 +185,6 @@ void cmDebuggerBreakpointManager::ClearAll()
 {
   std::unique_lock<std::mutex> lock(Mutex);
   Breakpoints.clear();
-}
-
-int64_t cmDebuggerBreakpointManager::GetLoadedFileNumber()
-{
-  std::unique_lock<std::mutex> lock(Mutex);
-  return ListFileFunctionLines.size() + ListFilePendingValidations.size();
 }
 
 } // namespace cmDebugger

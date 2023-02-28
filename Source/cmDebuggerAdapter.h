@@ -44,6 +44,8 @@ public:
   void BeginFunction(cmMakefile* mf, std::string const& sourcePath,
                      cmListFileFunction const& lff);
   void EndFunction();
+  void BeginFileParse(cmMakefile* mf, std::string const& sourcePath);
+  void EndFileParse();
 
   void CheckException(MessageType t, std::string const& text);
 

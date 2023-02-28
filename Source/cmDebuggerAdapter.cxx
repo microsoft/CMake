@@ -375,6 +375,24 @@ void cmDebuggerAdapter::EndFunction()
   DefaultThread->PopStackFrame();
 }
 
+static std::shared_ptr<cmListFileFunction> listFileFunction;
+
+void cmDebuggerAdapter::BeginFileParse(cmMakefile* mf,
+                                       std::string const& sourcePath)
+{
+  std::unique_lock<std::mutex> lock(Mutex);
+
+  listFileFunction = std::make_shared<cmListFileFunction>(
+    sourcePath, 0, 0, std::vector<cmListFileArgument>());
+  DefaultThread->PushStackFrame(mf, sourcePath, *listFileFunction);
+}
+
+void cmDebuggerAdapter::EndFileParse()
+{
+  DefaultThread->PopStackFrame();
+  listFileFunction = nullptr;
+}
+
 void cmDebuggerAdapter::CheckException(MessageType t, std::string const& text)
 {
   std::optional<dap::StoppedEvent> stoppedEvent =

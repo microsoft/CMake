@@ -31,6 +31,7 @@ set(CMakeLib_TESTS
   testCMExtAlgorithm.cxx
   testCMExtEnumSet.cxx
   testCMDebuggerAdapter.cxx
+  testCMDebuggerBreakpointManager.cxx
   testCMDebuggerVariables.cxx
   testCMDebuggerVariablesHelper.cxx
   testCMDebuggerVariablesManager.cxx

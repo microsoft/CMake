@@ -413,12 +413,13 @@ static bool testCreateFromStackFrame()
     variablesManager->HandleVariablesRequest(
       CreateVariablesRequest(locals->GetId()));
 
-  ASSERT_TRUE(variables.size() == 4);
+  ASSERT_TRUE(variables.size() == 5);
   ASSERT_VARIABLE(variables[0], "CacheVariables", "1", "collection");
   ASSERT_VARIABLE(variables[1], "CurrentLine", std::to_string(lff.Line()),
                   "int");
-  ASSERT_VARIABLE(variables[2], "Locals", "2", "collection");
-  ASSERT_VARIABLE(variables[3], "Targets", "1", "collection");
+  ASSERT_VARIABLE(variables[2], "Directories", "2", "collection");
+  ASSERT_VARIABLE(variables[3], "Locals", "2", "collection");
+  ASSERT_VARIABLE(variables[4], "Targets", "1", "collection");
 
   dap::array<dap::Variable> cacheVariables =
     variablesManager->HandleVariablesRequest(
@@ -426,6 +427,19 @@ static bool testCreateFromStackFrame()
   ASSERT_TRUE(cacheVariables.size() == 1);
   ASSERT_VARIABLE(cacheVariables[0], "CMAKE_BUILD_TYPE:STRING", "Debug",
                   "collection");
+
+  dap::array<dap::Variable> directoriesVariables =
+    variablesManager->HandleVariablesRequest(
+      CreateVariablesRequest(variables[2].variablesReference));
+  ASSERT_TRUE(directoriesVariables.size() == 2);
+  ASSERT_VARIABLE(
+    directoriesVariables[0], "CMAKE_CURRENT_BINARY_DIR",
+    dummies.Makefile->GetStateSnapshot().GetDirectory().GetCurrentBinary(),
+    "string");
+  ASSERT_VARIABLE(
+    directoriesVariables[1], "CMAKE_CURRENT_SOURCE_DIR",
+    dummies.Makefile->GetStateSnapshot().GetDirectory().GetCurrentSource(),
+    "string");
 
   dap::array<dap::Variable> propertiesVariables =
     variablesManager->HandleVariablesRequest(
