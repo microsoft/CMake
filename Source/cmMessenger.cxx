@@ -16,6 +16,8 @@
 
 #include "cmsys/Terminal.h"
 
+#include "cmDebuggerAdapter.h"
+
 MessageType cmMessenger::ConvertMessageType(MessageType t) const
 {
   bool warningsAsErrors;
@@ -220,6 +222,10 @@ void cmMessenger::DisplayMessage(MessageType t, const std::string& text,
   PrintCallStack(msg, backtrace, this->TopSource);
 
   displayMessage(t, msg);
+
+  if (DebuggerAdapter != nullptr) {
+    DebuggerAdapter->OnMessageOutput(t, msg.str());
+  }
 }
 
 void cmMessenger::PrintBacktraceTitle(std::ostream& out,

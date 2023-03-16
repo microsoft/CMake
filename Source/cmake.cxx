@@ -38,6 +38,8 @@
 #include "cmCMakePresetsGraph.h"
 #include "cmCommandLineArgument.h"
 #include "cmCommands.h"
+#include "cmDebuggerAdapter.h"
+#include "cmDebuggerAdapterFactory.h"
 #include "cmDocumentation.h"
 #include "cmDocumentationEntry.h"
 #include "cmDuration.h"
@@ -1216,7 +1218,31 @@ void cmake::SetArgs(const std::vector<std::string>& args)
                      "CMAKE_COMPILE_WARNING_AS_ERROR variable.\n";
         state->SetIgnoreWarningAsError(true);
         return true;
-      } }
+      } },
+#if defined(_WIN32)
+    CommandArgument{ "--debugger", CommandArgument::Values::Zero,
+                     [](std::string const&, cmake* state) -> bool {
+                       std::cout << "Running with debugger on.\n";
+                       state->SetDebuggerOn(true);
+                       return true;
+                     } },
+    CommandArgument{ "--debugger-pipe",
+                     "No path specified for --debugger-pipe",
+                     CommandArgument::Values::One,
+                     [](std::string const& value, cmake* state) -> bool {
+                       state->DebuggerPipe = value;
+                       return true;
+                     } },
+    CommandArgument{
+      "--debugger-dap-log", "No file specified for --debugger-dap-log",
+      CommandArgument::Values::One,
+      [](std::string const& value, cmake* state) -> bool {
+        std::string path = cmSystemTools::CollapseFullPath(value);
+        cmSystemTools::ConvertToUnixSlashes(path);
+        state->DebuggerDapLogFile = path;
+        return true;
+      } },
+#endif
   };
 
 #if defined(CMAKE_HAVE_VS_GENERATORS)
@@ -2583,6 +2609,35 @@ void cmake::PreLoadCMakeFiles()
   }
 }
 
+bool cmake::StartDebuggerIfEnabled()
+{
+  if (!this->GetDebuggerOn()) {
+    return true;
+  }
+
+  if (DebugAdapter == nullptr) {
+    DebugAdapter = cmDebugger::cmDebuggerAdapterFactory::CreateAdapter(
+      this->GetDebuggerPipe(), this->GetDebuggerDapLogFile());
+    if (DebugAdapter == nullptr) {
+      std::cerr << "Error: Failed to create debugger adapter!" << std::endl;
+      return false;
+    }
+    Messenger->SetDebuggerAdapter(DebugAdapter);
+  }
+
+  return true;
+}
+
+void cmake::StopDebuggerIfNeeded(int exitCode)
+{
+  if (!this->GetDebuggerOn()) {
+    return;
+  }
+
+  DebugAdapter->ReportExitCode(exitCode);
+  DebugAdapter.reset();
+}
+
 // handle a command line invocation
 int cmake::Run(const std::vector<std::string>& args, bool noconfigure)
 {
@@ -2670,6 +2725,10 @@ int cmake::Run(const std::vector<std::string>& args, bool noconfigure)
   // Check the state of the build system to see if we need to regenerate.
   if (!this->CheckBuildSystem()) {
     return 0;
+  }
+
+  if (!this->StartDebuggerIfEnabled()) {
+      return -1;
   }
 
   int ret = this->Configure();

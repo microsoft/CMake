@@ -169,6 +169,30 @@ add_library(
   cmCustomCommandTypes.h
   cmCxxModuleMapper.cxx
   cmCxxModuleMapper.h
+  cmDebuggerAdapter.cxx
+  cmDebuggerAdapter.h
+  cmDebuggerBreakpointManager.cxx
+  cmDebuggerBreakpointManager.h
+  cmDebuggerExceptionManager.cxx
+  cmDebuggerExceptionManager.h
+  cmDebuggerAdapterFactory.cxx
+  cmDebuggerAdapterFactory.h
+  cmDebuggerProtocol.cxx
+  cmDebuggerProtocol.h
+  cmDebuggerSourceBreakpoint.cxx
+  cmDebuggerSourceBreakpoint.h
+  cmDebuggerStackFrame.cxx
+  cmDebuggerStackFrame.h
+  cmDebuggerThread.cxx
+  cmDebuggerThread.h
+  cmDebuggerThreadManager.cxx
+  cmDebuggerThreadManager.h
+  cmDebuggerVariables.cxx
+  cmDebuggerVariables.h
+  cmDebuggerVariablesHelper.cxx
+  cmDebuggerVariablesHelper.h
+  cmDebuggerVariablesManager.cxx
+  cmDebuggerVariablesManager.h
   cmDefinitions.cxx
   cmDefinitions.h
   cmDependencyProvider.h
@@ -730,6 +754,16 @@ add_library(
 
   bindexplib.cxx
   )
+
+if(WIN32)
+  # Use the Windows implementation.
+  target_sources(
+    CMakeLib
+    PRIVATE
+      cmDebuggerNamedPipeWin32.cxx
+    )
+endif()
+
 target_include_directories(
   CMakeLib
   PUBLIC
@@ -742,6 +776,7 @@ target_include_directories(
 target_link_libraries(
   CMakeLib
   PUBLIC
+    cppdap::cppdap
     cmstd
     cmsys
     CURL::libcurl
@@ -751,6 +786,7 @@ target_link_libraries(
     LibArchive::LibArchive
     LibRHash::LibRHash
     LibUV::LibUV
+    nlohmann_json::nlohmann_json
     Threads::Threads
     ZLIB::ZLIB
   )

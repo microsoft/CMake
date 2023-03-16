@@ -25,6 +25,7 @@
 #include "cmProcessOutput.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
+#include "cmake.h"
 
 namespace {
 bool cmExecuteProcessCommandIsWhitespace(char c)
@@ -145,6 +146,14 @@ bool cmExecuteProcessCommand(std::vector<std::string> const& args,
   std::unique_ptr<cmsysProcess, void (*)(cmsysProcess*)> cp_ptr(
     cmsysProcess_New(), cmsysProcess_Delete);
   cmsysProcess* cp = cp_ptr.get();
+
+  if (status.GetMakefile().GetCMakeInstance()->GetDebuggerOn() &&
+      status.GetMakefile().GetCMakeInstance()->GetDebuggerPipe().empty()) {
+    // If no named pipe is provided in debugger mode, stdin and stdout are
+    // used instead for DAP traffics. To not block child processes from
+    // completing, we will pass no stdin as a workaround.
+    cmsysProcess_SetPipeShared(cp, cmsysProcess_Pipe_STDIN, 0);
+  }
 
   // Set the command sequence.
   for (std::vector<std::string> const& cmd : arguments.Commands) {

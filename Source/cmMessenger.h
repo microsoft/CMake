@@ -12,6 +12,10 @@
 #include "cmListFileCache.h"
 #include "cmMessageType.h"
 
+namespace cmDebugger {
+class cmDebuggerAdapter;
+}
+
 class cmMessenger
 {
 public:
@@ -56,6 +60,12 @@ public:
   void PrintBacktraceTitle(std::ostream& out,
                            cmListFileBacktrace const& bt) const;
 
+  void SetDebuggerAdapter(
+    std::shared_ptr<cmDebugger::cmDebuggerAdapter> const& debuggerAdapter)
+  {
+    DebuggerAdapter = debuggerAdapter;
+  }
+
 private:
   bool IsMessageTypeVisible(MessageType t) const;
   MessageType ConvertMessageType(MessageType t) const;
@@ -66,4 +76,5 @@ private:
   bool SuppressDeprecatedWarnings = false;
   bool DevWarningsAsErrors = false;
   bool DeprecatedWarningsAsErrors = false;
+  std::shared_ptr<cmDebugger::cmDebuggerAdapter> DebuggerAdapter;
 };

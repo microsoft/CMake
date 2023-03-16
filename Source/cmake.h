@@ -37,6 +37,9 @@
 #endif
 
 class cmConfigureLog;
+namespace cmDebugger {
+class cmDebuggerAdapter;
+}
 class cmExternalMakefileProjectGeneratorFactory;
 class cmFileAPI;
 class cmFileTimeCache;
@@ -665,6 +668,21 @@ public:
   }
 #endif
 
+  bool GetDebuggerOn() const { return this->DebuggerOn; }
+  std::string GetDebuggerPipe() const { return this->DebuggerPipe; }
+  std::string GetDebuggerDapLogFile() const
+  {
+    return this->DebuggerDapLogFile;
+  }
+  void SetDebuggerOn(bool b) { this->DebuggerOn = b; }
+  bool StartDebuggerIfEnabled();
+  void StopDebuggerIfNeeded(int exitCode);
+  std::shared_ptr<cmDebugger::cmDebuggerAdapter> GetDebugAdapter()
+    const noexcept
+  {
+    return this->DebugAdapter;
+  }
+
 protected:
   void RunCheckForUnusedVariables();
   int HandleDeleteCacheVariables(const std::string& var);
@@ -804,6 +822,11 @@ private:
 #if !defined(CMAKE_BOOTSTRAP)
   std::unique_ptr<cmMakefileProfilingData> ProfilingOutput;
 #endif
+
+  std::shared_ptr<cmDebugger::cmDebuggerAdapter> DebugAdapter;
+  bool DebuggerOn = false;
+  std::string DebuggerPipe;
+  std::string DebuggerDapLogFile;
 
 public:
   static cmDocumentationEntry CMAKE_STANDARD_OPTIONS_TABLE[18];

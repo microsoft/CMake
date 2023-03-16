@@ -11,12 +11,14 @@
 #include "cmProcessOutput.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
+#include "cmake.h"
 
 using Encoding = cmProcessOutput::Encoding;
 
 namespace {
 bool RunCommand(std::string command, std::string& output, int& retVal,
-                const char* directory = nullptr, bool verbose = true,
+                cmExecutionStatus& status, const char* directory = nullptr,
+                bool verbose = true,
                 Encoding encoding = cmProcessOutput::Auto);
 }
 
@@ -90,9 +92,10 @@ bool cmExecProgramCommand(std::vector<std::string> const& args,
   bool result = true;
   if (args.size() - count == 2) {
     cmSystemTools::MakeDirectory(args[1]);
-    result = RunCommand(command, output, retVal, args[1].c_str(), verbose);
+    result =
+      RunCommand(command, output, retVal, status, args[1].c_str(), verbose);
   } else {
-    result = RunCommand(command, output, retVal, nullptr, verbose);
+    result = RunCommand(command, output, retVal, status, nullptr, verbose);
   }
   if (!result) {
     retVal = -1;
@@ -123,7 +126,8 @@ bool cmExecProgramCommand(std::vector<std::string> const& args,
 
 namespace {
 bool RunCommand(std::string command, std::string& output, int& retVal,
-                const char* dir, bool verbose, Encoding encoding)
+                cmExecutionStatus& status, const char* dir, bool verbose,
+                Encoding encoding)
 {
   if (cmSystemTools::GetRunCommandOutput()) {
     verbose = false;
@@ -178,6 +182,14 @@ bool RunCommand(std::string command, std::string& output, int& retVal,
   if (!cp) {
     cmSystemTools::Error("Error allocating process instance.");
     return false;
+  }
+
+  if (status.GetMakefile().GetCMakeInstance()->GetDebuggerOn() &&
+      status.GetMakefile().GetCMakeInstance()->GetDebuggerPipe().empty()) {
+    // If no named pipe is provided in debugger mode, stdin and stdout are
+    // used instead for DAP traffics. To not block child processes from
+    // completing, we will pass no stdin as a workaround.
+    cmsysProcess_SetPipeShared(cp, cmsysProcess_Pipe_STDIN, 0);
   }
 
 #if defined(_WIN32) && !defined(__CYGWIN__)

@@ -3634,4 +3634,8 @@ if(BUILD_TESTING)
       COMMENT "Removing test build directories."
       )
   endif()
+
+  if(WIN32)
+    add_subdirectory(Debugger)
+  endif()
 endif()

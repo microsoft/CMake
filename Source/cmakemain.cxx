@@ -391,8 +391,10 @@ int do_cmake(int ac, char const* const* av)
   // Always return a non-negative value.  Windows tools do not always
   // interpret negative return values as errors.
   if (res != 0) {
+    cm.StopDebuggerIfNeeded(1);
     return 1;
   }
+  cm.StopDebuggerIfNeeded(0);
   return 0;
 }
 
