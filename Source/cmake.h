@@ -780,12 +780,13 @@ private:
 
 public:
   bool GetDebuggerOn() const { return this->DebuggerOn; }
+  std::string GetDebuggerPipe() const { return this->DebuggerPipe; }
   std::string GetDebuggerDapLogFile() const
   {
     return this->DebuggerDapLogFile;
   }
   void SetDebuggerOn(bool b) { this->DebuggerOn = b; }
-  void StartDebuggerIfEnabled();
+  bool StartDebuggerIfEnabled();
   void StopDebuggerIfNeeded(int exitCode);
   std::shared_ptr<cmDebugger::cmDebuggerAdapter> GetDebugAdapter()
     const noexcept
@@ -796,6 +797,7 @@ public:
 private:
   std::shared_ptr<cmDebugger::cmDebuggerAdapter> DebugAdapter;
   bool DebuggerOn = false;
+  std::string DebuggerPipe;
   std::string DebuggerDapLogFile;
 };
 

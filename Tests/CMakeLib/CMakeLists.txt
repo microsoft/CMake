@@ -40,6 +40,10 @@ if (CMake_TEST_FILESYSTEM_PATH OR NOT CMake_HAVE_CXX_FILESYSTEM)
   list(APPEND CMakeLib_TESTS testCMFilesystemPath.cxx)
 endif()
 
+if(WIN32)
+  list(APPEND CMakeLib_TESTS testCMDebuggerAdapterFactory.cxx)
+endif()
+
 add_executable(testUVProcessChainHelper testUVProcessChainHelper.cxx)
 
 set(testRST_ARGS ${CMAKE_CURRENT_SOURCE_DIR})

@@ -6,12 +6,12 @@
 
 #include "cmsys/Process.h"
 
-#include "cmake.h"
 #include "cmExecutionStatus.h"
 #include "cmMakefile.h"
 #include "cmProcessOutput.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
+#include "cmake.h"
 
 using Encoding = cmProcessOutput::Encoding;
 
@@ -184,15 +184,11 @@ bool RunCommand(std::string command, std::string& output, int& retVal,
     return false;
   }
 
-    if (status.GetMakefile().GetCMakeInstance()->GetDebuggerOn()) {
-    // In debugger mode, we use stdin and stdout to communicate with IDE,
-    // the cppdap thread would fget stdin as fast as it can.
-    // Most of the time, fget would be blocked, which seems to be blocking
-    // child processes that have shared stdin from completing until some
-    // data coming from the IDE and unblock fget, then the child process
-    // can complete.
-    //
-    // As a workaround until I discuss with Kitware, we will pass no stdin.
+  if (status.GetMakefile().GetCMakeInstance()->GetDebuggerOn() &&
+      status.GetMakefile().GetCMakeInstance()->GetDebuggerPipe().empty()) {
+    // If no named pipe is provided in debugger mode, stdin and stdout are
+    // used instead for DAP traffics. To not block child processes from
+    // completing, we will pass no stdin as a workaround.
     cmsysProcess_SetPipeShared(cp, cmsysProcess_Pipe_STDIN, 0);
   }
 
