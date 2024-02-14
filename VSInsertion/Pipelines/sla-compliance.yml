@@ -49,6 +49,8 @@ variables:
   value: $(Build.ArtifactStagingDirectory)/VSInsertion/Signing
 - name: SymbolsDirectory
   value: $(Build.ArtifactStagingDirectory)/symbols
+- name: TeamName
+  value: C++ Developer Experience - CMake
 
 extends:
   template: azure-pipelines/MicroBuild.1ES.Official.yml@MicroBuildTemplate
@@ -64,6 +66,7 @@ extends:
         enabled: true
       prefast:
         enabled: true
+        publishXML: true
         userProvideBuildInfo: auto
         setupCommandlinePicker: vs2022
     customBuildTags:
@@ -75,6 +78,12 @@ extends:
         displayName: CMake x64 Build and Test
         timeoutInMinutes: 360
         cancelTimeoutInMinutes: 1
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            displayName: CacheGenerationInstall
+            targetPath: $(CMakeInstallDirectory)
+            artifactName: CMakeInstall
         steps:
         - checkout: self
           clean: true
