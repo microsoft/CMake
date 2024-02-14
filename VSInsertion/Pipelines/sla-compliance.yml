@@ -62,6 +62,10 @@ extends:
         enabled: true
       tsa:
         enabled: true
+      prefast:
+        enabled: true
+        userProvideBuildInfo: auto
+        setupCommandlinePicker: vs2022
     customBuildTags:
     - ES365AIMigrationTooling
     stages:
