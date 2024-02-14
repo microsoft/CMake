@@ -120,31 +120,3 @@ extends:
             configuration: $(BuildConfiguration)
             createLogFile: true
             logFileVerbosity: diagnostic
-        - task: PowerShell@2
-          displayName: Generate TSA config
-          inputs:
-            targetType: inline
-            script: |
-              $configName = "config.gdntsa"
-              $config = @"
-              {
-                  "tsaVersion": "TsaV2",
-                  "tsaStamp": "DevDiv",
-                  "tsaEnvironment": "PROD",
-                  "codebase": "NewOrUpdate",
-                  "codebaseName": "MicrosoftCMake_cmake-daemon",
-                  "notificationAliases": [
-                      "cmake@microsoft.com"
-                  ],
-                  "codebaseAdmins": [
-                      "NORTHAMERICA\\itodirel"
-                  ],
-                  "instanceUrl": "https://devdiv.visualstudio.com",
-                  "projectName": "DevDiv",
-                  "areaPath": "DevDiv\\Cpp Developer Experience\\Cross Platform\\CMake\\Upstream",
-                  "iterationPath": "DevDiv\\Future Backlog",
-                  "allTools": true,
-                  "repositoryName": "MicrosoftCMake_cmake-daemon"
-              }
-              "@
-              Out-File -FilePath "$(Agent.BuildDirectory)/$configName" -InputObject $config

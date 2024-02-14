@@ -1,0 +1,19 @@
+{
+    "tsaVersion": "TsaV2",
+    "tsaStamp": "DevDiv",
+    "tsaEnvironment": "PROD",
+    "codebase": "NewOrUpdate",
+    "codebaseName": "MicrosoftCMake_cmake-daemon",
+    "notificationAliases": [
+        "cmaketools@microsoft.com"
+    ],
+    "codebaseAdmins": [
+        "NORTHAMERICA\\itodirel"
+    ],
+    "instanceUrl": "https://devdiv.visualstudio.com",
+    "projectName": "DevDiv",
+    "areaPath": "DevDiv\\Cpp Developer Experience\\Cross Platform\\CMake\\Upstream",
+    "iterationPath": "DevDiv\\Future Backlog",
+    "allTools": true,
+    "repositoryName": "MicrosoftCMake_cmake-daemon"
+}
