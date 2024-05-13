@@ -138,14 +138,14 @@ extends:
         #     configuration: '$(BuildConfiguration)'
         #     createLogFile: true
         #     logFileVerbosity: diagnostic
-        # - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@3
-        #   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        #   env:
-        #     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-        #   inputs:
-        #     publishXML: true
-        #     userProvideBuildInfo: auto
-        #     setupCommandlinePicker: vs2022
+        - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@3
+          displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+          env:
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          inputs:
+            publishXML: true
+            userProvideBuildInfo: auto
+            setupCommandlinePicker: vs2022
         - task: CmdLine@1
           name: CmdLine3
           condition: eq(variables.RunTests, 'true')
