@@ -3170,6 +3170,7 @@ void cmVisualStudio10TargetGenerator::WritePathAndIncrementalLinkOptions(
             *commandArguments, this->LocalGenerator, config);
           e1.WritePlatformConfigTag("LocalDebuggerCommandArguments", cond,
                                     genCommandArguments);
+          }
         }
       }
     }
