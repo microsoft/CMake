@@ -48,6 +48,8 @@ if(CMAKE_HOST_WIN32)
       )
     # SourceTree search path for Windows
     set(_git_sourcetree_path "$ENV{LOCALAPPDATA}/Atlassian/SourceTree/git_local/bin")
+    # Visual Studio paths
+    set(_git_visual_studio_path "$ENV{ProgramFiles}/Microsoft Visual Studio/*/*/Common7/IDE/CommonExtensions/Microsoft/TeamFoundation/Team Explorer/Git/cmd/")
   endif()
 endif()
 
@@ -55,6 +57,7 @@ endif()
 find_program(GIT_EXECUTABLE
   NAMES ${git_names}
   PATHS ${github_path} ${_git_sourcetree_path}
+    ${_git_visual_studio_path}
   DOC "Git command line client"
   )
 
