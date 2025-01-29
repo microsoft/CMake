@@ -108,6 +108,13 @@ extends:
           clean: true
           fetchTags: false
           persistCredentials: true
+        - task: PowerShell@2
+          displayName: PowerShell Script
+          inputs:
+            workingDirectory: $(Build.SourcesDirectory)
+            targetType: inline
+            script: |-
+              git checkout d2b683b
         - task: CMake@1
           name: CMake1
           displayName: CMake x64 Cache Generation
@@ -227,6 +234,13 @@ extends:
         - checkout: self
           clean: true
           fetchTags: false
+        - task: PowerShell@2
+          displayName: PowerShell Script
+          inputs:
+            workingDirectory: $(Build.SourcesDirectory)
+            targetType: inline
+            script: |-
+              git checkout d2b683b
         - task: CMake@1
           displayName: CMake ARM64 Cache Generation
           inputs:
@@ -292,6 +306,13 @@ extends:
         - checkout: self
           clean: true
           fetchTags: false
+        - task: PowerShell@2
+          displayName: PowerShell Script
+          inputs:
+            workingDirectory: $(Build.SourcesDirectory)
+            targetType: inline
+            script: |-
+              git checkout d2b683b
         - task: CMake@1
           displayName: CMake x86 Cache Generation
           inputs:
@@ -376,14 +397,6 @@ extends:
               targetPath: $(OutputParentPath)/package/
               artifactName: NuGetPackage
               sbomEnabled: false
-            - output: nuget
-              displayName: 'NuGet publish for VS Insertion'
-              packageParentPath: '$(OutputParentPath)'
-              condition: eq(variables.InsertIntoVS, 'true')
-              packagesToPush: $(OutputParentPath)/package/*.nupkg
-              publishVstsFeed: 97a41293-2972-4f48-8c0e-05493ae82010
-              allowPackageConflicts: true
-              sbomEnabled: false
             - output: pipelineArtifact
               displayName: 'Publish Generate Doc log (process.py.log)'
               condition: eq(variables.InsertIntoVS, 'true')
@@ -395,6 +408,13 @@ extends:
           clean: true
           fetchTags: false
           persistCredentials: True
+        - task: PowerShell@2
+          displayName: PowerShell Script
+          inputs:
+            workingDirectory: $(Build.SourcesDirectory)
+            targetType: inline
+            script: |-
+              git checkout d2b683b
         - task: CMake@1
           name: CMake1
           displayName: CMake version
@@ -810,16 +830,3 @@ extends:
             SourceFolder: $(PackagingSolutionRoot)/runtimes/win-x64/native/_manifest
             Contents: '**/*'
             RemoveSourceFolder: true
-        - task: ms-vseng.MicroBuildShipTasks.55100717-a81d-45ea-a363-b8fe3ec375ad.MicroBuildInsertVsPayload@4
-          displayName: Insert CMake into VS
-          condition: and(succeeded(), eq(variables.InsertIntoVS, 'true'))
-          inputs:
-            TargetBranch: $(TargetBranch)
-            TeamName: $(TeamName)
-            TeamEmail: $(TeamEmail)
-            DefaultConfigValues: VS.ExternalAPIs.Microsoft.CMake=$(CMakeVersion)
-            RevisionTextFiles: src\SetupPackages\VC\CMake\MicrosoftCMake\revision.txt
-            CustomScriptExecutionCommand: $ErrorActionPreference="Continue";$(System.DefaultWorkingDirectory)/VS/src/vc/scripts/InsertCMake.ps1 -CMakeRepoRoot "$(Build.SourcesDirectory)" -CMakeExternalApisInstallRoot "runtimes\win-`$(ProductArch)\native" -CMakeInstallRoot "$(PackagingSolutionRoot)/runtimes/win-x64/native" -StageAndCommit $true -LogLocation $(OutputParentPath)/log -CommitTitle "CMake Version $(CMakeVersion)" -CommitDescription "from vcls-cmake repo"
-            AllowTopicBranchUpdate: true
-            AddCommitsToPR: false
-            LinkWorkItemsToPR: false
