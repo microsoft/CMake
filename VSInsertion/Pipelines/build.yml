@@ -738,16 +738,6 @@ extends:
             SourceFolder: $(PackagingSolutionRoot)/runtimes/win-arm64/native/bin
             Contents: '*.exe'
             TargetFolder: $(SymbolsDirectory)/arm64
-        - task: PublishSymbols@2
-          name: PublishSymbols14
-          displayName: Enable Source Server - x64 x86 ARM64
-          inputs:
-            SymbolsFolder: $(SymbolsDirectory)
-            SearchPattern: '**/*.pdb'
-            IndexSources: false
-            SymbolServerType: TeamServices
-            TreatNotIndexedAsWarning: true
-          continueOnError: true
         - task: NuGetCommand@2
           name: NuGetCommand15
           displayName: NuGet pack for VS Insertion
