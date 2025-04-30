@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
 #include <iterator>
 #include <set>
 #include <sstream>
@@ -650,6 +651,16 @@ void cmVisualStudio10TargetGenerator::WriteClassicMsBuildProjectFile(
       // project using an older toolset version is opened in a newer version of
       // the IDE.
       e1.Element("VCProjectUpgraderObjectName", "NoUpgrade");
+
+      if (targetName == "ALL_BUILD"_s || targetName == CMAKE_CHECK_BUILD_SYSTEM_TARGET) {
+        auto now  = std::chrono::system_clock::now();
+        std::time_t currentTime = std::chrono::system_clock::to_time_t(now);
+        std::tm* utcTime = std::gmtime(&currentTime);
+        std::ostringstream oss; 
+        oss << std::put_time(utcTime, "%Y-%m-%dT%H:%M:%SZ");
+        std::string formattedTime = oss.str();
+        e1.Element("VCProjectGenerationTimestamp", formattedTime);
+      }
 
       if (const char* vcTargetsPath =
             this->GlobalGenerator->GetCustomVCTargetsPath()) {
