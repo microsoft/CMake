@@ -89,6 +89,7 @@ extends:
         cancelTimeoutInMinutes: 1
         pool:
           name: VSEngSS-MicroBuild2022-1ES
+          demands: Agent.Version -equals 4.260.0 # equals check for Agent.Version 2.144.0
         templateContext:
           outputs:
           - output: pipelineArtifact
