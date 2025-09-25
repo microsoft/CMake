@@ -89,7 +89,6 @@ extends:
         cancelTimeoutInMinutes: 1
         pool:
           name: VSEngSS-MicroBuild2022-1ES
-          demands: Agent.Version -equals 4.260.0 # equals check for Agent.Version 2.144.0
         templateContext:
           outputs:
           - output: pipelineArtifact
@@ -107,7 +106,7 @@ extends:
           displayName: CMake x64 Cache Generation
           inputs:
             cwd: $(CMakeBuildDirectory)
-            cmakeArgs: -DCMAKE_INSTALL_PREFIX:PATH=$(CMakeInstallDirectory) -DCMAKE_CONFIGURATION_TYPES=$(BuildConfiguration) -DCMake_VERSION_MICROSOFT_SCHEME=true -DCMake_VERSION_NO_GIT=true -DMicrosoft_CMake_VERSION_PATCH=$(Build.BuildNumber) $(Build.SourcesDirectory) -DCMAKE_CXX_FLAGS_INIT="/W3 /Qspectre /guard:cf /ZH:SHA_256" -DCMAKE_C_FLAGS_INIT="/W3 /Qspectre /guard:cf /ZH:SHA_256" -DCMAKE_EXE_LINKER_FLAGS_INIT="/incremental:no /profile /guard:cf /CETCOMPAT" -S $(Build.SourcesDirectory) -B $(CMakeBuildDirectory) -DCPACK_BINARY_NSIS=OFF -DCPACK_BINARY_ZIP=ON -DCPACK_PACKAGE_FILE_NAME=cmake_install_x64
+            cmakeArgs: -DCMAKE_INSTALL_PREFIX:PATH=$(CMakeInstallDirectory) -DCMAKE_CONFIGURATION_TYPES=$(BuildConfiguration) -DCMake_VERSION_MICROSOFT_SCHEME=true -DMicrosoft_CMake_VERSION_PATCH=$(Build.BuildNumber) $(Build.SourcesDirectory) -DCMAKE_CXX_FLAGS_INIT="/W3 /Qspectre /guard:cf /ZH:SHA_256" -DCMAKE_C_FLAGS_INIT="/W3 /Qspectre /guard:cf /ZH:SHA_256" -DCMAKE_EXE_LINKER_FLAGS_INIT="/incremental:no /profile /guard:cf /CETCOMPAT" -DCPACK_BINARY_NSIS=OFF -DCPACK_BINARY_ZIP=ON -DCPACK_PACKAGE_FILE_NAME=cmake_install_x64
         - task: CMake@1
           name: CMake2
           displayName: CMake x64 Build Package
@@ -119,9 +118,8 @@ extends:
           condition: eq(variables.RunTests, 'true')
           displayName: Run tests
           inputs:
-            filename: $(CMakeBuildDirectory)\bin\$(BuildConfiguration)\ctest
-            arguments: -C $(BuildConfiguration) -E "VSExcludeFromDefaultBuild-RelWithDebInfo|CMakeOnly.MajorVersionSelection-PythonInterp_2|RunCMake.AutoExportDll" --output-on-failure -E VSExcludeFromDefaultBuild-RelWithDebInfo
-            workingFolder: $(CMakeBuildDirectory)
+            script: $(CMakeBuildDirectory)\bin\$(BuildConfiguration)\ctest -C $(BuildConfiguration) --output-on-failure -E VSExcludeFromDefaultBuild-RelWithDebInfo
+            workingDirectory: $(CMakeBuildDirectory)
         - task: CopyFiles@2
           name: Copyzipx64
           displayName: Copy x64 zip
