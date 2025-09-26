@@ -113,13 +113,14 @@ extends:
           inputs:
             cwd: $(CMakeBuildDirectory)
             cmakeArgs: --build . --target package --config $(BuildConfiguration) -- -m
-        - task: CmdLine@2
+        - task: CmdLine@1
           name: CmdLine3
           condition: eq(variables.RunTests, 'true')
           displayName: Run tests
           inputs:
-            script: $(CMakeBuildDirectory)\bin\$(BuildConfiguration)\ctest -C $(BuildConfiguration) --output-on-failure -E VSExcludeFromDefaultBuild-RelWithDebInfo
-            workingDirectory: $(CMakeBuildDirectory)
+            filename: $(CMakeBuildDirectory)\bin\$(BuildConfiguration)\ctest
+            arguments: -C $(BuildConfiguration) --output-on-failure -E VSExcludeFromDefaultBuild-RelWithDebInfo
+            workingFolder: $(CMakeBuildDirectory)
         - task: CopyFiles@2
           name: Copyzipx64
           displayName: Copy x64 zip
