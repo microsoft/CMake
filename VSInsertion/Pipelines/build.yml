@@ -113,7 +113,7 @@ extends:
           inputs:
             cwd: $(CMakeBuildDirectory)
             cmakeArgs: --build . --target package --config $(BuildConfiguration) -- -m
-        - task: CmdLine@1
+        - task: CmdLine@2
           name: CmdLine3
           condition: eq(variables.RunTests, 'true')
           displayName: Run tests
