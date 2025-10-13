@@ -8,9 +8,9 @@ resources:
   - repository: self
     type: git
     ref: refs/heads/cmake-daemon
-  - repository: MicroBuildTemplate
+  - repository: 1ESPipelineTemplates
     type: git
-    name: 1ESPipelineTemplates/MicroBuildTemplate
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
     ref: refs/tags/release
 parameters:
 - name: InsertIntoVS
@@ -69,7 +69,7 @@ variables:
 - name: ArchiveDir
   value: $(Build.ArtifactStagingDirectory)/archive
 extends:
-  template: azure-pipelines/MicroBuild.1ES.Official.yml@MicroBuildTemplate
+  template: v1/1ES.Official.PipelineTemplate.yml@1ESPipelineTemplates
   parameters:
     sdl:
       suppression:
