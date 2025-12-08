@@ -89,13 +89,13 @@ stages:
     cancelTimeoutInMinutes: 1
     pool:
       name: VSEngSS-MicroBuild2022-1ES
-    templateContext:
-      outputs:
-      - output: pipelineArtifact
-        displayName: 'Publish CMake x64 Artifact'
-        targetPath: $(ArchiveDir)
-        artifactName: CMakeX64
-        codeSignValidationEnabled: false
+    # templateContext:
+    #   outputs:
+    #   - output: pipelineArtifact
+    #     displayName: 'Publish CMake x64 Artifact'
+    #     targetPath: $(ArchiveDir)
+    #     artifactName: CMakeX64
+    #     codeSignValidationEnabled: false
     steps:
     - checkout: self
       clean: true
@@ -209,13 +209,13 @@ stages:
     cancelTimeoutInMinutes: 1
     pool:
       name: VSEngSS-MicroBuild2022-1ES
-    templateContext:
-      outputs:
-      - output: pipelineArtifact
-        displayName: 'Publish CMake ARM64 Artifact'
-        targetPath: $(ArchiveDir)
-        artifactName: CMakeArm64
-        codeSignValidationEnabled: false
+    # templateContext:
+    #   outputs:
+    #   - output: pipelineArtifact
+    #     displayName: 'Publish CMake ARM64 Artifact'
+    #     targetPath: $(ArchiveDir)
+    #     artifactName: CMakeArm64
+    #     codeSignValidationEnabled: false
     steps:
     - checkout: self
       clean: true
@@ -274,13 +274,13 @@ stages:
     timeoutInMinutes: 360
     pool:
       name: VSEngSS-MicroBuild2022-1ES
-    templateContext:
-      outputs:
-      - output: pipelineArtifact
-        displayName: 'Publish CMake x86 Artifact'
-        targetPath: $(ArchiveDir)
-        artifactName: CMakeX86
-        codeSignValidationEnabled: false
+    # templateContext:
+    #   outputs:
+    #   - output: pipelineArtifact
+    #     displayName: 'Publish CMake x86 Artifact'
+    #     targetPath: $(ArchiveDir)
+    #     artifactName: CMakeX86
+    #     codeSignValidationEnabled: false
     steps:
     - checkout: self
       clean: true
@@ -344,20 +344,20 @@ stages:
     timeoutInMinutes: 360
     pool:
       name: VSEngSS-MicroBuild2022-1ES
-    templateContext:
-      sdl:
-        tsa:
-          enabled: true
-          configFile: '$(Agent.BuildDirectory)/config.gdntsa'
-        binskim:
-          analyzeTargetGlob: '$(SymbolsDirectory)/**/*.dll;$(SymbolsDirectory)/**/*.exe;'
-          AnalyzeIgnorePdbLoadError: true
-      mb:
-        signing:
-          enabled: true
-          signType: 'real'
-          signWithProd: true
-          zipSources: false
+    # templateContext:
+    #   sdl:
+    #     tsa:
+    #       enabled: true
+    #       configFile: '$(Agent.BuildDirectory)/config.gdntsa'
+    #     binskim:
+    #       analyzeTargetGlob: '$(SymbolsDirectory)/**/*.dll;$(SymbolsDirectory)/**/*.exe;'
+    #       AnalyzeIgnorePdbLoadError: true
+    #   mb:
+    #     signing:
+    #       enabled: true
+    #       signType: 'real'
+    #       signWithProd: true
+    #       zipSources: false
       outputParentDirectory: $(OutputParentPath)
       outputs:
         - output: pipelineArtifact
