@@ -40,9 +40,8 @@ struct cmIDEFlagTable;
 
 cmGlobalVisualStudio8Generator::cmGlobalVisualStudio8Generator(
   cmake* cm, std::string const& name)
-  : cmGlobalVisualStudio71Generator(cm)
+  : cmGlobalVisualStudio7Generator(cm)
 {
-  this->ProjectConfigurationSectionName = "ProjectConfigurationPlatforms";
   this->Name = name;
   this->ExtraFlagTable =
     cmGlobalVisualStudio8Generator::GetExtraFlagTableVS8();
@@ -62,7 +61,7 @@ std::string cmGlobalVisualStudio8Generator::FindDevEnvCommand()
     return vsxcmd;
   }
   // Now look for devenv.
-  return this->cmGlobalVisualStudio71Generator::FindDevEnvCommand();
+  return this->cmGlobalVisualStudio7Generator::FindDevEnvCommand();
 }
 
 void cmGlobalVisualStudio8Generator::EnableLanguage(
@@ -218,12 +217,6 @@ std::string cmGlobalVisualStudio8Generator::GetGenerateStampList()
   return "generate.stamp.list";
 }
 
-bool cmGlobalVisualStudio8Generator::UseFolderProperty() const
-{
-  // NOLINTNEXTLINE(bugprone-parent-virtual-call)
-  return IsExpressEdition() ? false : cmGlobalGenerator::UseFolderProperty();
-}
-
 bool cmGlobalVisualStudio8Generator::AddCheckTarget()
 {
   // Add a special target on which all other targets depend that
@@ -313,7 +306,7 @@ bool cmGlobalVisualStudio8Generator::AddCheckTarget()
     std::string argS = cmStrCat("-S", lg.GetSourceDirectory());
     std::string argB = cmStrCat("-B", lg.GetBinaryDirectory());
     std::string const sln =
-      cmStrCat(lg.GetBinaryDirectory(), '/', lg.GetProjectName(), ".sln");
+      this->GetSLNFile(lg.GetBinaryDirectory(), lg.GetProjectName());
     cmCustomCommandLines commandLines = cmMakeSingleCommandLine(
       { cmSystemTools::GetCMakeCommand(), argS, argB, "--check-stamp-list",
         stampList, "--vs-solution-file", sln });
@@ -461,21 +454,6 @@ bool cmGlobalVisualStudio8Generator::NeedsDeploy(
 bool cmGlobalVisualStudio8Generator::TargetSystemSupportsDeployment() const
 {
   return this->TargetsWindowsCE();
-}
-
-void cmGlobalVisualStudio8Generator::WriteProjectDepends(
-  std::ostream& fout, std::string const&, std::string const&,
-  cmGeneratorTarget const* gt) const
-{
-  TargetDependSet const& unordered = this->GetTargetDirectDepends(gt);
-  OrderedTargetDependSet depends(unordered, std::string());
-  for (cmTargetDepend const& i : depends) {
-    if (!this->IsInSolution(i)) {
-      continue;
-    }
-    std::string guid = this->GetGUID(i->GetName());
-    fout << "\t\t{" << guid << "} = {" << guid << "}\n";
-  }
 }
 
 bool cmGlobalVisualStudio8Generator::NeedLinkLibraryDependencies(
