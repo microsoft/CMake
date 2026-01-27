@@ -1689,6 +1689,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 				}
 		  yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
 		}
+	}
 
 	return yy_current_state;
 }
