@@ -3170,9 +3170,6 @@ void cmVisualStudio10TargetGenerator::WritePathAndIncrementalLinkOptions(
           }
         }
 
-        std::string intermediateDir = cmStrCat(
-          this->LocalGenerator->GetTargetDirectory(this->GeneratorTarget), '/',
-          config, '/');
         intermediateDir = this->BuildAsX && p == "ARM64"
           ? intermediateDir + "ARM64/"
           : intermediateDir;
