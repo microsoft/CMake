@@ -1020,7 +1020,8 @@ void cmGlobalFastbuildGenerator::AddCompiler(std::string const& language,
   // If FASTBUILD_COMPILER_EXTRA_FILES is not set - automatically add extra
   // files based on compiler (see
   // https://fastbuild.org/docs/functions/compiler.html)
-  if (compilerDef.ExtraFiles.empty() &&
+  if (!this->GetCMakeInstance()->GetIsInTryCompile() &&
+      compilerDef.ExtraFiles.empty() &&
       (language == "C" || language == "CXX") &&
       compilerDef.CmakeCompilerID == "MSVC") {
     // https://cmake.org/cmake/help/latest/variable/MSVC_VERSION.html
@@ -1437,6 +1438,14 @@ void cmGlobalFastbuildGenerator::WriteTarget(FastbuildTarget const& target)
 }
 void cmGlobalFastbuildGenerator::WriteIDEProjects()
 {
+#if defined(_WIN32)
+  std::string platformToolset;
+  std::string const toolset =
+    this->GetSafeGlobalSetting("MSVC_TOOLSET_VERSION");
+  if (!toolset.empty()) {
+    platformToolset = cmStrCat('v', toolset);
+  }
+#endif
   for (auto const& proj : IDEProjects) {
     (void)proj;
     // VS
@@ -1445,6 +1454,9 @@ void cmGlobalFastbuildGenerator::WriteIDEProjects()
     WriteCommand("VCXProject", Quote(VSProj.Alias));
     *this->BuildFileStream << "{\n";
     WriteVariable("ProjectOutput", Quote(VSProj.ProjectOutput), 1);
+    if (!platformToolset.empty()) {
+      WriteVariable("PlatformToolset", Quote(platformToolset), 1);
+    }
     WriteIDEProjectConfig(VSProj.ProjectConfigs);
     WriteVSBuildCommands();
     WriteIDEProjectCommon(VSProj);

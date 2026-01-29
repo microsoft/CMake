@@ -5,8 +5,6 @@
 .windows:
     variables:
         GIT_CLONE_PATH: "$CI_BUILDS_DIR\\cmake ci ext\\$CI_CONCURRENT_ID"
-        # Avoid conflicting with other projects running on the same machine.
-        SCCACHE_SERVER_PORT: 4227
 
 ### Build and test
 
@@ -41,6 +39,12 @@
     variables:
         VCVARSALL: "${VS170COMNTOOLS}\\..\\..\\VC\\Auxiliary\\Build\\vcvarsall.bat"
         VCVARSPLATFORM: "x64"
+        VCVARSVERSION: "14.44.35207"
+
+.windows_vcvarsall_vs2022_x86_msvc14.44:
+    variables:
+        VCVARSALL: "${VS170COMNTOOLS}\\..\\..\\VC\\Auxiliary\\Build\\vcvarsall.bat"
+        VCVARSPLATFORM: "x86"
         VCVARSVERSION: "14.44.35207"
 
 .windows_vcvarsall_vs2026_x64:
@@ -101,7 +105,7 @@
 .windows_x86_64_package:
     extends:
         - .windows_package
-        - .windows_vcvarsall_vs2026_x64
+        - .windows_vcvarsall_vs2022_x64_msvc14.44
 
     variables:
         CMAKE_CONFIGURATION: windows_x86_64_package
@@ -109,7 +113,7 @@
 .windows_i386_package:
     extends:
         - .windows_package
-        - .windows_vcvarsall_vs2026_x86
+        - .windows_vcvarsall_vs2022_x86_msvc14.44
 
     variables:
         CMAKE_CONFIGURATION: windows_i386_package
@@ -402,6 +406,15 @@
         - vs18-android
         - msvc-14.50
         - concurrent
+
+.windows_x86_64_tags_nonconcurrent_vs2022_msvc14.44:
+    tags:
+        - cmake # Since this is a bare runner, pin to a project.
+        - windows-x86_64
+        - shell
+        - vs2022
+        - msvc-14.44
+        - nonconcurrent
 
 .windows_x86_64_tags_concurrent_vs2022_msvc14.44:
     tags:

@@ -220,9 +220,11 @@ Other Changes
   ``CMAKE_*_LINKER_FLAGS`` variables.  See policy :policy:`CMP0197`.
 
 * The :ref:`Visual Studio Generators` now suppress Visual Studio's default
-  flags ``-Zc:forScope``, ``-Zc:inline``, and ``-Zc:wchar_t`` if they are
-  not specified by the project or user.  This makes builds more consistent
-  with other generators, and with what projects and users actually specify.
+  ``-Zc:forScope``, ``-Zc:inline``, and ``-Zc:wchar_t`` compiler flags,
+  and ``-dynamicbase``, ``-errorreport``, ``-nxcompat``, and ``-safeseh``
+  link flags, if they are not specified by the project or user.  This makes
+  builds more consistent with other generators, and with what projects and
+  users actually specify.
 
 * The :genex:`TARGET_PROPERTY` generator expression now evaluates the
   :prop_tgt:`LINK_LIBRARIES` and :prop_tgt:`INTERFACE_LINK_LIBRARIES`
@@ -261,9 +263,9 @@ Changes made since CMake 4.1.0 include the following.
   processes when its ``TIMEOUT`` is reached.  This was accidentally
   regressed by CMake 3.29.
 
-4.1.4
------
+4.1.4, 4.1.5
+------------
 
-* This version made no changes to documented features or interfaces.
+* These versions made no changes to documented features or interfaces.
   Some implementation updates were made to support ecosystem changes
   and/or fix regressions.
