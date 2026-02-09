@@ -841,8 +841,6 @@ bool cmCTestRunTest::ForkProcess()
                                    << cmDurationTo<unsigned int>(*timeout)
                                    << "\n",
                        this->TestHandler->GetQuiet());
-
-    this->TestProcess->SetTimeout(*timeout);
   } else {
     cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
                        this->Index
