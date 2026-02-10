@@ -820,8 +820,7 @@ bool cmCTestRunTest::ForkProcess()
   if (timeRemaining <= cmDuration::zero()) {
     timeRemaining = cmDuration::zero();
   }
-  if (timeRemaining != cmCTest::MaxDuration() &&
-      (!timeout || timeRemaining < *timeout)) {
+  if (!timeout || timeRemaining < *timeout) {
     timeout = timeRemaining;
   }
 
