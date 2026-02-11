@@ -33,6 +33,31 @@ function(gp_item_default_embedded_path_override item path)
   set(path "@executable_path" PARENT_SCOPE)
 endfunction()
 
+# CI tooling such as CodeQL may inject shared libraries (via LD_PRELOAD)
+# that get picked up by get_prerequisites as dependencies of the executable.
+# These are not real application dependencies. Use the
+# gp_resolved_file_type_override hook to classify any LD_PRELOAD'd libraries
+# as "system" so that fixup_bundle skips them during bundling and verification.
+set(_preload_basenames)
+if(DEFINED ENV{LD_PRELOAD})
+  string(REPLACE ":" ";" _preload_list "$ENV{LD_PRELOAD}")
+  foreach(_preload_lib IN LISTS _preload_list)
+    if(_preload_lib)
+      get_filename_component(_preload_name "${_preload_lib}" NAME)
+      list(APPEND _preload_basenames "${_preload_name}")
+    endif()
+  endforeach()
+endif()
+
+function(gp_resolved_file_type_override resolved_file type_var)
+  if(_preload_basenames)
+    get_filename_component(_resolved_name "${resolved_file}" NAME)
+    if(_resolved_name IN_LIST _preload_basenames)
+      set(${type_var} "system" PARENT_SCOPE)
+    endif()
+  endif()
+endfunction()
+
 include(BundleUtilities)
 fixup_bundle("${OUTPUT}" "${OUTPUT_MODULE}" "${INPUTDIR}")
 
