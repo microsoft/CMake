@@ -2926,6 +2926,15 @@ if(BUILD_TESTING)
   endif()
   set_tests_properties(CTestTestBadExe PROPERTIES
     PASS_REGULAR_EXPRESSION "${CTestTestBadExe_REGEX}")
+    
+  # CI tooling such as CodeQL may inject libraries via LD_PRELOAD that alter
+  # process execution error reporting, preventing the BAD_COMMAND string from
+  # appearing in the output. Clear LD_PRELOAD for this test so that the
+  # expected error path is taken.
+  if(DEFINED ENV{LD_PRELOAD})
+    set_tests_properties(CTestTestBadExe PROPERTIES
+      ENVIRONMENT "LD_PRELOAD=")
+  endif()
 
   configure_file(
     "${CMake_SOURCE_DIR}/Tests/CTestTestBadGenerator/test.cmake.in"
