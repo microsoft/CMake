@@ -2925,8 +2925,9 @@ if(BUILD_TESTING)
     set(CTestTestBadExe_REGEX "(\\*\\*\\*Failed)|BAD_COMMAND")
   endif()
   set_tests_properties(CTestTestBadExe PROPERTIES
-    PASS_REGULAR_EXPRESSION "${CTestTestBadExe_REGEX}")
-    
+    PASS_REGULAR_EXPRESSION "${CTestTestBadExe_REGEX}"
+    TIMEOUT 30)
+
   # CI tooling such as CodeQL may inject libraries via LD_PRELOAD that alter
   # process execution error reporting, preventing the BAD_COMMAND string from
   # appearing in the output. Clear LD_PRELOAD for this test so that the
