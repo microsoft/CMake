@@ -5,9 +5,10 @@
                 "Type": "git",
                 "Git": {
                     "RepositoryUrl": "https://github.com/microsoft/CMake.git",
-                    "CommitHash": "bfd89df7ad515577ada035dcb8384678e9b39cf1"
+                    "CommitHash": "c91064bceedb149eaf64b0dab66db3c231952790"
                 }
             }
         }
     ]
 }
+
