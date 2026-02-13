@@ -15,7 +15,6 @@
 #include <stdexcept>
 #include <utility>
 
-#include <cm/filesystem>
 #include <cm/memory>
 #include <cm/optional>
 #include <cm/string_view>
@@ -719,6 +718,8 @@ bool cmake::SetCacheArgs(std::vector<std::string> const& args)
         // Resolve script path specified on command line
         // relative to $PWD.
         auto path = cmSystemTools::ToNormalizedPathOnDisk(value);
+        state->InitializeFileAPI();
+        state->InitializeInstrumentation();
         state->ReadListFile(args, path);
         return true;
       } },
@@ -2670,13 +2671,9 @@ int cmake::ActualConfigure()
   }
 
 #if !defined(CMAKE_BOOTSTRAP)
-  this->FileAPI = cm::make_unique<cmFileAPI>(this);
+  this->InitializeFileAPI();
   this->FileAPI->ReadQueries();
-
-  this->Instrumentation = cm::make_unique<cmInstrumentation>(
-    this->State->GetBinaryDirectory(),
-    cmInstrumentation::LoadQueriesAfter::No);
-  this->Instrumentation->ClearGeneratedQueries();
+  this->InitializeInstrumentation();
 
   if (!this->GetIsInTryCompile()) {
     this->TruncateOutputLog("CMakeConfigureLog.yaml");
@@ -2934,6 +2931,27 @@ void cmake::StopDebuggerIfNeeded(int exitCode)
 
 #endif
 
+void cmake::InitializeFileAPI()
+{
+#ifndef CMAKE_BOOTSTRAP
+  if (!this->FileAPI) {
+    this->FileAPI = cm::make_unique<cmFileAPI>(this);
+  }
+#endif
+}
+
+void cmake::InitializeInstrumentation()
+{
+#ifndef CMAKE_BOOTSTRAP
+  if (!this->Instrumentation) {
+    this->Instrumentation = cm::make_unique<cmInstrumentation>(
+      this->State->GetBinaryDirectory(),
+      cmInstrumentation::LoadQueriesAfter::No);
+    this->Instrumentation->ClearGeneratedQueries();
+  }
+#endif
+}
+
 // handle a command line invocation
 int cmake::Run(std::vector<std::string> const& args, bool noconfigure)
 {
@@ -2986,10 +3004,9 @@ int cmake::Run(std::vector<std::string> const& args, bool noconfigure)
     if (!this->SarifFileOutput) {
       // If no output file is specified, use the default path
       // Enable parent directory creation for the default path
-      sarifLogFileWriter.SetPath(
-        cm::filesystem::path(this->GetHomeOutputDirectory()) /
-          std::string(cmSarif::PROJECT_DEFAULT_SARIF_FILE),
-        true);
+      sarifLogFileWriter.SetPath(cmStrCat(this->GetHomeOutputDirectory(), '/',
+                                          cmSarif::PROJECT_DEFAULT_SARIF_FILE),
+                                 true);
     }
 #endif
   } else {
