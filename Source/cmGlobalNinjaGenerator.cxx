@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cstdio>
 #include <functional>
 #include <iterator>
@@ -23,6 +22,7 @@
 #include <cm3p/json/writer.h>
 
 #include "cmsys/FStream.hxx"
+#include "cmsys/String.h"
 
 #include "cmCustomCommand.h"
 #include "cmCxxModuleMapper.h"
@@ -172,7 +172,7 @@ std::string cmGlobalNinjaGenerator::EncodeRuleName(std::string const& name)
   // "." and all invalid characters as hexadecimal.
   std::string encoded;
   for (char i : name) {
-    if (isalnum(i) || i == '_' || i == '-') {
+    if (cmsysString_isalnum(i) || i == '_' || i == '-') {
       encoded += i;
     } else {
       char buf[16];
@@ -2511,7 +2511,7 @@ cm::optional<cmSourceInfo> cmcmd_cmake_ninja_depends_fortran(
     }
 
     dir_top_bld = tdi["dir-top-bld"].asString();
-    if (!dir_top_bld.empty() && !cmHasLiteralSuffix(dir_top_bld, "/")) {
+    if (!dir_top_bld.empty() && !cmHasSuffix(dir_top_bld, '/')) {
       dir_top_bld += '/';
     }
 
@@ -2524,7 +2524,7 @@ cm::optional<cmSourceInfo> cmcmd_cmake_ninja_depends_fortran(
 
     Json::Value const& tdi_module_dir = tdi["module-dir"];
     module_dir = tdi_module_dir.asString();
-    if (!module_dir.empty() && !cmHasLiteralSuffix(module_dir, "/")) {
+    if (!module_dir.empty() && !cmHasSuffix(module_dir, '/')) {
       module_dir += '/';
     }
 
@@ -2993,11 +2993,35 @@ int cmcmd_cmake_ninja_dyndep(std::vector<std::string>::const_iterator argBeg,
   }
 
   std::string const dir_cur_bld = tdi["dir-cur-bld"].asString();
+  if (!cmSystemTools::FileIsFullPath(dir_cur_bld)) {
+    cmSystemTools::Error(
+      "-E cmake_ninja_dyndep --tdi= file has no absolute dir-cur-bld");
+    return 1;
+  }
+
   std::string const dir_cur_src = tdi["dir-cur-src"].asString();
+  if (!cmSystemTools::FileIsFullPath(dir_cur_src)) {
+    cmSystemTools::Error(
+      "-E cmake_ninja_dyndep --tdi= file has no absolute dir-cur-src");
+    return 1;
+  }
+
   std::string const dir_top_bld = tdi["dir-top-bld"].asString();
+  if (!cmSystemTools::FileIsFullPath(dir_top_bld)) {
+    cmSystemTools::Error(
+      "-E cmake_ninja_dyndep --tdi= file has no absolute dir-top-bld");
+    return 1;
+  }
+
   std::string const dir_top_src = tdi["dir-top-src"].asString();
+  if (!cmSystemTools::FileIsFullPath(dir_top_src)) {
+    cmSystemTools::Error(
+      "-E cmake_ninja_dyndep --tdi= file has no absolute dir-top-src");
+    return 1;
+  }
+
   std::string module_dir = tdi["module-dir"].asString();
-  if (!module_dir.empty() && !cmHasLiteralSuffix(module_dir, "/")) {
+  if (!module_dir.empty() && !cmHasSuffix(module_dir, '/')) {
     module_dir += '/';
   }
   std::vector<std::string> linked_target_dirs;
@@ -3024,7 +3048,7 @@ int cmcmd_cmake_ninja_dyndep(std::vector<std::string>::const_iterator argBeg,
 
   auto export_info = cmDyndepCollation::ParseExportInfo(tdi);
 
-  cmake cm(cmake::RoleInternal, cmState::Unknown);
+  cmake cm(cmState::Role::Internal);
   cm.SetHomeDirectory(dir_top_src);
   cm.SetHomeOutputDirectory(dir_top_bld);
   auto ggd = cm.CreateGlobalGenerator("Ninja");

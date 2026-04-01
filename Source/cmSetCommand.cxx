@@ -81,7 +81,7 @@ bool cmSetCommand(std::vector<std::string> const& args,
 
   // watch for CACHE{} signature
   if (cmHasLiteralPrefix(variable, "CACHE{") && variable.size() > 7 &&
-      cmHasLiteralSuffix(variable, "}")) {
+      cmHasSuffix(variable, '}')) {
     // what is the variable name
     auto const& varName = variable.substr(6, variable.size() - 7);
     // VALUE handling
@@ -98,8 +98,8 @@ bool cmSetCommand(std::vector<std::string> const& args,
       {
         if (!cmState::StringToCacheEntryType(std::string{ type },
                                              this->Type)) {
-          this->AddKeywordError("TYPE"_s,
-                                cmStrCat("Invalid value: ", type, '.'));
+          this->AddKeywordError(
+            "TYPE"_s, cmStrCat("  invalid value: \""_s, type, "\"\n"_s));
         }
         return ArgumentParser::Continue::No;
       }

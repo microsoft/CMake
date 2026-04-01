@@ -524,6 +524,19 @@ Target Created:
 
 **Note**: direct usage of this target by consumers should not be necessary.
 
+.. _`FindCUDAToolkit_bin2c`:
+
+bin2c
+"""""
+
+.. versionadded:: 4.3
+
+A utility that converts binary files to C files containing byte arrays.
+
+Target Created:
+
+- ``CUDA::bin2c``
+
 Result Variables
 ^^^^^^^^^^^^^^^^
 
@@ -693,7 +706,7 @@ else()
         if(NOT $ENV{CUDAHOSTCXX} STREQUAL "")
           get_filename_component(CUDAToolkit_CUDA_HOST_COMPILER $ENV{CUDAHOSTCXX} PROGRAM)
           if(NOT EXISTS ${CUDAToolkit_CUDA_HOST_COMPILER})
-            message(FATAL_ERROR "Could not find compiler set in environment variable CUDAHOSTCXX:\n$ENV{CUDAHOSTCXX}.\n${CUDAToolkit_CUDA_HOST_COMPILER}")
+            message(FATAL_ERROR "Could not find the compiler specified in the environment variable CUDAHOSTCXX:\n$ENV{CUDAHOSTCXX}.\n${CUDAToolkit_CUDA_HOST_COMPILER}")
           endif()
         elseif(CUDAToolkit_CUDA_HOST_COMPILER)
           # We get here if CUDAToolkit_CUDA_HOST_COMPILER was specified by the user or toolchain file.
@@ -709,7 +722,7 @@ else()
             unset(_CUDAToolkit_CUDA_HOST_COMPILER_PATH)
           endif()
           if(NOT EXISTS "${CUDAToolkit_CUDA_HOST_COMPILER}")
-            message(FATAL_ERROR "Could not find compiler set in variable CUDAToolkit_CUDA_HOST_COMPILER:\n  ${CUDAToolkit_CUDA_HOST_COMPILER}")
+            message(FATAL_ERROR "Could not find the compiler specified in the variable CUDAToolkit_CUDA_HOST_COMPILER:\n  ${CUDAToolkit_CUDA_HOST_COMPILER}")
           endif()
           # If the value was cached, update the cache entry with our modifications.
           get_property(_CUDAToolkit_CUDA_HOST_COMPILER_CACHED CACHE CUDAToolkit_CUDA_HOST_COMPILER PROPERTY TYPE)
@@ -1302,7 +1315,7 @@ if(CUDAToolkit_FOUND)
 
   if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.0.0)
     _CUDAToolkit_find_and_add_import_lib(nvJitLink)
-    _CUDAToolkit_find_and_add_import_lib(nvJitLink_static DEPS cudart_static_deps)
+    _CUDAToolkit_find_and_add_import_lib(nvJitLink_static DEPS cudart_static_deps nvptxcompiler_static)
   endif()
 
   if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.4.0)
@@ -1486,6 +1499,16 @@ if(CUDAToolkit_FOUND)
   endif()
 
   _CUDAToolkit_find_and_add_import_lib(OpenCL)
+
+  find_program(CUDA_bin2c_EXECUTABLE
+    NAMES bin2c
+    HINTS ${CUDAToolkit_BIN_DIR}
+    NO_DEFAULT_PATH
+  )
+  if(NOT TARGET CUDA::bin2c AND CUDA_bin2c_EXECUTABLE)
+    add_executable(CUDA::bin2c IMPORTED)
+    set_property(TARGET CUDA::bin2c PROPERTY IMPORTED_LOCATION "${CUDA_bin2c_EXECUTABLE}")
+  endif()
 endif()
 
 if(_CUDAToolkit_Pop_ROOT_PATH)

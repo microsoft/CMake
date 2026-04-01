@@ -36,6 +36,7 @@
 #include "cmSourceFileLocation.h"
 #include "cmSourceGroup.h"
 #include "cmStateTypes.h"
+#include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
 #include "cmTarget.h"
 #include "cmValue.h"
@@ -59,10 +60,12 @@ void AddObjectEntries(cmGeneratorTarget const* headTarget,
         std::string uniqueName =
           headTarget->GetGlobalGenerator()->IndexGeneratorTargetUniquely(
             lib.Target);
-        std::string genex = "$<TARGET_OBJECTS:" + std::move(uniqueName) + ">";
+        std::string genex =
+          cmStrCat("$<TARGET_OBJECTS:", std::move(uniqueName), '>');
         cmGeneratorExpression ge(*headTarget->Makefile->GetCMakeInstance(),
                                  lib.Backtrace);
-        std::unique_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(genex);
+        std::unique_ptr<cmCompiledGeneratorExpression> cge =
+          ge.Parse(std::move(genex));
         cge->SetEvaluateForBuildsystem(true);
 
         EvaluatedTargetPropertyEntry ee(lib, lib.Backtrace);
@@ -122,7 +125,7 @@ void addFileSetEntry(cmGeneratorTarget const* headTarget,
       }
       bool found = false;
       for (auto const& sg : headTarget->Makefile->GetSourceGroups()) {
-        if (sg.MatchChildrenFiles(path)) {
+        if (sg->MatchChildrenFiles(path)) {
           found = true;
           break;
         }
@@ -212,15 +215,15 @@ bool processSources(cmGeneratorTarget const* tgt,
       if (uniqueSrcs.insert(src).second) {
         srcs.emplace_back(src, entry.Backtrace);
         if (debugSources) {
-          usedSources += " * " + src + "\n";
+          usedSources += cmStrCat(" * ", src, '\n');
         }
       }
     }
     if (!usedSources.empty()) {
       tgt->GetLocalGenerator()->GetCMakeInstance()->IssueMessage(
         MessageType::LOG,
-        std::string("Used sources for target ") + tgt->GetName() + ":\n" +
-          usedSources,
+        cmStrCat("Used sources for target ", tgt->GetName(), ":\n",
+                 usedSources),
         entry.Backtrace);
     }
   }
@@ -508,7 +511,7 @@ cmGeneratorTarget::GetAllConfigSources(SourceKind kind) const
   return result;
 }
 
-std::set<std::string> cmGeneratorTarget::GetAllConfigCompileLanguages() const
+void cmGeneratorTarget::ComputeAllConfigCompileLanguages() const
 {
   std::set<std::string> languages;
   std::vector<AllConfigSource> const& sources = this->GetAllConfigSources();
@@ -518,5 +521,13 @@ std::set<std::string> cmGeneratorTarget::GetAllConfigCompileLanguages() const
       languages.emplace(lang);
     }
   }
-  return languages;
+  this->AllConfigCompileLanguages = languages;
+}
+
+std::set<std::string> cmGeneratorTarget::GetAllConfigCompileLanguages() const
+{
+  if (this->AllConfigCompileLanguages.empty()) {
+    this->ComputeAllConfigCompileLanguages();
+  }
+  return this->AllConfigCompileLanguages;
 }

@@ -5,6 +5,8 @@
 #include <sstream>
 #include <utility>
 
+#include <cm/string_view>
+
 #include "cmMakefile.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
@@ -84,7 +86,7 @@ void cmInstallGenerator::AddInstallRule(
         if (rename && *rename) {
           os << rename;
         } else {
-          os << cmSystemTools::GetFilenameName(file);
+          os << cmSystemTools::GetFilenameNameView(file);
         }
         firstIteration = false;
       }

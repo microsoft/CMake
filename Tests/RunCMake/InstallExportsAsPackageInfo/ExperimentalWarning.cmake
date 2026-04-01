@@ -1,0 +1,9 @@
+set(
+  CMAKE_EXPERIMENTAL_MAPPED_PACKAGE_INFO
+  "ababa1b5-7099-495f-a9cd-e22d38f274f2"
+  )
+unset(CMAKE_INSTALL_EXPORTS_AS_PACKAGE_INFO)
+
+add_library(foo INTERFACE)
+install(TARGETS foo EXPORT foo DESTINATION .)
+install(EXPORT foo FILE foo-targets.cmake DESTINATION .)

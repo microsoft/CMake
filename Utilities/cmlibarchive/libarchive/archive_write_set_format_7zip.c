@@ -511,6 +511,11 @@ _7z_options(struct archive_write *a, const char *key, const char *value)
 				"compression-level option value `%ld' out of range", lvl);
 			return (ARCHIVE_FAILED);
 		}
+#ifdef _AIX
+		if (lvl > 6) {
+			lvl = 6;
+		}
+#endif
 
 		// Note: we don't know here if this value is for zstd (negative to ~22),
 		// or zlib-style 0-9. If zstd is enabled but not in use, we will need to
@@ -686,7 +691,7 @@ write_to_temp(struct archive_write *a, const void *buff, size_t s)
 		ws = write(zip->temp_fd, p, s);
 		if (ws < 0) {
 			archive_set_error(&(a->archive), errno,
-			    "fwrite function failed");
+			    "write function failed");
 			return (ARCHIVE_FATAL);
 		}
 		s -= ws;

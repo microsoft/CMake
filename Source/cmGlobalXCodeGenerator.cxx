@@ -491,6 +491,29 @@ bool cmGlobalXCodeGenerator::ProcessGeneratorToolsetField(
   return false;
 }
 
+bool cmGlobalXCodeGenerator::ParseKnownAttributes(
+  cm::string_view attribute, cm::string_view attributeValue)
+{
+  static std::string const knownRegions{ "knownRegions"_s };
+  if (attribute == knownRegions) {
+    std::vector<std::string> regionsVec(cmTokenize(attributeValue, ','));
+    cmXCodeObject* allLangs = this->CreateObject(cmXCodeObject::OBJECT_LIST);
+    for (auto const& region : regionsVec) {
+      allLangs->AddObject(this->CreateString(cmTrimWhitespace(region)));
+    }
+    this->RootObject->AddAttribute(knownRegions, allLangs);
+    return true;
+  }
+
+  static std::string const developmentRegion{ "developmentRegion"_s };
+  if (attribute == developmentRegion) {
+    this->RootObject->AddAttribute(
+      developmentRegion, this->CreateString(cmTrimWhitespace(attributeValue)));
+    return true;
+  }
+  return false;
+};
+
 void cmGlobalXCodeGenerator::EnableLanguage(
   std::vector<std::string> const& lang, cmMakefile* mf, bool optional)
 {
@@ -1340,14 +1363,10 @@ cmXCodeObject* cmGlobalXCodeGenerator::CreateXCodeFileReferenceFromPath(
   }
   // Make a copy so that we can override it later
   std::string path = cmSystemTools::CollapseFullPath(fullpath);
-  // Compute the extension without leading '.'.
-  std::string ext = cmSystemTools::GetFilenameLastExtension(path);
-  if (!ext.empty()) {
-    ext = ext.substr(1);
-  }
   if (fileType.empty()) {
     path = this->GetLibraryOrFrameworkPath(path);
-    ext = cmSystemTools::GetFilenameLastExtension(path);
+    // Compute the extension without leading '.'.
+    std::string ext = cmSystemTools::GetFilenameLastExtension(path);
     if (!ext.empty()) {
       ext = ext.substr(1);
     }
@@ -2668,43 +2687,25 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
     }
   }
 
-  std::string extraLinkOptionsVar;
   std::string extraLinkOptions;
-  if (gtgt->GetType() == cmStateEnums::EXECUTABLE) {
-    extraLinkOptionsVar = "CMAKE_EXE_LINKER_FLAGS";
-  } else if (gtgt->GetType() == cmStateEnums::SHARED_LIBRARY) {
-    extraLinkOptionsVar = "CMAKE_SHARED_LINKER_FLAGS";
-  } else if (gtgt->GetType() == cmStateEnums::MODULE_LIBRARY) {
-    extraLinkOptionsVar = "CMAKE_MODULE_LINKER_FLAGS";
-  }
-  if (!extraLinkOptionsVar.empty()) {
-    this->CurrentLocalGenerator->AddConfigVariableFlags(
-      extraLinkOptions, extraLinkOptionsVar, gtgt, cmBuildStep::Link, llang,
-      configName);
-  }
 
   if (gtgt->GetType() == cmStateEnums::OBJECT_LIBRARY ||
       gtgt->GetType() == cmStateEnums::STATIC_LIBRARY) {
     this->CurrentLocalGenerator->GetStaticLibraryFlags(
       extraLinkOptions, configName, llang, gtgt);
   } else {
+    this->CurrentLocalGenerator->AddTargetTypeLinkerFlags(
+      extraLinkOptions, gtgt, llang, configName);
+    this->CurrentLocalGenerator->AddPerLanguageLinkFlags(
+      extraLinkOptions, gtgt, llang, configName);
     this->CurrentLocalGenerator->AppendLinkerTypeFlags(extraLinkOptions, gtgt,
                                                        configName, llang);
     this->CurrentLocalGenerator->AppendWarningAsErrorLinkerFlags(
       extraLinkOptions, gtgt, llang);
 
-    cmValue targetLinkFlags = gtgt->GetProperty("LINK_FLAGS");
-    if (targetLinkFlags) {
-      this->CurrentLocalGenerator->AppendFlags(extraLinkOptions,
-                                               *targetLinkFlags);
-    }
-    if (!configName.empty()) {
-      std::string linkFlagsVar =
-        cmStrCat("LINK_FLAGS_", cmSystemTools::UpperCase(configName));
-      if (cmValue linkFlags = gtgt->GetProperty(linkFlagsVar)) {
-        this->CurrentLocalGenerator->AppendFlags(extraLinkOptions, *linkFlags);
-      }
-    }
+    this->CurrentLocalGenerator->AddTargetPropertyLinkFlags(extraLinkOptions,
+                                                            gtgt, configName);
+
     std::vector<std::string> opts;
     gtgt->GetLinkOptions(opts, configName, llang);
     // LINK_OPTIONS are escaped.
@@ -2833,8 +2834,9 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
       buildSettings->AddAttribute("LIBRARY_STYLE",
                                   this->CreateString("BUNDLE"));
       // Add the flags to create a module library (bundle).
-      std::string createFlags = this->LookupFlags(
-        "CMAKE_SHARED_MODULE_CREATE_", llang, "_FLAGS", gtgt);
+      std::string createFlags;
+      this->CurrentLocalGenerator->AppendTargetCreationLinkFlags(createFlags,
+                                                                 gtgt, llang);
       if (this->GetTargetProductType(gtgt) !=
           "com.apple.product-type.app-extension"_s) {
         // Xcode passes -bundle automatically.
@@ -2889,8 +2891,9 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
                                     this->CreateString(plist));
       } else {
         // Add the flags to create a shared library.
-        std::string createFlags = this->LookupFlags(
-          "CMAKE_SHARED_LIBRARY_CREATE_", llang, "_FLAGS", gtgt);
+        std::string createFlags;
+        this->CurrentLocalGenerator->AppendTargetCreationLinkFlags(
+          createFlags, gtgt, llang);
         // Xcode passes -dynamiclib automatically.
         cmSystemTools::ReplaceString(createFlags, "-dynamiclib", "");
         createFlags = cmTrimWhitespace(createFlags);
@@ -2912,8 +2915,9 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
     }
     case cmStateEnums::EXECUTABLE: {
       // Add the flags to create an executable.
-      std::string createFlags =
-        this->LookupFlags("CMAKE_", llang, "_LINK_FLAGS", gtgt);
+      std::string createFlags;
+      this->CurrentLocalGenerator->AppendTargetCreationLinkFlags(createFlags,
+                                                                 gtgt, llang);
       if (!createFlags.empty()) {
         extraLinkOptions += ' ';
         extraLinkOptions += createFlags;
@@ -4499,8 +4503,6 @@ bool cmGlobalXCodeGenerator::CreateGroups(
   std::vector<cmLocalGenerator*>& generators)
 {
   for (auto& generator : generators) {
-    cmMakefile* mf = generator->GetMakefile();
-    std::vector<cmSourceGroup> sourceGroups = mf->GetSourceGroups();
     for (auto const& gtgt : generator->GetGeneratorTargets()) {
       // Same skipping logic here as in CreateXCodeTargets so that we do not
       // end up with (empty anyhow) ZERO_CHECK, install, or test source
@@ -4512,9 +4514,9 @@ bool cmGlobalXCodeGenerator::CreateGroups(
         continue;
       }
 
-      auto addSourceToGroup = [this, mf, &gtgt,
-                               &sourceGroups](std::string const& source) {
-        cmSourceGroup* sourceGroup = mf->FindSourceGroup(source, sourceGroups);
+      auto addSourceToGroup = [this, &gtgt,
+                               &generator](std::string const& source) {
+        cmSourceGroup* sourceGroup = generator->FindSourceGroup(source);
         cmXCodeObject* pbxgroup =
           this->CreateOrGetPBXGroup(gtgt.get(), sourceGroup);
         std::string key = GetGroupMapKeyFromPath(gtgt.get(), source);
@@ -4873,9 +4875,14 @@ bool cmGlobalXCodeGenerator::CreateXCodeObjects(
         std::string attribute = var.substr(22);
         this->FilterConfigurationAttribute(config.first, attribute);
         if (!attribute.empty()) {
+          std::string const attributeValue =
+            this->CurrentMakefile->GetSafeDefinition(var);
+          if (this->ParseKnownAttributes(attribute, attributeValue)) {
+            continue;
+          }
+
           std::string processed = cmGeneratorExpression::Evaluate(
-            this->CurrentMakefile->GetSafeDefinition(var),
-            this->CurrentLocalGenerator, config.first);
+            attributeValue, this->CurrentLocalGenerator, config.first);
           buildSettingsForCfg->AddAttribute(attribute,
                                             this->CreateString(processed));
         }

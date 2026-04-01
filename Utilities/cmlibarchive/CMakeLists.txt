@@ -5,6 +5,11 @@ ENDIF()
 
 PROJECT(libarchive C)
 #
+if(0) # XXX(cmake): not needed for build within cmake
+# Include standard installation directories
+include(GNUInstallDirs)
+endif() # XXX(cmake): end
+#
 SET(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/build/cmake")
 if(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${libarchive_BINARY_DIR}/bin)
@@ -162,7 +167,12 @@ IF (CMAKE_C_COMPILER_ID MATCHES "^GNU$" OR
   # either of the following two, yet neither is supported as of 3.0.2
   # - check_linker_flag - does not exist
   # - try_compile - does not support linker flags
-  IF(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  IF(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-dead_strip")
+    SET(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-dead_strip")
+  ELSEIF(CMAKE_SYSTEM_NAME MATCHES "SunOS")
+    # SunOS linker doesn't support --gc-sections
+  ELSE()
     # Place the functions and data into separate sections, allowing the linker
     # to garbage collect the unused ones.
     SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections")
@@ -171,10 +181,7 @@ IF (CMAKE_C_COMPILER_ID MATCHES "^GNU$" OR
     # Printing the discarded section is "too much", so enable on demand.
     #SET(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -Wl,--print-gc-sections")
     #SET(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -Wl,--print-gc-sections")
-  ELSE()
-    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-dead_strip")
-    SET(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-dead_strip")
-  ENDIF(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  ENDIF()
 ENDIF (CMAKE_C_COMPILER_ID MATCHES "^GNU$" OR
        CMAKE_C_COMPILER_ID MATCHES "^Clang$" AND NOT MSVC)
 IF (CMAKE_C_COMPILER_ID MATCHES "^XL$")
@@ -281,6 +288,10 @@ OPTION(ENABLE_ICONV "Enable iconv support" ON)
 OPTION(ENABLE_TEST "Enable unit and regression tests" ON)
 OPTION(ENABLE_COVERAGE "Enable code coverage (GCC only, automatically sets ENABLE_TEST to ON)" FALSE)
 OPTION(ENABLE_INSTALL "Enable installing of libraries" ON)
+
+IF(WIN32 AND MSVC)
+  OPTION(MSVC_USE_STATIC_CRT "Use static CRT" OFF)
+ENDIF()
 
 SET(POSIX_REGEX_LIB "AUTO" CACHE STRING "Choose what library should provide POSIX regular expression support")
 SET(ENABLE_SAFESEH "AUTO" CACHE STRING "Enable use of /SAFESEH linker flag (MSVC only)")
@@ -1109,8 +1120,8 @@ MACRO(CHECK_ICONV LIB TRY_ICONV_CONST)
         CMAKE_C_COMPILER_ID MATCHES "^Clang$")
       #
       # During checking iconv proto type, we should use -Werror to avoid the
-      # success of iconv detection with a warning which success is a miss
-      # detection. So this needs for all build mode(even it's a release mode).
+      # success of iconv detection with a warning, which would be a false
+      # positive.  So this is needed for all build modes, even in release mode.
       #
       SET(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -Werror")
     ENDIF (CMAKE_C_COMPILER_ID MATCHES "^GNU$" OR CMAKE_C_COMPILER_ID MATCHES "^LCC$" OR
@@ -1502,6 +1513,8 @@ CHECK_FUNCTION_EXISTS_GLIBC(arc4random_buf HAVE_ARC4RANDOM_BUF)
 CHECK_FUNCTION_EXISTS_GLIBC(chflags HAVE_CHFLAGS)
 CHECK_FUNCTION_EXISTS_GLIBC(chown HAVE_CHOWN)
 CHECK_FUNCTION_EXISTS_GLIBC(chroot HAVE_CHROOT)
+CHECK_FUNCTION_EXISTS_GLIBC(closefrom HAVE_CLOSEFROM)
+CHECK_FUNCTION_EXISTS_GLIBC(close_range HAVE_CLOSE_RANGE)
 CHECK_FUNCTION_EXISTS_GLIBC(ctime_r HAVE_CTIME_R)
 CHECK_FUNCTION_EXISTS_GLIBC(fchdir HAVE_FCHDIR)
 CHECK_FUNCTION_EXISTS_GLIBC(fchflags HAVE_FCHFLAGS)
@@ -1519,15 +1532,19 @@ CHECK_FUNCTION_EXISTS_GLIBC(ftruncate HAVE_FTRUNCATE)
 CHECK_FUNCTION_EXISTS_GLIBC(futimens HAVE_FUTIMENS)
 CHECK_FUNCTION_EXISTS_GLIBC(futimes HAVE_FUTIMES)
 CHECK_FUNCTION_EXISTS_GLIBC(futimesat HAVE_FUTIMESAT)
+CHECK_FUNCTION_EXISTS_GLIBC(getegid HAVE_GETEGID)
 CHECK_FUNCTION_EXISTS_GLIBC(geteuid HAVE_GETEUID)
 CHECK_FUNCTION_EXISTS_GLIBC(getgrgid_r HAVE_GETGRGID_R)
 CHECK_FUNCTION_EXISTS_GLIBC(getgrnam_r HAVE_GETGRNAM_R)
 CHECK_FUNCTION_EXISTS_GLIBC(getline HAVE_GETLINE)
+CHECK_FUNCTION_EXISTS_GLIBC(getpid HAVE_GETPID)
 CHECK_FUNCTION_EXISTS_GLIBC(getpwnam_r HAVE_GETPWNAM_R)
 CHECK_FUNCTION_EXISTS_GLIBC(getpwuid_r HAVE_GETPWUID_R)
-CHECK_FUNCTION_EXISTS_GLIBC(getpid HAVE_GETPID)
+CHECK_FUNCTION_EXISTS_GLIBC(getresgid HAVE_GETRESGID)
+CHECK_FUNCTION_EXISTS_GLIBC(getresuid HAVE_GETRESUID)
 CHECK_FUNCTION_EXISTS_GLIBC(getvfsbyname HAVE_GETVFSBYNAME)
 CHECK_FUNCTION_EXISTS_GLIBC(gmtime_r HAVE_GMTIME_R)
+CHECK_FUNCTION_EXISTS_GLIBC(issetugid HAVE_ISSETUGID)
 CHECK_FUNCTION_EXISTS_GLIBC(lchflags HAVE_LCHFLAGS)
 if(NOT CMAKE_C_COMPILER_ID STREQUAL "LCC" OR NOT CMAKE_C_COMPILER_VERSION VERSION_LESS_EQUAL "1.23")
   CHECK_FUNCTION_EXISTS_GLIBC(lchmod HAVE_LCHMOD)
@@ -1548,6 +1565,7 @@ CHECK_FUNCTION_EXISTS_GLIBC(nl_langinfo HAVE_NL_LANGINFO)
 CHECK_FUNCTION_EXISTS_GLIBC(openat HAVE_OPENAT)
 CHECK_FUNCTION_EXISTS_GLIBC(pipe HAVE_PIPE)
 CHECK_FUNCTION_EXISTS_GLIBC(poll HAVE_POLL)
+CHECK_FUNCTION_EXISTS_GLIBC(posix_spawn HAVE_POSIX_SPAWN)
 CHECK_FUNCTION_EXISTS_GLIBC(posix_spawnp HAVE_POSIX_SPAWNP)
 CHECK_FUNCTION_EXISTS_GLIBC(readlink HAVE_READLINK)
 CHECK_FUNCTION_EXISTS_GLIBC(readpassphrase HAVE_READPASSPHRASE)
@@ -1610,12 +1628,6 @@ CHECK_C_SOURCE_COMPILES(
 CHECK_C_SOURCE_COMPILES(
   "#include <sys/types.h>\n#include <sys/mount.h>\nint main(void) { struct statfs s; return sizeof(s);}"
   HAVE_STRUCT_STATFS)
-
-# Make sure we have the POSIX version of readdir_r, not the
-# older 2-argument version.
-CHECK_C_SOURCE_COMPILES(
-  "#include <dirent.h>\nint main() {DIR *d = opendir(\".\"); struct dirent e,*r; return readdir_r(d,&e,&r);}"
-  HAVE_READDIR_R)
 
 # dirfd can be either a function or a macro.
 CHECK_C_SOURCE_COMPILES(
@@ -2218,4 +2230,4 @@ add_subdirectory(cpio)
 add_subdirectory(unzip)
 ENDIF()
 
-install(FILES COPYING DESTINATION ${CMAKE_DOC_DIR}/cmlibarchive)
+install(FILES COPYING DESTINATION ${CMake_INSTALL_DOC_DIR}/cmlibarchive)

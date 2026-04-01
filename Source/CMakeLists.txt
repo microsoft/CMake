@@ -115,6 +115,7 @@ add_library(
   cmBinUtilsWindowsPELinker.h
   cmBinUtilsWindowsPEObjdumpGetRuntimeDependenciesTool.cxx
   cmBinUtilsWindowsPEObjdumpGetRuntimeDependenciesTool.h
+  cmBuildArgs.h
   cmBuildDatabase.cxx
   cmBuildDatabase.h
   cmBuildOptions.h
@@ -135,6 +136,8 @@ add_library(
   cmCMakePresetsGraphReadJSONPackagePresets.cxx
   cmCMakePresetsGraphReadJSONTestPresets.cxx
   cmCMakePresetsGraphReadJSONWorkflowPresets.cxx
+  cmCMakeString.hxx
+  cmCMakeString.cxx
   cmCommandLineArgument.h
   cmCommonTargetGenerator.cxx
   cmCommonTargetGenerator.h
@@ -163,6 +166,8 @@ add_library(
   cmCustomCommandTypes.h
   cmCxxModuleMapper.cxx
   cmCxxModuleMapper.h
+  cmCxxModuleMetadata.cxx
+  cmCxxModuleMetadata.h
   cmCxxModuleUsageEffects.cxx
   cmCxxModuleUsageEffects.h
   cmDefinitions.cxx
@@ -199,6 +204,8 @@ add_library(
   cmExportBuildFileGenerator.cxx
   cmExportBuildPackageInfoGenerator.h
   cmExportBuildPackageInfoGenerator.cxx
+  cmExportBuildSbomGenerator.h
+  cmExportBuildSbomGenerator.cxx
   cmExportCMakeConfigGenerator.h
   cmExportCMakeConfigGenerator.cxx
   cmExportFileGenerator.h
@@ -211,10 +218,14 @@ add_library(
   cmExportInstallFileGenerator.cxx
   cmExportInstallPackageInfoGenerator.h
   cmExportInstallPackageInfoGenerator.cxx
+  cmExportInstallSbomGenerator.h
+  cmExportInstallSbomGenerator.cxx
   cmExportPackageInfoGenerator.h
   cmExportPackageInfoGenerator.cxx
   cmExportTryCompileFileGenerator.h
   cmExportTryCompileFileGenerator.cxx
+  cmExportSbomGenerator.h
+  cmExportSbomGenerator.cxx
   cmExportSet.h
   cmExportSet.cxx
   cmExternalMakefileProjectGenerator.cxx
@@ -340,6 +351,8 @@ add_library(
   cmInstallRuntimeDependencySet.cxx
   cmInstallRuntimeDependencySetGenerator.h
   cmInstallRuntimeDependencySetGenerator.cxx
+  cmInstallSbomExportGenerator.h
+  cmInstallSbomExportGenerator.cxx
   cmInstallScriptGenerator.h
   cmInstallScriptGenerator.cxx
   cmInstallSubdirectoryGenerator.h
@@ -388,7 +401,6 @@ add_library(
   cmRulePlaceholderExpander.cxx
   cmRulePlaceholderExpander.h
   cmLocalUnixMakefileGenerator3.cxx
-  cmLocale.h
   cmMakefile.cxx
   cmMakefile.h
   cmMakefileTargetGenerator.cxx
@@ -426,6 +438,8 @@ add_library(
   cmProcessOutput.h
   cmProcessTools.cxx
   cmProcessTools.h
+  cmProjectInfoArguments.cxx
+  cmProjectInfoArguments.h
   cmValue.cxx
   cmValue.h
   cmProperty.h
@@ -507,6 +521,7 @@ add_library(
   cmUVStreambuf.h
   cmVariableWatch.cxx
   cmVariableWatch.h
+  cmVersion_Dependencies.cxx
   cmVersion.cxx
   cmVersion.h
   cmWindowsRegistry.cxx
@@ -701,6 +716,10 @@ add_library(
   cmRemoveDefinitionsCommand.h
   cmReturnCommand.cxx
   cmReturnCommand.h
+  cmSbomArguments.h
+  cmSbomArguments.cxx
+  cmSbomObject.h
+  cmSbomSerializer.h
   cmSearchPath.cxx
   cmSearchPath.h
   cmSeparateArgumentsCommand.cxx
@@ -721,9 +740,10 @@ add_library(
   cmSiteNameCommand.h
   cmSourceGroupCommand.cxx
   cmSourceGroupCommand.h
-  cmSPDXSerializer.cxx
-  cmSPDXSerializer.h
-  cmSPDXTypes.def
+  cmSpdx.cxx
+  cmSpdx.h
+  cmSpdxSerializer.cxx
+  cmSpdxSerializer.h
   cmString.cxx
   cmString.hxx
   cmStringReplaceHelper.cxx
@@ -1412,7 +1432,7 @@ endif()
 
 foreach(_tool IN LISTS _tools)
   CMake_OPTIONAL_COMPONENT(${_tool})
-  install(TARGETS ${_tool} DESTINATION ${CMAKE_BIN_DIR} ${COMPONENT})
+  install(TARGETS ${_tool} DESTINATION ${CMake_INSTALL_BIN_DIR} ${COMPONENT})
 endforeach()
 
 # Unset temporary variables

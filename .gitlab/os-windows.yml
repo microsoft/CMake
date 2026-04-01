@@ -41,12 +41,6 @@
         VCVARSPLATFORM: "x64"
         VCVARSVERSION: "14.44.35207"
 
-.windows_vcvarsall_vs2022_x86_msvc14.44:
-    variables:
-        VCVARSALL: "${VS170COMNTOOLS}\\..\\..\\VC\\Auxiliary\\Build\\vcvarsall.bat"
-        VCVARSPLATFORM: "x86"
-        VCVARSVERSION: "14.44.35207"
-
 .windows_vcvarsall_vs2026_x64:
     variables:
         VCVARSALL: "${VS180COMNTOOLS}\\..\\..\\VC\\Auxiliary\\Build\\vcvarsall.bat"
@@ -105,7 +99,7 @@
 .windows_x86_64_package:
     extends:
         - .windows_package
-        - .windows_vcvarsall_vs2022_x64_msvc14.44
+        - .windows_vcvarsall_vs2026_x64
 
     variables:
         CMAKE_CONFIGURATION: windows_x86_64_package
@@ -113,7 +107,7 @@
 .windows_i386_package:
     extends:
         - .windows_package
-        - .windows_vcvarsall_vs2022_x86_msvc14.44
+        - .windows_vcvarsall_vs2026_x86
 
     variables:
         CMAKE_CONFIGURATION: windows_i386_package
@@ -136,7 +130,7 @@
         CMAKE_GENERATOR: "Visual Studio 18 2026"
         CMAKE_GENERATOR_PLATFORM: "x64"
         CMAKE_GENERATOR_TOOLSET: "v145,version=14.50.35717"
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_vs2022_x64:
     extends: .windows
@@ -146,7 +140,7 @@
         CMAKE_GENERATOR: "Visual Studio 17 2022"
         CMAKE_GENERATOR_PLATFORM: "x64"
         CMAKE_GENERATOR_TOOLSET: "v143,version=14.44.35207"
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_vs2019_x64:
     extends: .windows
@@ -156,7 +150,7 @@
         CMAKE_GENERATOR: "Visual Studio 16 2019"
         CMAKE_GENERATOR_PLATFORM: "x64"
         CMAKE_GENERATOR_TOOLSET: "v142,version=14.29.30133"
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_borland:
     extends: .windows
@@ -164,7 +158,7 @@
     variables:
         CMAKE_GENERATOR: "Borland Makefiles"
         CMAKE_CI_BUILD_TYPE: Release
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_borland5.5:
     extends: .windows_borland
@@ -184,14 +178,14 @@
     variables:
         CMAKE_GENERATOR: "Ninja"
         CMAKE_CI_BUILD_TYPE: Release
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_ninja_multi:
     extends: .windows
 
     variables:
         CMAKE_GENERATOR: "Ninja Multi-Config"
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_nmake:
     extends: .windows
@@ -199,7 +193,7 @@
     variables:
         CMAKE_GENERATOR: "NMake Makefiles"
         CMAKE_CI_BUILD_TYPE: Release
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_jom:
     extends: .windows
@@ -207,7 +201,7 @@
     variables:
         CMAKE_GENERATOR: "NMake Makefiles JOM"
         CMAKE_CI_BUILD_TYPE: Release
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_fastbuild:
     extends: .windows
@@ -215,7 +209,7 @@
     variables:
         CMAKE_GENERATOR: "FASTBuild"
         CMAKE_CI_BUILD_TYPE: Release
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_vs2026_x64_nmake:
     extends:
@@ -295,7 +289,7 @@
         GIT_CLONE_PATH: "$CI_BUILDS_DIR\\cmake-ci-ext\\$CI_CONCURRENT_ID"
         CMAKE_GENERATOR: "Watcom WMake"
         CMAKE_CI_BUILD_TYPE: Release
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_openwatcom1.9:
     extends: .windows_openwatcom
@@ -309,7 +303,7 @@
     variables:
         CMAKE_GENERATOR: "Ninja"
         CMAKE_CI_BUILD_TYPE: Release
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_orangec6.73.1:
     extends: .windows_orangec
@@ -325,7 +319,7 @@
         CMAKE_GENERATOR: "Visual Studio 18 2026"
         CMAKE_GENERATOR_PLATFORM: "ARM64"
         CMAKE_GENERATOR_TOOLSET: "v145,version=14.50.35717"
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .windows_arm64_vs2022:
     extends: .windows
@@ -335,7 +329,7 @@
         CMAKE_GENERATOR: "Visual Studio 17 2022"
         CMAKE_GENERATOR_PLATFORM: "ARM64"
         CMAKE_GENERATOR_TOOLSET: "v143,version=14.44.35207"
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .mingw_osdn_io:
     extends: .windows
@@ -344,7 +338,7 @@
         # Place MinGW environment in a path without spaces.
         GIT_CLONE_PATH: "$CI_BUILDS_DIR\\cmake-ci-ext\\$CI_CONCURRENT_ID"
         CMAKE_CI_BUILD_TYPE: Debug
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .mingw_osdn_io_mingw_makefiles:
     extends: .mingw_osdn_io
@@ -406,15 +400,6 @@
         - vs18-android
         - msvc-14.50
         - concurrent
-
-.windows_x86_64_tags_nonconcurrent_vs2022_msvc14.44:
-    tags:
-        - cmake # Since this is a bare runner, pin to a project.
-        - windows-x86_64
-        - shell
-        - vs2022
-        - msvc-14.44
-        - nonconcurrent
 
 .windows_x86_64_tags_concurrent_vs2022_msvc14.44:
     tags:

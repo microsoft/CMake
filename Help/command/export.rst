@@ -16,6 +16,8 @@ Synopsis
   export(`EXPORT`_ <export-name> [...])
   export(`PACKAGE`_ <PackageName>)
   export(`SETUP`_ <export-name> [...])
+  export(`PACKAGE_INFO`_ <package-name> [...])
+  export(`SBOM`_ <sbom-name> [...])
 
 Exporting Targets
 ^^^^^^^^^^^^^^^^^
@@ -130,9 +132,12 @@ of the :command:`install(TARGETS)` command.
 Exporting Targets to the |CPS|
 """"""""""""""""""""""""""""""
 
+.. signature::
+  export(PACKAGE_INFO <package-name> [...])
+
 .. code-block:: cmake
 
-  export(EXPORT <export-name> PACKAGE_INFO <package-name>
+  export(PACKAGE_INFO <package-name> EXPORT <export-name>
          [PROJECT <project-name>|NO_PROJECT_METADATA]
          [APPENDIX <appendix-name>]
          [LOWER_CASE_FILE]
@@ -144,12 +149,10 @@ Exporting Targets to the |CPS|
          [LICENSE <license-string>]
          [DEFAULT_LICENSE <license-string>]
          [DESCRIPTION <description-string>]
-         [HOMEPAGE_URL <url-string>])
+         [HOMEPAGE_URL <url-string>]
+         [CXX_MODULES_DIRECTORY <directory>])
 
-.. versionadded:: 4.1
-.. note::
-
-  Experimental. Gated by ``CMAKE_EXPERIMENTAL_EXPORT_PACKAGE_INFO``.
+.. versionadded:: 4.3
 
 Creates a file in the |CPS|_ that may be included by outside projects to import
 targets named by ``<target>...`` from the current project's build tree.  See
@@ -161,6 +164,34 @@ The default file name is ``<package-name>[-<appendix-name>].cps``. If the
 converted to lower case.
 
 See :command:`install(PACKAGE_INFO)` for a description of the other options.
+
+Exporting Software Bill of Materials (SBOM) Documents
+"""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+.. signature::
+  export(SBOM <sbom-name> [...])
+
+.. code-block:: cmake
+
+  export(SBOM <sbom-name> EXPORT <export-name>
+         [FORMAT <string>]
+         [PROJECT <project-name>|NO_PROJECT_METADATA]
+         [VERSION <major>[.<minor>[.<patch>[.<tweak>]]]]
+         [LICENSE <license-string>]
+         [DESCRIPTION <description-string>]
+         [HOMEPAGE_URL <url-string>]
+         [PACKAGE_URL <url-string>])
+
+.. versionadded:: 4.3
+.. note::
+
+  Experimental. Gated by ``CMAKE_EXPERIMENTAL_GENERATE_SBOM``.
+
+Generates a software bill of materials (SBOM) document describing the targets
+in the export ``<export-name>`` and their dependencies in the build tree
+
+See :command:`install(SBOM)` for details about the supported SBOM formats and a
+description of the other options.
 
 Exporting Packages
 ^^^^^^^^^^^^^^^^^^

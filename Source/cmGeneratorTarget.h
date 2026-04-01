@@ -1112,6 +1112,7 @@ public:
   bool AddHeaderSetVerification();
   std::string GenerateHeaderSetVerificationFile(
     cmSourceFile& source, std::string const& dir,
+    std::string const& verifyTargetName,
     cm::optional<std::set<std::string>>& languages) const;
 
   std::string GetImportedXcFrameworkPath(std::string const& config) const;
@@ -1324,6 +1325,9 @@ private:
 
   mutable std::vector<AllConfigSource> AllConfigSources;
   void ComputeAllConfigSources() const;
+
+  mutable std::set<std::string> AllConfigCompileLanguages;
+  void ComputeAllConfigCompileLanguages() const;
 
   mutable std::unordered_map<std::string, bool> MaybeInterfacePropertyExists;
   bool MaybeHaveInterfaceProperty(std::string const& prop,

@@ -3,15 +3,16 @@
 #include "cmGraphVizWriter.h"
 
 #include <algorithm>
-#include <cctype>
 #include <iostream>
 #include <memory>
 #include <set>
+#include <unordered_set>
 #include <utility>
 
 #include <cm/memory>
 
 #include "cmsys/RegularExpression.hxx"
+#include "cmsys/String.h"
 
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorTarget.h"
@@ -197,9 +198,7 @@ void cmGraphVizWriter::ReadSettings(
   std::string const& settingsFileName,
   std::string const& fallbackSettingsFileName)
 {
-  cmake cm(cmake::RoleScript, cmState::Unknown);
-  cm.SetHomeDirectory("");
-  cm.SetHomeOutputDirectory("");
+  cmake cm(cmState::Role::Script);
   cm.GetCurrentSnapshot().SetDefaultDefinitions();
   cmGlobalGenerator ggi(&cm);
   cmMakefile mf(&ggi, cm.GetCurrentSnapshot());
@@ -369,10 +368,14 @@ void cmGraphVizWriter::WritePerTargetConnections(
     std::unique_ptr<cmGeneratedFileStream> fileStream =
       this->CreateTargetFile(rootItem, fileNameSuffix);
 
+    // avoid write same node multiple times
+    std::unordered_set<std::string> writtenNodes = { rootItem.AsStr() };
     for (Connection const& con : cons) {
       cmLinkItem const& src = DirFunc::src(con);
       cmLinkItem const& dst = DirFunc::dst(con);
-      this->WriteNode(*fileStream, con.dst);
+      if (writtenNodes.emplace(con.dst.AsStr()).second) {
+        this->WriteNode(*fileStream, con.dst);
+      }
       this->WriteConnection(*fileStream, src, dst, con.scopeType);
     }
 
@@ -599,7 +602,7 @@ std::string cmGraphVizWriter::PathSafeString(std::string const& str)
   auto const extra_chars = std::set<char>{ '.', '-', '_' };
 
   for (char c : str) {
-    if (std::isalnum(c) || extra_chars.find(c) != extra_chars.cend()) {
+    if (cmsysString_isalnum(c) || extra_chars.find(c) != extra_chars.cend()) {
       pathSafeStr += c;
     }
   }

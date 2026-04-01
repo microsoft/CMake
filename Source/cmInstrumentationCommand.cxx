@@ -3,7 +3,6 @@ file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmInstrumentationCommand.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <functional>
 #include <set>
@@ -14,28 +13,27 @@ file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include <cm3p/json/reader.h>
 #include <cm3p/json/value.h>
 
+#include "cmsys/String.h"
+
 #include "cmArgumentParser.h"
 #include "cmArgumentParserTypes.h"
 #include "cmExecutionStatus.h"
-#include "cmExperimental.h"
 #include "cmInstrumentation.h"
 #include "cmInstrumentationQuery.h"
 #include "cmList.h"
 #include "cmMakefile.h"
+#include "cmMessageType.h"
 #include "cmStringAlgorithms.h"
 #include "cmValue.h"
 #include "cmake.h"
 
 namespace {
 
-bool isCharDigit(char ch)
-{
-  return std::isdigit(static_cast<unsigned char>(ch));
-}
 bool validateVersion(std::string const& key, std::string const& versionString,
                      int& version, cmExecutionStatus& status)
 {
-  if (!std::all_of(versionString.begin(), versionString.end(), isCharDigit)) {
+  if (!std::all_of(versionString.begin(), versionString.end(),
+                   cmsysString_isdigit)) {
     status.SetError(cmStrCat("given a non-integer ", key, '.'));
     return false;
   }
@@ -68,16 +66,15 @@ std::function<bool(std::string const&, E&)> EnumParser(
 bool cmInstrumentationCommand(std::vector<std::string> const& args,
                               cmExecutionStatus& status)
 {
-  // if (status->GetMakefile().GetPropertyKeys) {
-  if (!cmExperimental::HasSupportEnabled(
-        status.GetMakefile(), cmExperimental::Feature::Instrumentation)) {
-    status.SetError(
-      "requires the experimental Instrumentation flag to be enabled");
+  if (args.empty()) {
+    status.SetError("must be called with arguments.");
     return false;
   }
 
-  if (args.empty()) {
-    status.SetError("must be called with arguments.");
+  if (status.GetMakefile().GetCMakeInstance()->GetInInitialCache()) {
+    status.GetMakefile().IssueMessage(
+      MessageType::FATAL_ERROR,
+      "Cannot invoke cmake_instrumentation() within an initial cache file.");
     return false;
   }
 

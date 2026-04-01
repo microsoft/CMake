@@ -11,7 +11,8 @@ For other path manipulation, handling only syntactic aspects, see the
 
 .. note::
 
-  The sub-commands `RELATIVE_PATH`_, `TO_CMAKE_PATH`_, and `TO_NATIVE_PATH`_
+  The sub-commands :command:`file(RELATIVE_PATH)`,
+  :command:`file(TO_CMAKE_PATH)`, and :command:`file(TO_NATIVE_PATH)`
   have been superseded, respectively, by the sub-commands
   :command:`cmake_path(RELATIVE_PATH)`,
   :command:`cmake_path(CONVERT ... TO_CMAKE_PATH_LIST)`, and
@@ -615,11 +616,12 @@ Filesystem
   emitted.
 
   Specifying ``COPY_ON_ERROR`` enables copying the file as a fallback if
-  creating the link fails.  If the source is a directory, the destination
-  directory will be created if it does not exist, but no files will be copied
-  the from source one.  It can be useful for handling situations such as
+  creating the link fails.  It can be useful for handling situations such as
   ``<original>`` and ``<linkname>`` being on different drives or mount points,
   which would make them unable to support a hard link.
+  If the source is a directory, the destination directory will be created if
+  it does not exist.  Contents of the source directory will be copied to the
+  destination directory unless policy :policy:`CMP0205` is not set to ``NEW``.
 
 .. signature::
   file(CHMOD <files>... <directories>...
@@ -708,12 +710,12 @@ Path Conversion
   file(TO_CMAKE_PATH "<path>" <variable>)
   file(TO_NATIVE_PATH "<path>" <variable>)
 
-  The ``TO_CMAKE_PATH`` mode converts a native ``<path>`` into a cmake-style
+  The ``TO_CMAKE_PATH`` mode converts a native ``<path>`` into a CMake-style
   path with forward-slashes (``/``).  The input can be a single path or a
   system search path like ``$ENV{PATH}``.  A search path will be converted
-  to a cmake-style list separated by ``;`` characters.
+  to a :ref:`semicolon-separated list <CMake Language Lists>`.
 
-  The ``TO_NATIVE_PATH`` mode converts a cmake-style ``<path>`` into a native
+  The ``TO_NATIVE_PATH`` mode converts a CMake-style ``<path>`` into a native
   path with platform-specific slashes (``\`` on Windows hosts and ``/``
   elsewhere).
 
@@ -914,6 +916,7 @@ Archiving
     [COMPRESSION <compression>
     [COMPRESSION_LEVEL <compression-level>]]
     [MTIME <mtime>]
+    [THREADS <number>]
     [WORKING_DIRECTORY <dir>]
     [VERBOSE])
   :target: ARCHIVE_CREATE
@@ -932,16 +935,54 @@ Archiving
     ``7zip``, ``gnutar``, ``pax``, ``paxr``, ``raw`` and ``zip``.
     If ``FORMAT`` is not given, the default format is ``paxr``.
 
+    The default compression method depends on the format:
+
+    * ``7zip`` uses ``LZMA`` compression
+    * ``zip`` uses ``Deflate`` compression
+    * others uses no compression by default
+
   ``COMPRESSION <compression>``
     Some archive formats allow the type of compression to be specified.
     The ``7zip`` and ``zip`` archive formats already imply a specific type of
     compression.  The other formats use no compression by default, but can be
     directed to do so with the ``COMPRESSION`` option.  Valid values for
-    ``<compression>`` are ``None``, ``BZip2``, ``GZip``, ``XZ``, and ``Zstd``.
+    ``<compression>`` are:
+
+    * ``None``
+    * ``BZip2``
+    * ``Deflate``
+
+      .. versionadded:: 4.3
+
+      This is an alias for ``GZip``.
+
+    * ``GZip``
+    * ``LZMA``
+
+      .. versionadded:: 4.3
+
+    * ``LZMA2``
+
+      .. versionadded:: 4.3
+
+      This is an alias for ``XZ``.
+
+    * ``PPMd``
+
+      .. versionadded:: 4.3
+
+      This compression method is only supported by the ``7zip`` archive format.
+
+    * ``XZ``
+    * ``Zstd``
 
     .. note::
       With ``FORMAT`` set to ``raw``, only one file will be compressed
       with the compression type specified by ``COMPRESSION``.
+
+    .. versionadded:: 4.3
+
+      The ``7zip`` and ``zip`` formats support changing the default compression.
 
   ``COMPRESSION_LEVEL <compression-level>``
     .. versionadded:: 3.19
@@ -951,12 +992,30 @@ Archiving
     default being 0.  The ``COMPRESSION`` option must be present when
     ``COMPRESSION_LEVEL`` is given.
 
+    The value ``0`` is used to specify the default compression level.
+    It is selected automatically by the archive library backend and
+    not directly set by CMake itself. The default compression level
+    may vary between archive formats, platforms, etc.
+
     .. versionadded:: 3.26
       The ``<compression-level>`` of the ``Zstd`` algorithm can be set
       between 0-19.
 
+    .. versionadded:: 4.3
+      The ``<compression-level>`` can be specified for the ``7zip`` and ``zip``
+      formats too. The ``Zstd`` algorithm compression level can be set
+      between 0-19, except for ``zip`` format.
+
   ``MTIME <mtime>``
     Specify the modification time recorded in tarball entries.
+
+  ``THREADS <number>``
+    .. versionadded:: 4.3
+
+    Use the ``<number>`` threads to operate on the archive.
+
+    The number of available cores on the machine will be used if set to ``0``.
+    Note that not all compression modes support threading in all environments.
 
   ``WORKING_DIRECTORY <dir>``
     .. versionadded:: 3.31
@@ -1007,6 +1066,10 @@ Archiving
 
   ``VERBOSE``
     Enable verbose output from the extraction operation.
+
+  .. versionchanged:: 4.3
+    Archive entries containing path traversal sequences (``..``), or
+    absolute paths, are rejected for security.
 
   .. note::
     The working directory for this subcommand is the ``DESTINATION`` directory
@@ -1121,6 +1184,8 @@ Handling Runtime Binaries
 
   The following arguments specify filters for including or excluding libraries
   to be resolved. See below for a full description of how they work.
+  Directory separators in file paths may be matched using forward
+  slashes unless policy :policy:`CMP0207` is not set to ``NEW``.
 
     ``PRE_INCLUDE_REGEXES <regexes>...``
       List of pre-include regexes through which to filter the names of

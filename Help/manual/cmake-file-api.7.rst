@@ -1637,6 +1637,35 @@ with members:
     available.  The value is an unsigned integer 0-based index into
     the ``backtraceGraph`` member's ``nodes`` array.
 
+``interfaceSources``
+  An optional member that is present when a target defines one or more
+  interface sources.  The value is a JSON array of entries corresponding
+  to the target's interface source files.  Each entry is a JSON object
+  with members:
+
+  ``path``
+    A string specifying the path to the source file on disk, represented
+    with forward slashes.  If the file is inside the top-level source
+    directory then the path is specified relative to that directory.
+    Otherwise the path is absolute.
+
+  ``sourceGroupIndex``
+    Optional member that is present when the source is part of a source
+    group either via the :command:`source_group` command or by default.
+    The value is an unsigned integer 0-based index into the
+    ``sourceGroups`` array.
+
+  ``isGenerated``
+    Optional member that is present with boolean value ``true`` if
+    the source is :prop_sf:`GENERATED`.
+
+  ``fileSetIndex``
+    Optional member that is present when the source is part of a file set.
+    The value is an unsigned integer 0-based index into the ``fileSets``
+    array.
+
+  This field was added in codemodel version 2.10.
+
 ``sourceGroups``
   Optional member that is present when sources are grouped together by
   the :command:`source_group` command or by default.  The value is a
@@ -1650,6 +1679,15 @@ with members:
     A JSON array listing the sources belonging to the group.
     Each entry is an unsigned integer 0-based index into the
     main ``sources`` array for the target.
+
+  ``interfaceSourceIndexes``
+    Optional member that is present when at least one interface source file
+    is part of the source group.  The value is a JSON array listing the
+    interface sources belonging to the group.  Each entry is an unsigned
+    integer 0-based index into the main ``interfaceSources`` array for the
+    target.
+
+    This field was added in codemodel version 2.10.
 
 ``compileGroups``
   Optional member that is present when the target has sources that compile.
@@ -2109,12 +2147,13 @@ There is only one ``toolchains`` object major version, version 1.
 
   {
     "kind": "toolchains",
-    "version": { "major": 1, "minor": 0 },
+    "version": { "major": 1, "minor": 1 },
     "toolchains": [
       {
         "language": "C",
         "compiler": {
           "path": "/usr/bin/cc",
+          "commandFragment": "--config x86_64-linux-gnu.cfg",
           "id": "GNU",
           "version": "9.3.0",
           "implicit": {
@@ -2192,6 +2231,16 @@ The members specific to ``toolchains`` objects are:
       Optional member that is present when the
       :variable:`CMAKE_<LANG>_COMPILER` variable is defined for the current
       language. Its value is a JSON string holding the path to the compiler.
+
+    ``commandFragment``
+      Optional member that is present when the
+      :variable:`CMAKE_<LANG>_COMPILER` variable is a list containing multiple
+      elements or the :envvar:`CC` or similar environment variable contains
+      command line arguments after the compiler executable.
+      Its value is a JSON string holding the second and further elements
+      (mandatory arguments to the compiler) as a command line fragment.
+
+      This field was added in toolchains version 1.1.
 
     ``id``
       Optional member that is present when the

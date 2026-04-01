@@ -265,6 +265,11 @@ archive_compressor_zstd_options(struct archive_write_filter *f, const char *key,
 		if (level < minimum || level > maximum) {
 			return (ARCHIVE_WARN);
 		}
+#ifdef _AIX
+		if (level > 6) {
+			level = 6;
+		}
+#endif
 		data->compression_level = (int)level;
 		return (ARCHIVE_OK);
 	} else if (strcmp(key, "threads") == 0) {
@@ -390,6 +395,8 @@ archive_compressor_zstd_open(struct archive_write_filter *f)
 	}
 
 	ZSTD_CCtx_setParameter(data->cstream, ZSTD_c_nbWorkers, data->threads);
+
+	ZSTD_CCtx_setParameter(data->cstream, ZSTD_c_checksumFlag, 1);
 
 #if ZSTD_VERSION_NUMBER >= MINVER_LONG
 	ZSTD_CCtx_setParameter(data->cstream, ZSTD_c_windowLog, data->long_distance);

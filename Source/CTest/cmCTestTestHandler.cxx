@@ -652,6 +652,12 @@ bool cmCTestTestHandler::GenerateXML()
       this->LogFile = nullptr;
       return false;
     }
+
+    // We represent some times as a double-precision floating-point number
+    // of seconds since the epoch.  Print them with microsecond precision.
+    // Representable values differ by hundreds of nanoseconds anyway.
+    xmlfile << std::fixed << std::setprecision(6);
+
     cmXMLWriter xml(xmlfile);
     this->GenerateCTestXML(xml);
   }
@@ -1525,6 +1531,9 @@ void cmCTestTestHandler::WriteTestResultHeader(cmXMLWriter& xml,
   xml.Element("Path", this->CTest->GetShortPathToFile(result.Path));
   xml.Element("FullName", this->CTest->GetShortPathToFile(testPath));
   xml.Element("FullCommandLine", result.FullCommandLine);
+  if (result.StartTestTime) {
+    xml.Element("StartTestTime", *result.StartTestTime);
+  }
 }
 
 void cmCTestTestHandler::WriteTestResultFooter(cmXMLWriter& xml,
@@ -1754,9 +1763,7 @@ bool cmCTestTestHandler::GetListOfTests()
   }
   cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
                      "Constructing a list of tests" << std::endl, this->Quiet);
-  cmake cm(cmake::RoleScript, cmState::CTest);
-  cm.SetHomeDirectory("");
-  cm.SetHomeOutputDirectory("");
+  cmake cm(cmState::Role::CTest);
   cm.GetCurrentSnapshot().SetDefaultDefinitions();
   cmGlobalGenerator gg(&cm);
   cmMakefile mf(&gg, cm.GetCurrentSnapshot());
@@ -2202,7 +2209,7 @@ bool cmCTestTestHandler::SetTestsProperties(
 
             // Ensure we have complete triples otherwise the data is corrupt.
             if (triples.size() % 3 == 0) {
-              cmState state(cmState::Unknown);
+              cmState state(cmState::Role::Internal);
               rt.Backtrace = cmListFileBacktrace();
 
               // the first entry represents the top of the trace so we need to
@@ -2614,7 +2621,7 @@ bool cmCTestTestHandler::WriteJUnitXML()
       // be ok to put it here as a cmake-list.
       xml.Attribute("value", cmList::to_string(result.Properties->Labels));
       // if we export more properties, this should be done the same way,
-      // i.e. prefix the property name with "cmake_", and it it can be
+      // i.e. prefix the property name with "cmake_", and it can be
       // a list, write it cmake-formatted.
       xml.EndElement(); // </property>
     }

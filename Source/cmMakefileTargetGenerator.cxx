@@ -138,13 +138,8 @@ void cmMakefileTargetGenerator::GetDeviceLinkFlags(
 void cmMakefileTargetGenerator::GetTargetLinkFlags(
   std::string& flags, std::string const& linkLanguage)
 {
-  this->LocalGenerator->AppendFlags(
-    flags, this->GeneratorTarget->GetSafeProperty("LINK_FLAGS"));
-
-  std::string const linkFlagsConfig =
-    cmStrCat("LINK_FLAGS_", cmSystemTools::UpperCase(this->GetConfigName()));
-  this->LocalGenerator->AppendFlags(
-    flags, this->GeneratorTarget->GetSafeProperty(linkFlagsConfig));
+  this->LocalGenerator->AddTargetPropertyLinkFlags(
+    flags, this->GeneratorTarget, this->GetConfigName());
 
   std::vector<std::string> opts;
   this->GeneratorTarget->GetLinkOptions(opts, this->GetConfigName(),
@@ -919,7 +914,7 @@ void cmMakefileTargetGenerator::WriteObjectRuleFiles(
       cmOutputConverter::SHELL);
 
     if (this->LocalGenerator->IsMinGWMake() &&
-        cmHasLiteralSuffix(targetOutPathCompilePDB, "\\")) {
+        cmHasSuffix(targetOutPathCompilePDB, '\\')) {
       // mingw32-make incorrectly interprets 'a\ b c' as 'a b' and 'c'
       // (but 'a\ b "c"' as 'a\', 'b', and 'c'!).  Workaround this by
       // avoiding a trailing backslash in the argument.

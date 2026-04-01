@@ -10,6 +10,7 @@ readonly subtree="Utilities/cmbzip2"
 readonly repo="https://sourceware.org/git/bzip2.git"
 readonly tag="bzip2-1.0.8"
 readonly shortlog=false
+readonly exact_tree_match=false
 readonly paths="
   LICENSE
   README
@@ -21,6 +22,7 @@ extract_source () {
     git_archive
     pushd "${extractdir}/${name}-reduced"
     echo "* -whitespace" > .gitattributes
+    fromdos dlltest.c
     popd
 }
 

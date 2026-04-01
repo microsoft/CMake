@@ -54,13 +54,6 @@ static void cmAddPluginPath();
 Q_IMPORT_PLUGIN(QXcbIntegrationPlugin);
 #endif
 
-#if defined(USE_QWindowsIntegrationPlugin)
-Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin);
-#  if QT_VERSION >= QT_VERSION_CHECK(5, 10, 0)
-Q_IMPORT_PLUGIN(QWindowsVistaStylePlugin);
-#  endif
-#endif
-
 int CMakeGUIExec(CMakeSetupDialog* window);
 void SetupDefaultQSettings();
 void OpenReferenceManual(QString const& filename);
@@ -82,9 +75,7 @@ int main(int argc, char** argv)
   doc.addCMakeStandardDocSections();
   if (argc2 > 1 && doc.CheckOptions(argc2, argv2)) {
     // Construct and print requested documentation.
-    cmake hcm(cmake::RoleInternal, cmState::Help);
-    hcm.SetHomeDirectory("");
-    hcm.SetHomeOutputDirectory("");
+    cmake hcm(cmState::Role::Help);
     hcm.AddCMakePaths();
 
     auto generators = hcm.GetGeneratorsDocumentation();
@@ -289,7 +280,7 @@ static bool cmOSXInstall(std::string const& dir, std::string const& tool)
 
 static int cmOSXInstall(std::string dir)
 {
-  if (!cmHasLiteralSuffix(dir, "/")) {
+  if (!cmHasSuffix(dir, '/')) {
     dir += "/";
   }
   return (cmOSXInstall(dir, cmSystemTools::GetCMakeCommand()) &&

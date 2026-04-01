@@ -8,8 +8,9 @@ readonly name="zstd"
 readonly ownership="zstd upstream <kwrobot@kitware.com>"
 readonly subtree="Utilities/cmzstd"
 readonly repo="https://github.com/facebook/zstd.git"
-readonly tag="v1.5.5"
+readonly tag="v1.5.7"
 readonly shortlog=false
+readonly exact_tree_match=false
 readonly paths="
   LICENSE
   README.md

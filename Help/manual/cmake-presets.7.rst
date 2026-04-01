@@ -44,6 +44,8 @@ key ``$comment`` at any level within the JSON object to provide documentation.
 
 The root object recognizes the following fields:
 
+.. _`CMakePresets schema`:
+
 ``$schema``
   An optional string that provides a URI to the JSON schema that describes the
   structure of this JSON document. This field is used for validation and
@@ -51,41 +53,11 @@ The root object recognizes the following fields:
   behavior of the document itself. If this field is not specified, the JSON
   document will still be valid, but tools that use JSON schema for validation
   and autocompletion may not function correctly.
-  This is allowed in preset files specifying version ``8`` or above.
 
 ``version``
-  A required integer representing the version of the JSON schema.
-  The supported versions are:
-
-  ``1``
-    .. versionadded:: 3.19
-
-  ``2``
-    .. versionadded:: 3.20
-
-  ``3``
-    .. versionadded:: 3.21
-
-  ``4``
-    .. versionadded:: 3.23
-
-  ``5``
-    .. versionadded:: 3.24
-
-  ``6``
-    .. versionadded:: 3.25
-
-  ``7``
-    .. versionadded:: 3.27
-
-  ``8``
-    .. versionadded:: 3.28
-
-  ``9``
-    .. versionadded:: 3.30
-
-  ``10``
-    .. versionadded:: 3.31
+  A required integer representing the version of the JSON schema. See
+  `Versions`_ for discussion of the supported versions and the corresponding
+  version of CMake in which they were added.
 
 ``cmakeMinimumRequired``
   An optional object representing the minimum version of CMake needed to
@@ -168,7 +140,7 @@ that may contain the following fields:
 
 ``name``
   A required string representing the machine-friendly name of the preset.
-  This identifier is used in the :ref:`cmake --preset <CMake Options>` option.
+  This identifier is used in the :option:`cmake --preset` option.
   There must not be two configure presets in the union of ``CMakePresets.json``
   and ``CMakeUserPresets.json`` in the same directory with the same name.
   However, a configure preset may have the same name as a build, test,
@@ -176,11 +148,12 @@ that may contain the following fields:
 
 ``hidden``
   An optional boolean specifying whether or not a preset should be hidden.
-  If a preset is hidden, it cannot be used in the ``--preset=`` argument,
-  will not show up in the :manual:`CMake GUI <cmake-gui(1)>`, and does not
-  have to have a valid ``generator`` or ``binaryDir``, even from
-  inheritance. ``hidden`` presets are intended to be used as a base for
-  other presets to inherit via the ``inherits`` field.
+  If a preset is hidden, it cannot be used in the
+  :option:`--preset <cmake --preset>` argument, will not show up in the
+  :manual:`CMake GUI <cmake-gui(1)>`, and does not have to have a valid
+  ``generator`` or ``binaryDir``, even from inheritance. ``hidden`` presets are
+  intended to be used as a base for other presets to inherit via the
+  ``inherits`` field.
 
 ``inherits``
   An optional array of strings representing the names of presets to inherit
@@ -217,14 +190,16 @@ that may contain the following fields:
 ``description``
   An optional string with a human-friendly description of the preset.
 
-``generator``
-  An optional string representing the generator to use for the preset. If
-  ``generator`` is not specified, it must be inherited from the
-  ``inherits`` preset (unless this preset is ``hidden``). In version ``3``
-  or above, this field may be omitted to fall back to regular generator
-  discovery procedure.
+.. _`CMakePresets generator`:
 
-  Note that for Visual Studio generators, unlike in the command line
+``generator``
+  An optional string representing the :manual:`generator <cmake-generators(7)>`
+  to use for the preset. If ``generator`` is not specified, it must be
+  inherited from the ``inherits`` preset (unless this preset is ``hidden``).
+  In version ``3`` or above, this field may be omitted to fall back to regular
+  generator discovery procedure.
+
+  Note that for :ref:`Visual Studio generators`, unlike in the command line
   :option:`-G <cmake -G>` argument, you cannot include the platform name
   in the generator name. Use the ``architecture`` field instead.
 
@@ -259,6 +234,8 @@ that may contain the following fields:
     If no ``strategy`` field is given, or if the field uses the string form
     rather than the object form, the behavior is the same as ``"set"``.
 
+.. _`CMakePresets toolchainFile`:
+
 ``toolchainFile``
   An optional string representing the path to the toolchain file.
   This field supports `macro expansion`_. If a relative path is specified,
@@ -266,6 +243,8 @@ that may contain the following fields:
   relative to the source directory. This field takes precedence over any
   :variable:`CMAKE_TOOLCHAIN_FILE` value. It is allowed in preset files
   specifying version ``3`` or above.
+
+.. _`CMakePresets graphviz`:
 
 ``graphviz``
   An optional string representing the path to the graphviz input file,
@@ -277,6 +256,8 @@ that may contain the following fields:
   it is calculated relative to the current working directory. It is allowed
   in preset files specifying version ``10`` or above.
 
+.. _`CMakePresets binaryDir`:
+
 ``binaryDir``
   An optional string representing the path to the output binary directory.
   This field supports `macro expansion`_. If a relative path is specified,
@@ -285,8 +266,11 @@ that may contain the following fields:
   preset is ``hidden``). In version ``3`` or above, this field may be
   omitted.
 
+.. _`CMakePresets installDir`:
+
 ``installDir``
-  An optional string representing the path to the installation directory.
+  An optional string representing the path to the installation directory,
+  which will be used as the :variable:`CMAKE_INSTALL_PREFIX` variable.
   This field supports `macro expansion`_. If a relative path is specified,
   it is calculated relative to the source directory. This is allowed in
   preset files specifying version ``3`` or above.
@@ -403,6 +387,8 @@ that may contain the following fields:
     An optional boolean. Setting this to ``true`` is equivalent to passing
     :option:`--debug-find <cmake --debug-find>` on the command line.
 
+.. _`CMakePresets trace`:
+
 ``trace``
   An optional object specifying trace options. This is allowed in preset
   files specifying version ``7``. The object may contain the following fields:
@@ -458,7 +444,7 @@ that may contain the following fields:
 ``name``
   A required string representing the machine-friendly name of the preset.
   This identifier is used in the
-  :ref:`cmake --build --preset <Build Tool Mode>` option.
+  :option:`cmake --build --preset <cmake--build --preset>` option.
   There must not be two build presets in the union of ``CMakePresets.json``
   and ``CMakeUserPresets.json`` in the same directory with the same name.
   However, a build preset may have the same name as a configure, test,
@@ -467,7 +453,7 @@ that may contain the following fields:
 ``hidden``
   An optional boolean specifying whether or not a preset should be hidden.
   If a preset is hidden, it cannot be used in the
-  :option:`--preset <cmake --preset>` argument
+  :option:`--preset <cmake--build --preset>` argument
   and does not have to have a valid ``configurePreset``, even from
   inheritance. ``hidden`` presets are intended to be used as a base for
   other presets to inherit via the ``inherits`` field.
@@ -507,6 +493,8 @@ that may contain the following fields:
 ``description``
   An optional string with a human-friendly description of the preset.
 
+.. _`CMakePresets build environment`:
+
 ``environment``
   An optional map of environment variables. The key is the variable name
   (which may not be an empty string), and the value is either ``null`` or
@@ -530,16 +518,16 @@ that may contain the following fields:
 
   .. note::
 
-    For a CMake project using ExternalProject with a configuration preset
-    having environment variables needed in the ExternalProject, use a build
-    preset that inherits that configuration preset or the ExternalProject
+    For a CMake project using :module:`ExternalProject` with a configuration
+    preset having environment variables needed in the ExternalProject, use a
+    build preset that inherits that configuration preset or the ExternalProject
     will not have the environment variables set in the configuration preset.
     Example: suppose the host defaults to one compiler (say Clang)
     and the user wishes to use another compiler (say GCC). Set configuration
-    preset environment variables ``CC`` and ``CXX`` and use a build preset
-    that inherits that configuration preset. Otherwise the ExternalProject
-    may use a different (system default) compiler than the top-level CMake
-    project.
+    preset environment variables :envvar:`CC` and :envvar:`CXX` and use a build
+    preset that inherits that configuration preset. Otherwise the
+    ExternalProject may use a different (system default) compiler than the
+    top-level CMake project.
 
 ``configurePreset``
   An optional string specifying the name of a configure preset to
@@ -555,9 +543,20 @@ that may contain the following fields:
   inherited build preset environments, but before environment variables
   explicitly specified in this build preset.
 
+.. _`CMakePresets build jobs`:
+
 ``jobs``
   An optional integer. Equivalent to passing
   :option:`--parallel <cmake--build --parallel>` or ``-j`` on the command line.
+  If the value is ``0``, it is equivalent to passing ``--parallel`` with
+  ``<jobs>`` omitted; alternatively, one can define the environment variable
+  :envvar:`CMAKE_BUILD_PARALLEL_LEVEL` as an empty string using the
+  ``environment`` field.
+
+  .. versionchanged:: 4.3
+
+    This field does not accept negative integer values, regardless of the
+    version in the preset file.
 
 ``targets``
   An optional string or array of strings. Equivalent to passing
@@ -573,14 +572,16 @@ that may contain the following fields:
   An optional bool. If true, equivalent to passing
   :option:`--clean-first <cmake--build --clean-first>` on the command line.
 
+.. _`CMakePresets resolvePackageReferences`:
+
 ``resolvePackageReferences``
   An optional string that specifies the package resolve mode. This is
   allowed in preset files specifying version ``4`` or above.
 
   Package references are used to define dependencies to packages from
   external package managers. Currently only NuGet in combination with the
-  Visual Studio generator is supported. If there are no targets that define
-  package references, this option does nothing. Valid values are:
+  :ref:`Visual Studio generators` is supported. If there are no targets that
+  define package references, this option does nothing. Valid values are:
 
   ``on``
     Causes package references to be resolved before attempting a build.
@@ -601,11 +602,11 @@ that may contain the following fields:
     variable will be evaluated to decide, if package restoration should be
     performed.
 
-    When using the Visual Studio generator, package references are defined
-    using the :prop_tgt:`VS_PACKAGE_REFERENCES` property. Package references
-    are restored using NuGet. It can be disabled by setting the
-    ``CMAKE_VS_NUGET_PACKAGE_RESTORE`` variable to ``OFF``. This can also be
-    done from within a configure preset.
+    When using the :ref:`Visual Studio generators`, package references are
+    defined using the :prop_tgt:`VS_PACKAGE_REFERENCES` property. Package
+    references are restored using NuGet. It can be disabled by setting the
+    :variable:`CMAKE_VS_NUGET_PACKAGE_RESTORE` variable to ``OFF``. This can
+    also be done from within a configure preset.
 
 ``verbose``
   An optional bool. If true, equivalent to passing
@@ -717,6 +718,8 @@ that may contain the following fields:
   :option:`--overwrite <ctest --overwrite>` for each value in the array.
   The array values support macro expansion.
 
+.. _`CMakePresets output`:
+
 ``output``
   An optional object specifying output options. The object may contain the
   following fields.
@@ -758,6 +761,8 @@ that may contain the following fields:
     passing :option:`--output-log <ctest --output-log>` on the command line.
     This field supports macro expansion.
 
+.. _`CMakePresets outputJUnitFile`:
+
   ``outputJUnitFile``
     An optional string specifying a path to a JUnit file. Equivalent to
     passing :option:`--output-junit <ctest --output-junit>` on the command line.
@@ -785,6 +790,8 @@ that may contain the following fields:
     bytes. Equivalent to passing
     :option:`--test-output-size-failed <ctest --test-output-size-failed>`
     on the command line.
+
+.. _`CMakePresets testOutputTruncation`:
 
   ``testOutputTruncation``
     An optional string specifying the test output truncation mode. Equivalent
@@ -890,9 +897,21 @@ that may contain the following fields:
     An optional bool. If true, equivalent to passing :option:`-F <ctest -F>`
     on the command line.
 
+.. _`CMakePresets test jobs`:
+
   ``jobs``
     An optional integer. Equivalent to passing
-    :option:`--parallel <ctest --parallel>` on the command line.
+    :option:`--parallel <ctest --parallel>` on the command line. If the value
+    is ``0``, it is equivalent to unbounded parallelism.
+
+    In preset files specifying version ``11`` or above, this field can also be
+    a string, in which case it must be empty, and is equivalent to passing
+    ``--parallel`` with ``<jobs>`` omitted.
+
+    .. versionchanged:: 4.3
+
+      This field does not accept negative integer values, regardless of the
+      version in the preset file.
 
   ``resourceSpecFile``
     An optional string. Equivalent to passing
@@ -1120,8 +1139,8 @@ fields:
 ``name``
   A required string representing the machine-friendly name of the preset.
   This identifier is used in the
-  :ref:`cmake --workflow --preset <Workflow Mode>` option. There must not be
-  two workflow presets in the union of ``CMakePresets.json`` and
+  :option:`cmake --workflow --preset <cmake--workflow --preset>` option. There
+  must not be two workflow presets in the union of ``CMakePresets.json`` and
   ``CMakeUserPresets.json`` in the same directory with the same name. However,
   a workflow preset may have the same name as a configure, build, test, or
   package preset.
@@ -1275,10 +1294,14 @@ Recognized macros include:
 
   This is a preset-specific macro.
 
+.. _`CMakePresets hostSystemName`:
+
 ``${hostSystemName}``
   The name of the host operating system. Contains the same value as
   :variable:`CMAKE_HOST_SYSTEM_NAME`. This is allowed in preset files
   specifying version ``3`` or above.
+
+.. _`CMakePresets fileDir`:
 
 ``${fileDir}``
   Path to the directory containing the preset file which contains the macro.
@@ -1286,6 +1309,8 @@ Recognized macros include:
 
 ``${dollar}``
   A literal dollar sign (``$``).
+
+.. _`CMakePresets pathListSep`:
 
 ``${pathListSep}``
   Native character for separating lists of paths, such as ``:`` or ``;``.
@@ -1329,6 +1354,123 @@ Recognized macros include:
   ``<macro-name>`` with a very short (preferably <= 4 characters) vendor
   identifier prefix, followed by a ``.``, followed by the macro name. For
   example, the Example IDE could have ``$vendor{xide.ideInstallDir}``.
+
+Versions
+========
+
+The JSON schema of ``CMakePresets.json`` and ``CMakeUserPresets.json``
+follows a version scheme where new versions are added and allowed in newer
+versions of CMake.
+
+A list of the supported versions along with the version of CMake in which
+they were added and a summary of the new features and changes is given below.
+
+  ``1``
+    .. versionadded:: 3.19
+
+    The initial version supports `Configure Presets <Configure Preset_>`_
+    and `Macro Expansion`_.
+
+  ``2``
+    .. versionadded:: 3.20
+
+    * `Build Presets <Build Preset_>`_ were added.
+    * `Test Presets <Test Preset_>`_ were added.
+
+  ``3``
+    .. versionadded:: 3.21
+
+    * The `Condition`_ object was added for `Configure <Configure Preset_>`_,
+      `Build <Build Preset_>`_, and `Test Presets <Test Preset_>`_.
+    * Changes to `Configure Presets <Configure Preset_>`_
+
+      * The `installDir <CMakePresets installDir_>`_ field was added.
+      * The `toolchainFile <CMakePresets toolchainFile_>`_ field was added.
+      * The `binaryDir <CMakePresets binaryDir_>`_ field is now optional.
+      * The `generator <CMakePresets generator_>`_ field is now optional.
+
+    * Changes to `Macro Expansion`_
+
+      * The `${hostSystemName} <CMakePresets hostSystemName_>`_ macro was
+        added.
+
+  ``4``
+    .. versionadded:: 3.23
+
+    * `Includes`_ were added to support including other JSON files in
+      ``CMakePresets.json`` and ``CMakeUserPresets.json``.
+    * Changes to `Build Presets <Build Preset_>`_
+
+      * The
+        `resolvePackageReferences <CMakePresets resolvePackageReferences_>`_
+        field was added.
+
+    * Changes to `Macro Expansion`_
+
+      * The `${fileDir} <CMakePresets fileDir_>`_ macro was added.
+
+  ``5``
+    .. versionadded:: 3.24
+
+    * Changes to `Test Presets <Test Preset_>`_
+
+      * The `testOutputTruncation <CMakePresets testOutputTruncation_>`_
+        field was added to the `output <CMakePresets output_>`_ object.
+
+    * Changes to `Macro Expansion`_
+
+      * The `${pathListSep} <CMakePresets pathListSep_>`_ macro was added.
+
+  ``6``
+    .. versionadded:: 3.25
+
+    * `Package Presets <Package Preset_>`_ were added.
+    * `Workflow Presets <Workflow Preset_>`_ were added.
+    * Changes to `Test Presets <Test Preset_>`_
+
+      * The `outputJUnitFile <CMakePresets outputJUnitFile_>`_ field was added
+        to the `output <CMakePresets output_>`_ object.
+
+  ``7``
+    .. versionadded:: 3.27
+
+    * Changes to `Configure Presets <Configure Preset_>`_
+
+      * The `trace <CMakePresets trace_>`_ field was added.
+
+    * Changes to `Includes`_
+
+      * The ``include`` field now supports ``$penv{}`` `macro expansion`_.
+
+  ``8``
+    .. versionadded:: 3.28
+
+    * The `$schema <CMakePresets schema_>`_ field was added to the root object.
+
+  ``9``
+    .. versionadded:: 3.30
+
+    * Changes to `Includes`_
+
+      * The ``include`` field now supports other types of `macro expansion`_.
+
+  ``10``
+    .. versionadded:: 3.31
+
+    * The optional ``$comment`` field was added to support documentation
+      throughout ``CMakePresets.json`` and ``CMakeUserPresets.json``.
+    * Changes to `Configure Presets <Configure Preset_>`_:
+
+      * The `graphviz <CMakePresets graphviz_>`_ field was added.
+
+  ``11``
+    .. versionadded:: 4.3
+
+    * Changes to `Test Presets <Test Preset_>`_
+
+      * The `jobs <CMakePresets test jobs_>`_ field now accepts an empty string
+        representing :option:`--parallel <ctest --parallel>` with ``<jobs>``
+        omitted.
 
 Schema
 ======

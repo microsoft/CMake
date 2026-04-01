@@ -1,8 +1,7 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 4.3)
 project(instrumentation)
 enable_testing()
 if (EXISTS ${INSTRUMENT_COMMAND_FILE})
-  set(CMAKE_EXPERIMENTAL_INSTRUMENTATION "ec7aa2dc-b87f-45a3-8022-fe01c5f59984")
   include(${INSTRUMENT_COMMAND_FILE})
 endif()
 
@@ -16,10 +15,30 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E true
   OUTPUT output1 output2
 )
+
+file(COPY_FILE shell_redirect.txt ${CMAKE_CURRENT_BINARY_DIR}/shell_redirect.in)
+if(CMAKE_GENERATOR STREQUAL "Watcom WMake")
+  # Watcom WMake does not seem to understand shell redirection.
+  add_custom_command(
+    OUTPUT shell_redirect.out
+    VERBATIM
+    COMMAND ${CMAKE_COMMAND} -E cat shell_redirect.in
+    COMMAND ${CMAKE_COMMAND} -E touch shell_redirect.out
+  )
+else()
+  add_custom_command(
+    OUTPUT shell_redirect.out
+    VERBATIM
+    COMMAND ${CMAKE_COMMAND} -E cat - < shell_redirect.in
+    COMMAND ${CMAKE_COMMAND} -E echo "> operator" > shell_redirect.out
+    COMMAND ${CMAKE_COMMAND} -E echo ">> operator" >> shell_redirect.out
+  )
+endif()
+
 set_property(SOURCE output1 output2 PROPERTY SYMBOLIC 1)
 add_custom_target(customTarget ALL
   COMMAND ${CMAKE_COMMAND} -E true
-  DEPENDS output1
+  DEPENDS output1 shell_redirect.out
 )
 add_test(NAME test COMMAND $<TARGET_FILE:main>)
 install(TARGETS main)

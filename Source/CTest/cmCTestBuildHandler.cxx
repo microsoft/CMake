@@ -514,11 +514,11 @@ void cmCTestBuildHandler::GenerateXMLLaunched(cmXMLWriter& xml)
     char const* fname = launchDir.GetFile(i);
     if (this->IsLaunchedErrorFile(fname) && numErrorsAllowed) {
       numErrorsAllowed--;
-      fragments.insert(this->CTestLaunchDir + '/' + fname);
+      fragments.insert(cmStrCat(this->CTestLaunchDir, '/', fname));
       ++this->TotalErrors;
     } else if (this->IsLaunchedWarningFile(fname) && numWarningsAllowed) {
       numWarningsAllowed--;
-      fragments.insert(this->CTestLaunchDir + '/' + fname);
+      fragments.insert(cmStrCat(this->CTestLaunchDir, '/', fname));
       ++this->TotalWarnings;
     }
   }
@@ -620,7 +620,6 @@ void cmCTestBuildHandler::GenerateInstrumentationXML(cmXMLWriter& xml)
       if (target_name == "." || target_name == "..") {
         continue;
       }
-      std::string target_type = "UNKNOWN";
 
       xml.StartElement("Target");
       xml.Attribute("name", target_name);
@@ -644,19 +643,23 @@ void cmCTestBuildHandler::GenerateInstrumentationXML(cmXMLWriter& xml)
           target_data = cmake_content["targets"];
         }
       }
-      // Extract targetType and targetLabels
-      if (target_data.isObject() && target_data.isMember(target_name)) {
+      bool target_has_data =
+        target_data.isObject() && target_data.isMember(target_name);
+      // Extract targetType
+      std::string target_type = "UNKNOWN";
+      if (target_has_data) {
         target_type = target_data[target_name]["type"].asString();
-        if (!target_data[target_name]["labels"].empty()) {
-          xml.StartElement("Labels");
-          for (auto const& json_label_item :
-               target_data[target_name]["labels"]) {
-            xml.Element("Label", json_label_item.asString());
-          }
-          xml.EndElement(); // Labels
-        }
       }
       xml.Attribute("type", target_type);
+      // Extract targetLabels
+      if (target_has_data && !target_data[target_name]["labels"].empty()) {
+        xml.StartElement("Labels");
+        for (auto const& json_label_item :
+             target_data[target_name]["labels"]) {
+          xml.Element("Label", json_label_item.asString());
+        }
+        xml.EndElement(); // Labels
+      }
 
       // Write instrumendation data for this target.
       std::string target_subdir = cmStrCat("build/targets/", target_name);
@@ -872,18 +875,14 @@ bool cmCTestBuildHandler::RunMakeCommand(std::string const& command,
   }
 
   // For every chunk of data
-  cm::uv_pipe_ptr outputStream;
   bool outFinished = false;
-  cm::uv_pipe_ptr errorStream;
   bool errFinished = false;
-  auto startRead = [this, &chain, &processOutput, &tick,
-                    &ofs](cm::uv_pipe_ptr& pipe, int stream,
+  auto startRead = [this, &processOutput, &tick,
+                    &ofs](uv_stream_t* stream,
                           t_BuildProcessingQueueType& queue, bool& finished,
                           int id) -> std::unique_ptr<cmUVStreamReadHandle> {
-    pipe.init(chain.GetLoop(), 0);
-    uv_pipe_open(pipe, stream);
     return cmUVStreamRead(
-      pipe,
+      stream,
       [this, &processOutput, &queue, id, &tick, &ofs](std::vector<char> data) {
         // Replace '\0' with '\n', since '\0' does not really make sense. This
         // is for Visual Studio output
@@ -909,11 +908,10 @@ bool cmCTestBuildHandler::RunMakeCommand(std::string const& command,
         finished = true;
       });
   };
-  auto outputHandle = startRead(outputStream, chain.OutputStream(),
+  auto outputHandle = startRead(chain.OutputStream(),
                                 this->BuildProcessingQueue, outFinished, 1);
-  auto errorHandle =
-    startRead(errorStream, chain.ErrorStream(),
-              this->BuildProcessingErrorQueue, errFinished, 2);
+  auto errorHandle = startRead(
+    chain.ErrorStream(), this->BuildProcessingErrorQueue, errFinished, 2);
 
   while (!timedOut && !(outFinished && errFinished && chain.Finished())) {
     uv_run(&chain.GetLoop(), UV_RUN_ONCE);

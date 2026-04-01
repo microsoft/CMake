@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <memory>
 #include <stack>
 #include <utility>
@@ -18,8 +19,11 @@
 #include "cmGeneratorExpressionEvaluator.h"
 #include "cmGeneratorExpressionLexer.h"
 #include "cmGeneratorExpressionParser.h"
+#include "cmGeneratorTarget.h"
 #include "cmList.h"
 #include "cmLocalGenerator.h"
+#include "cmMakefile.h"
+#include "cmMessageType.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
 #include "cmake.h"
@@ -166,7 +170,7 @@ std::string cmGeneratorExpression::StripEmptyListElements(
 }
 
 static std::string extractAllGeneratorExpressions(
-  std::string const& input,
+  cm::string_view input,
   std::map<std::string, std::vector<std::string>>* collected)
 {
   std::string result;
@@ -176,9 +180,9 @@ static std::string extractAllGeneratorExpressions(
   std::stack<char const*> colons; // indices of ":"
   while ((pos = input.find("$<", lastPos)) != std::string::npos) {
     result += input.substr(lastPos, pos - lastPos);
-    starts.push(input.c_str() + pos);
+    starts.push(input.data() + pos);
     pos += 2;
-    char const* c = input.c_str() + pos;
+    char const* c = input.data() + pos;
     char const* const cStart = c;
     for (; *c; ++c) {
       if (cmGeneratorExpression::StartsWithGeneratorExpression(c)) {
@@ -209,7 +213,7 @@ static std::string extractAllGeneratorExpressions(
     }
     std::string::size_type const traversed = (c - cStart) + 1;
     if (!*c) {
-      result += "$<" + input.substr(pos, traversed);
+      result += cmStrCat("$<", input.substr(pos, traversed));
     }
     pos += traversed;
     lastPos = pos;
@@ -220,7 +224,7 @@ static std::string extractAllGeneratorExpressions(
   return cmGeneratorExpression::StripEmptyListElements(result);
 }
 
-static std::string stripAllGeneratorExpressions(std::string const& input)
+static std::string stripAllGeneratorExpressions(cm::string_view input)
 {
   return extractAllGeneratorExpressions(input, nullptr);
 }
@@ -243,7 +247,7 @@ static void prefixItems(std::string const& content, std::string& result,
 }
 
 static std::string stripExportInterface(
-  std::string const& input, cmGeneratorExpression::PreprocessContext context,
+  cm::string_view input, cmGeneratorExpression::PreprocessContext context,
   cm::string_view importPrefix)
 {
   std::string result;
@@ -282,7 +286,7 @@ static std::string stripExportInterface(
       assert(false && "Invalid position found");
     }
     nestingLevel = 1;
-    char const* c = input.c_str() + pos;
+    char const* c = input.data() + pos;
     char const* const cStart = c;
     for (; *c; ++c) {
       if (cmGeneratorExpression::StartsWithGeneratorExpression(c)) {
@@ -300,7 +304,8 @@ static std::string stripExportInterface(
           result += input.substr(pos, c - cStart);
         } else if (context == cmGeneratorExpression::InstallInterface &&
                    foundGenex == FoundGenex::InstallInterface) {
-          std::string const content = input.substr(pos, c - cStart);
+          std::string const content =
+            static_cast<std::string>(input.substr(pos, c - cStart));
           if (!importPrefix.empty()) {
             prefixItems(content, result, importPrefix);
           } else {
@@ -381,7 +386,7 @@ void cmGeneratorExpression::Split(std::string const& input,
       }
     }
     std::string::size_type const traversed = (c - cStart) + 1;
-    output.push_back(preGenex + "$<" + input.substr(pos, traversed));
+    output.push_back(cmStrCat(preGenex, "$<", input.substr(pos, traversed)));
     pos += traversed;
     lastPos = pos;
   }
@@ -390,7 +395,7 @@ void cmGeneratorExpression::Split(std::string const& input,
   }
 }
 
-std::string cmGeneratorExpression::Preprocess(std::string const& input,
+std::string cmGeneratorExpression::Preprocess(cm::string_view input,
                                               PreprocessContext context,
                                               cm::string_view importPrefix)
 {
@@ -411,6 +416,50 @@ std::string cmGeneratorExpression::Collect(
   std::map<std::string, std::vector<std::string>>& collected)
 {
   return extractAllGeneratorExpressions(input, &collected);
+}
+
+bool cmGeneratorExpression::ForbidGeneratorExpressions(
+  cmGeneratorTarget const* target, std::string const& propertyName,
+  std::string const& propertyValue)
+{
+  std::map<std::string, std::vector<std::string>> allowList;
+  std::string evaluatedValue;
+  return ForbidGeneratorExpressions(target, propertyName, propertyValue,
+                                    evaluatedValue, allowList);
+}
+
+bool cmGeneratorExpression::ForbidGeneratorExpressions(
+  cmGeneratorTarget const* target, std::string const& propertyName,
+  std::string const& propertyValue, std::string& evaluatedValue,
+  std::map<std::string, std::vector<std::string>>& allowList)
+{
+  size_t const initialAllowedGenExps = allowList.size();
+  evaluatedValue = Collect(propertyValue, allowList);
+  if (evaluatedValue != propertyValue &&
+      allowList.size() > initialAllowedGenExps) {
+    target->Makefile->IssueMessage(
+      MessageType::FATAL_ERROR,
+      cmStrCat("Property \"", propertyName, "\" of target \"",
+               target->GetName(),
+               "\" contains a generator expression. This is not allowed."));
+    return false;
+  }
+
+  // Check for nested generator expressions (e.g., $<LINK_ONLY:$<...>>).
+  for (auto const& genexp : allowList) {
+    for (auto const& value : genexp.second) {
+      if (value.find("$<") != std::string::npos) {
+        target->Makefile->IssueMessage(
+          MessageType::FATAL_ERROR,
+          cmStrCat("$<", genexp.first, ":...> expression in \"", propertyName,
+                   "\" of target \"", target->GetName(),
+                   "\" contains a generator expression. This is not "
+                   "allowed."));
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 cm::string_view::size_type cmGeneratorExpression::Find(cm::string_view input)

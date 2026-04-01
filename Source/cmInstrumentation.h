@@ -111,6 +111,7 @@ private:
                               Json::Value const& snippetData);
   size_t AssignTargetToTraceThread(std::vector<uint64_t>& workers,
                                    uint64_t timeStart, uint64_t duration);
+  void ResetQueries();
   std::string binaryDir;
   std::string timingDirv1;
   std::string userTimingDirv1;
@@ -126,9 +127,8 @@ private:
   bool hasQuery = false;
   bool ranSystemChecks = false;
   bool ranOSCheck = false;
-  Json::Value customContent;
-  Json::Value configureSnippetData;
-  std::string configureSnippetName;
+  Json::Value customContent = Json::objectValue;
+  std::map<std::string, Json::Value> configureSnippetData;
 #ifndef CMAKE_BOOTSTRAP
   std::unique_ptr<cmsys::SystemInformation> systemInformation;
   cmsys::SystemInformation& GetSystemInformation();

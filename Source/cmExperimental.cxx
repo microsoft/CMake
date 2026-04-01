@@ -31,28 +31,19 @@ cmExperimental::FeatureData const LookupTable[] = {
     cmExperimental::TryCompileCondition::Always },
   // CxxImportStd
   { "CxxImportStd",
-    "d0edc3af-4c50-42ea-a356-e2862fe7a444",
+    "451f2fe2-a8a2-47c3-bc32-94786d8fc91b",
     "CMAKE_EXPERIMENTAL_CXX_IMPORT_STD",
     "CMake's support for `import std;` in C++23 and newer is experimental. It "
     "is meant only for experimentation and feedback to CMake developers.",
     {},
     cmExperimental::TryCompileCondition::Always },
-  // ImportPackageInfo
-  { "ImportPackageInfo",
-    "e82e467b-f997-4464-8ace-b00808fff261",
-    "CMAKE_EXPERIMENTAL_FIND_CPS_PACKAGES",
-    "CMake's support for importing package information in the Common Package "
-    "Specification format (via find_package) is experimental. It is meant "
-    "only for experimentation and feedback to CMake developers.",
-    {},
-    cmExperimental::TryCompileCondition::Always },
-  // ExportPackageInfo
-  { "ExportPackageInfo",
-    "b80be207-778e-46ba-8080-b23bba22639e",
-    "CMAKE_EXPERIMENTAL_EXPORT_PACKAGE_INFO",
-    "CMake's support for exporting package information in the Common Package "
-    "Specification format is experimental. It is meant only for "
-    "experimentation and feedback to CMake developers.",
+  // MappedPackageInfo
+  { "MappedPackageInfo",
+    "ababa1b5-7099-495f-a9cd-e22d38f274f2",
+    "CMAKE_EXPERIMENTAL_MAPPED_PACKAGE_INFO",
+    "CMake's support for generating package information in the Common Package "
+    "Specification format from CMake script exports is experimental. It is "
+    "meant only for experimentation and feedback to CMake developers.",
     {},
     cmExperimental::TryCompileCondition::Always },
   // ExportBuildDatabase
@@ -63,12 +54,20 @@ cmExperimental::FeatureData const LookupTable[] = {
     "meant only for experimentation and feedback to CMake developers.",
     {},
     cmExperimental::TryCompileCondition::Never },
-  // Instrumentation
-  { "Instrumentation",
-    "ec7aa2dc-b87f-45a3-8022-fe01c5f59984",
-    "CMAKE_EXPERIMENTAL_INSTRUMENTATION",
-    "CMake's support for collecting instrumentation data is experimental. It "
-    "is meant only for experimentation and feedback to CMake developers.",
+  { "GenerateSbom",
+    "ca494ed3-b261-4205-a01f-603c95e4cae0",
+    "CMAKE_EXPERIMENTAL_GENERATE_SBOM",
+    "CMake's support for generating software bill of materials (Sbom) "
+    "information in SPDX format is experimental. It is meant only for "
+    "experimentation and feedback to CMake developers.",
+    {},
+    cmExperimental::TryCompileCondition::Never },
+  // Rust support
+  { "Rust",
+    "3cc9b32c-47d3-4056-8953-d74e69fc0d6c",
+    "CMAKE_EXPERIMENTAL_RUST",
+    "CMake's support for the Rust programming language is experimental. "
+    "It is meant only for experimentation and feedback to CMake developers.",
     {},
     cmExperimental::TryCompileCondition::Never },
 };

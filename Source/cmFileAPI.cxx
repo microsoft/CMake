@@ -392,7 +392,7 @@ bool cmFileAPI::ReadQuery(std::string const& query,
 void cmFileAPI::ReadClient(std::string const& client)
 {
   // Load queries for the client.
-  std::string clientDir = this->APIv1 + "/query/" + client;
+  std::string clientDir = cmStrCat(this->APIv1, "/query/", client);
   std::vector<std::string> queries = this->LoadDir(clientDir);
 
   // Read the queries and save for later.
@@ -410,7 +410,8 @@ void cmFileAPI::ReadClient(std::string const& client)
 void cmFileAPI::ReadClientQuery(std::string const& client, ClientQueryJson& q)
 {
   // Read the query.json file.
-  std::string queryFile = this->APIv1 + "/query/" + client + "/query.json";
+  std::string queryFile =
+    cmStrCat(this->APIv1, "/query/", client, "/query.json");
   Json::Value query;
   if (!this->ReadJsonFile(queryFile, query, q.Error)) {
     return;
@@ -641,7 +642,7 @@ cmFileAPI::ClientRequest cmFileAPI::BuildClientRequest(
   } else if (kindName == this->ObjectKindName(ObjectKind::InternalTest)) {
     r.Kind = ObjectKind::InternalTest;
   } else {
-    r.Error = "unknown request kind '" + kindName + "'";
+    r.Error = cmStrCat("unknown request kind '", kindName, '\'');
     return r;
   }
 
@@ -821,7 +822,7 @@ std::string cmFileAPI::NoSupportedVersion(
 // Update the following files as well when updating this constant:
 //   Help/manual/cmake-file-api.7.rst
 //   Tests/RunCMake/FileAPI/codemodel-v2-check.py (check_objects())
-static unsigned int const CodeModelV2Minor = 9;
+static unsigned int const CodeModelV2Minor = 10;
 
 void cmFileAPI::BuildClientRequestCodeModel(
   ClientRequest& r, std::vector<RequestVersion> const& versions)
@@ -960,7 +961,7 @@ Json::Value cmFileAPI::BuildCMakeFiles(Object object)
 
 // The "toolchains" object kind.
 
-static unsigned int const ToolchainsV1Minor = 0;
+static unsigned int const ToolchainsV1Minor = 1;
 
 void cmFileAPI::BuildClientRequestToolchains(
   ClientRequest& r, std::vector<RequestVersion> const& versions)

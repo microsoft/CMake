@@ -58,7 +58,6 @@
 #  include <cm3p/archive_entry.h>
 
 #  include "cmArchiveWrite.h"
-#  include "cmLocale.h"
 #  ifndef __LA_INT64_T
 #    define __LA_INT64_T la_int64_t
 #  endif
@@ -77,7 +76,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -99,9 +97,12 @@
 #include <fcntl.h>
 
 #include "cmsys/Directory.hxx"
-#include "cmsys/Encoding.hxx"
+#ifdef _WIN32
+#  include "cmsys/Encoding.hxx"
+#endif
 #include "cmsys/FStream.hxx"
 #include "cmsys/RegularExpression.hxx"
+#include "cmsys/String.h"
 #include "cmsys/System.h"
 
 #if defined(_WIN32)
@@ -376,16 +377,28 @@ extern char** environ; // NOLINT(readability-redundant-declaration)
 #endif
 
 #if !defined(CMAKE_BOOTSTRAP)
-static std::string cm_archive_entry_pathname(struct archive_entry* entry)
+// Get path that was read from the archive.
+static char const* cm_archive_entry_pathname(struct archive_entry* entry)
 {
-  return cmsys::Encoding::ToNarrow(archive_entry_pathname_w(entry));
+#  ifdef _WIN32
+  // libarchive converts the archive's encoding to our UTF-8 encoding.
+  return archive_entry_pathname_utf8(entry);
+#  else
+  // libarchive converts the archive's encoding to our locale's encoding.
+  return archive_entry_pathname(entry);
+#  endif
 }
 
-static int cm_archive_read_open_file(struct archive* a, char const* file,
-                                     int block_size)
+// Open archive file for reading.
+static int cm_archive_read_open_filename(struct archive* a, char const* file,
+                                         int block_size)
 {
+#  ifdef _WIN32
   std::wstring wfile = cmsys::Encoding::ToWide(file);
   return archive_read_open_filename_w(a, wfile.c_str(), block_size);
+#  else
+  return archive_read_open_filename(a, file, block_size);
+#  endif
 }
 #endif
 
@@ -442,28 +455,6 @@ void cmSystemTools::ExpandRegistryValues(std::string& source,
   }
 }
 #endif
-
-// Return a lower case string
-std::string cmSystemTools::LowerCase(cm::string_view s)
-{
-  std::string n;
-  n.resize(s.size());
-  for (size_t i = 0; i < s.size(); i++) {
-    n[i] = static_cast<std::string::value_type>(tolower(s[i]));
-  }
-  return n;
-}
-
-// Return an upper case string
-std::string cmSystemTools::UpperCase(cm::string_view s)
-{
-  std::string n;
-  n.resize(s.size());
-  for (size_t i = 0; i < s.size(); i++) {
-    n[i] = static_cast<std::string::value_type>(toupper(s[i]));
-  }
-  return n;
-}
 
 std::string cmSystemTools::HelpFileName(cm::string_view str)
 {
@@ -582,7 +573,7 @@ void cmSystemTools::ParseWindowsCommandLine(char const* command,
     } else {
       arg.append(backslashes, '\\');
       backslashes = 0;
-      if (cmIsSpace(*c)) {
+      if (cmsysString_isspace(*c)) {
         if (in_quotes) {
           arg.append(1, *c);
         } else if (in_argument) {
@@ -642,7 +633,7 @@ std::vector<std::string> cmSystemTools::HandleResponseFile(
 {
   std::vector<std::string> arg_full;
   for (std::string const& arg : cmMakeRange(argBeg, argEnd)) {
-    if (cmHasLiteralPrefix(arg, "@")) {
+    if (cmHasPrefix(arg, '@')) {
       cmsys::ifstream responseFile(arg.substr(1).c_str(), std::ios::in);
       if (!responseFile) {
         std::string error = cmStrCat("failed to open for reading (",
@@ -741,7 +732,7 @@ bool cmSystemTools::SplitProgramFromArgs(std::string const& command,
   char const* c = command.c_str();
 
   // Skip leading whitespace.
-  while (cmIsSpace(*c)) {
+  while (cmsysString_isspace(*c)) {
     ++c;
   }
 
@@ -771,7 +762,7 @@ bool cmSystemTools::SplitProgramFromArgs(std::string const& command,
       in_double = true;
     } else if (*c == '\'') {
       in_single = true;
-    } else if (cmIsSpace(*c)) {
+    } else if (cmsysString_isspace(*c)) {
       break;
     } else {
       program += *c;
@@ -896,9 +887,7 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string> const& command,
 
   std::vector<char> tempStdOut;
   std::vector<char> tempStdErr;
-  cm::uv_pipe_ptr outStream;
   bool outFinished = true;
-  cm::uv_pipe_ptr errStream;
   bool errFinished = true;
   cmProcessOutput processOutput(encoding);
   std::unique_ptr<cmUVStreamReadHandle> outputHandle;
@@ -906,21 +895,14 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string> const& command,
   if (outputflag != OUTPUT_PASSTHROUGH &&
       (captureStdOut || captureStdErr || outputflag != OUTPUT_NONE)) {
     auto startRead =
-      [&outputflag, &processOutput,
-       &chain](cm::uv_pipe_ptr& pipe, int stream, std::string* captureStd,
-               std::vector<char>& tempStd, int id,
-               void (*outputFunc)(std::string const&),
-               bool& finished) -> std::unique_ptr<cmUVStreamReadHandle> {
-      if (stream < 0) {
-        return nullptr;
-      }
-
-      pipe.init(chain.GetLoop(), 0);
-      uv_pipe_open(pipe, stream);
-
+      [&outputflag, &processOutput](
+        uv_stream_t* stream, std::string* captureStd,
+        std::vector<char>& tempStd, int id,
+        void (*outputFunc)(std::string const&),
+        bool& finished) -> std::unique_ptr<cmUVStreamReadHandle> {
       finished = false;
       return cmUVStreamRead(
-        pipe,
+        stream,
         [outputflag, &processOutput, captureStd, &tempStd, id,
          outputFunc](std::vector<char> data) {
           // Translate NULL characters in the output into valid text.
@@ -951,13 +933,11 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string> const& command,
         });
     };
 
-    outputHandle =
-      startRead(outStream, chain.OutputStream(), captureStdOut, tempStdOut, 1,
-                cmSystemTools::Stdout, outFinished);
-    if (chain.OutputStream() != chain.ErrorStream()) {
-      errorHandle =
-        startRead(errStream, chain.ErrorStream(), captureStdErr, tempStdErr, 2,
-                  cmSystemTools::Stderr, errFinished);
+    outputHandle = startRead(chain.OutputStream(), captureStdOut, tempStdOut,
+                             1, cmSystemTools::Stdout, outFinished);
+    if (chain.ErrorStream()) {
+      errorHandle = startRead(chain.ErrorStream(), captureStdErr, tempStdErr,
+                              2, cmSystemTools::Stderr, errFinished);
     }
   }
 
@@ -1359,7 +1339,7 @@ std::string cmSystemTools::GetRealPathResolvingWindowsSubst(
   }
   // Normalize to upper-case drive letter as cm::PathResolver does.
   if (resolved_path.size() > 1 && resolved_path[1] == ':') {
-    resolved_path[0] = toupper(resolved_path[0]);
+    resolved_path[0] = cmsysString_toupper(resolved_path[0]);
   }
   return resolved_path;
 #else
@@ -1381,10 +1361,10 @@ std::string cmSystemTools::GetRealPath(std::string const& path,
   // limitation to otherwise preserve susbt drives.
   if (resolved_path.size() >= 2 && resolved_path[1] == ':' &&
       path.size() >= 2 && path[1] == ':' &&
-      toupper(resolved_path[0]) != toupper(path[0])) {
+      cmsysString_toupper(resolved_path[0]) != cmsysString_toupper(path[0])) {
     // FIXME: Add thread_local or mutex if we use threads.
     static std::map<char, std::string> substMap;
-    char const drive = static_cast<char>(toupper(path[0]));
+    char const drive = static_cast<char>(cmsysString_toupper(path[0]));
     std::string maybe_subst = cmStrCat(drive, ":/");
     auto smi = substMap.find(drive);
     if (smi == substMap.end()) {
@@ -1646,20 +1626,6 @@ cmSystemTools::CopyResult cmSystemTools::CopySingleFile(
   return CopyResult::Success;
 }
 
-bool cmSystemTools::CopyFileIfNewer(std::string const& source,
-                                    std::string const& destination)
-{
-  return cmsys::SystemTools::CopyFileIfNewer(source, destination).IsSuccess();
-}
-
-bool cmSystemTools::CopyADirectory(std::string const& source,
-                                   std::string const& destination,
-                                   CopyWhen when)
-{
-  return cmsys::SystemTools::CopyADirectory(source, destination, when)
-    .IsSuccess();
-}
-
 bool cmSystemTools::RenameFile(std::string const& oldname,
                                std::string const& newname)
 {
@@ -1752,7 +1718,13 @@ cmSystemTools::RenameResult cmSystemTools::RenameFile(
   // On UNIX we have OS-provided calls to create 'newname' atomically.
   if (replace == Replace::No) {
     if (link(oldname.c_str(), newname.c_str()) == 0) {
-      return RenameResult::Success;
+      if (unlink(oldname.c_str()) == 0) {
+        return RenameResult::Success;
+      }
+      if (err) {
+        *err = cmsys::Status::POSIX_errno().GetString();
+      }
+      return RenameResult::Failure;
     }
     if (errno == EEXIST) {
       return RenameResult::NoReplace;
@@ -2036,7 +2008,7 @@ std::string cmSystemTools::RelativeIfUnder(std::string const& top,
   if (in == top) {
     out = ".";
   } else if (cmSystemTools::IsSubDirectory(in, top)) {
-    out = in.substr(top.size() + 1);
+    out = in.substr(top.size() + (top.back() == '/' ? 0 : 1));
   } else {
     out = in;
   }
@@ -2387,12 +2359,13 @@ bool cmSystemTools::IsPathToMacOSSharedLibrary(std::string const& path)
           cmHasLiteralSuffix(path, ".dylib"));
 }
 
-bool cmSystemTools::CreateTar(std::string const& outFileName,
+bool cmSystemTools::CreateTar(std::string const& arFileName,
                               std::vector<std::string> const& files,
                               std::string const& workingDirectory,
                               cmTarCompression compressType, bool verbose,
                               std::string const& mtime,
-                              std::string const& format, int compressionLevel)
+                              std::string const& format, int compressionLevel,
+                              int numThreads)
 {
 #if !defined(CMAKE_BOOTSTRAP)
   cmWorkingDirectory workdir(cmSystemTools::GetLogicalWorkingDirectory());
@@ -2401,9 +2374,9 @@ bool cmSystemTools::CreateTar(std::string const& outFileName,
   }
 
   std::string const cwd = cmSystemTools::GetLogicalWorkingDirectory();
-  cmsys::ofstream fout(outFileName.c_str(), std::ios::out | std::ios::binary);
+  cmsys::ofstream fout(arFileName.c_str(), std::ios::out | std::ios::binary);
   if (!fout) {
-    std::string e = cmStrCat("Cannot open output file \"", outFileName,
+    std::string e = cmStrCat("Cannot open output file \"", arFileName,
                              "\": ", cmSystemTools::GetLastSystemError());
     cmSystemTools::Error(e);
     return false;
@@ -2422,13 +2395,29 @@ bool cmSystemTools::CreateTar(std::string const& outFileName,
     case TarCompressZstd:
       compress = cmArchiveWrite::CompressZstd;
       break;
+    case TarCompressLZMA:
+      compress = cmArchiveWrite::CompressLZMA;
+      break;
+    case TarCompressPPMd:
+      compress = cmArchiveWrite::CompressPPMd;
+      break;
+    case TarCompressAuto:
+      // Kept for backwards compatibility with pre-4.3 versions of CMake
+      if (format == "zip") {
+        compress = cmArchiveWrite::CompressGZip;
+      } else if (format == "7zip") {
+        compress = cmArchiveWrite::CompressLZMA;
+      } else {
+        compress = cmArchiveWrite::CompressNone;
+      }
+      break;
     case TarCompressNone:
       compress = cmArchiveWrite::CompressNone;
       break;
   }
 
   cmArchiveWrite a(fout, compress, format.empty() ? "paxr" : format,
-                   compressionLevel);
+                   compressionLevel, numThreads);
 
   if (!a.Open()) {
     cmSystemTools::Error(a.GetError());
@@ -2449,7 +2438,7 @@ bool cmSystemTools::CreateTar(std::string const& outFileName,
   }
   return tarCreatedSuccessfully;
 #else
-  (void)outFileName;
+  (void)arFileName;
   (void)files;
   (void)verbose;
   return false;
@@ -2548,7 +2537,7 @@ void list_item_verbose(FILE* out, struct archive_entry* entry)
   }
   strftime(tmp, sizeof(tmp), fmt, localtime(&tim));
   fprintf(out, " %s ", tmp);
-  fprintf(out, "%s", cm_archive_entry_pathname(entry).c_str());
+  fprintf(out, "%s", cm_archive_entry_pathname(entry));
 
   /* Extra information for links. */
   if (archive_entry_hardlink(entry)) /* Hard link */
@@ -2629,15 +2618,26 @@ bool copy_data(struct archive* ar, struct archive* aw)
 #  endif
 }
 
-bool extract_tar(std::string const& outFileName,
+bool extract_tar(std::string const& arFileName,
                  std::vector<std::string> const& files, bool verbose,
                  cmSystemTools::cmTarExtractTimestamps extractTimestamps,
                  bool extract)
 {
-  cmLocaleRAII localeRAII;
-  static_cast<void>(localeRAII);
   struct archive* a = archive_read_new();
   struct archive* ext = archive_write_disk_new();
+  if (extract) {
+    int flags = ARCHIVE_EXTRACT_SECURE_NODOTDOT |
+      ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS | ARCHIVE_EXTRACT_SECURE_SYMLINKS;
+    if (extractTimestamps == cmSystemTools::cmTarExtractTimestamps::Yes) {
+      flags |= ARCHIVE_EXTRACT_TIME;
+    }
+    if (archive_write_disk_set_options(ext, flags) != ARCHIVE_OK) {
+      ArchiveError("Problem with archive_write_disk_set_options(): ", ext);
+      archive_write_free(ext);
+      archive_read_free(a);
+      return false;
+    }
+  }
   archive_read_support_filter_all(a);
   archive_read_support_format_all(a);
   struct archive_entry* entry;
@@ -2656,11 +2656,13 @@ bool extract_tar(std::string const& outFileName,
     }
   }
 
-  int r = cm_archive_read_open_file(a, outFileName.c_str(), 10240);
+  int r = cm_archive_read_open_filename(a, arFileName.c_str(), 10240);
   if (r) {
-    ArchiveError("Problem with archive_read_open_file(): ", a);
+    ArchiveError("Problem with archive_read_open_filename(): ", a);
     archive_write_free(ext);
     archive_read_close(a);
+    archive_read_free(a);
+    archive_match_free(matching);
     return false;
   }
   for (;;) {
@@ -2689,14 +2691,6 @@ bool extract_tar(std::string const& outFileName,
       cmSystemTools::Stdout(cmStrCat(cm_archive_entry_pathname(entry), '\n'));
     }
     if (extract) {
-      if (extractTimestamps == cmSystemTools::cmTarExtractTimestamps::Yes) {
-        r = archive_write_disk_set_options(ext, ARCHIVE_EXTRACT_TIME);
-        if (r != ARCHIVE_OK) {
-          ArchiveError("Problem with archive_write_disk_set_options(): ", ext);
-          break;
-        }
-      }
-
       r = archive_write_header(ext, entry);
       if (r == ARCHIVE_OK) {
         if (!copy_data(a, ext)) {
@@ -2717,8 +2711,8 @@ bool extract_tar(std::string const& outFileName,
 #  endif
       else {
         ArchiveError("Problem with archive_write_header(): ", ext);
-        cmSystemTools::Error("Current file: " +
-                             cm_archive_entry_pathname(entry));
+        cmSystemTools::Error(
+          cmStrCat("Current file:\n  ", cm_archive_entry_pathname(entry)));
         break;
       }
     }
@@ -2752,15 +2746,15 @@ bool extract_tar(std::string const& outFileName,
 }
 #endif
 
-bool cmSystemTools::ExtractTar(std::string const& outFileName,
+bool cmSystemTools::ExtractTar(std::string const& arFileName,
                                std::vector<std::string> const& files,
                                cmTarExtractTimestamps extractTimestamps,
                                bool verbose)
 {
 #if !defined(CMAKE_BOOTSTRAP)
-  return extract_tar(outFileName, files, verbose, extractTimestamps, true);
+  return extract_tar(arFileName, files, verbose, extractTimestamps, true);
 #else
-  (void)outFileName;
+  (void)arFileName;
   (void)files;
   (void)extractTimestamps;
   (void)verbose;
@@ -2768,15 +2762,15 @@ bool cmSystemTools::ExtractTar(std::string const& outFileName,
 #endif
 }
 
-bool cmSystemTools::ListTar(std::string const& outFileName,
+bool cmSystemTools::ListTar(std::string const& arFileName,
                             std::vector<std::string> const& files,
                             bool verbose)
 {
 #if !defined(CMAKE_BOOTSTRAP)
-  return extract_tar(outFileName, files, verbose, cmTarExtractTimestamps::Yes,
+  return extract_tar(arFileName, files, verbose, cmTarExtractTimestamps::Yes,
                      false);
 #else
-  (void)outFileName;
+  (void)arFileName;
   (void)files;
   (void)verbose;
   return false;
@@ -2785,8 +2779,7 @@ bool cmSystemTools::ListTar(std::string const& outFileName,
 
 cmSystemTools::WaitForLineResult cmSystemTools::WaitForLine(
   uv_loop_t* loop, uv_stream_t* outPipe, uv_stream_t* errPipe,
-  std::string& line, cmDuration timeout, std::vector<char>& out,
-  std::vector<char>& err)
+  std::string& line, std::vector<char>& out, std::vector<char>& err)
 {
   line.clear();
   auto outiter = out.begin();
@@ -2856,22 +2849,7 @@ cmSystemTools::WaitForLineResult cmSystemTools::WaitForLine(
     ReadData errData;
     auto errHandle = startRead(errPipe, errData);
 
-    cm::uv_timer_ptr timer;
-    bool timedOut = false;
-    timer.init(*loop, &timedOut);
-    timer.start(
-      [](uv_timer_t* handle) {
-        auto* timedOutPtr = static_cast<bool*>(handle->data);
-        *timedOutPtr = true;
-      },
-      static_cast<uint64_t>(timeout.count() * 1000.0), 0,
-      cm::uv_update_time::no);
-
     uv_run(loop, UV_RUN_ONCE);
-    if (timedOut) {
-      // Timeout has been exceeded.
-      return WaitForLineResult::Timeout;
-    }
     if (outData.Read) {
       processOutput.DecodeText(outData.Buffer.data(), outData.Buffer.size(),
                                strdata, 1);
@@ -3883,7 +3861,7 @@ static size_t cm_strverscmp_find_first_difference_or_end(char const* lhs,
 static size_t cm_strverscmp_find_digits_begin(char const* s, size_t i)
 {
   /* Step back until we are not preceded by a digit.  */
-  while (i > 0 && isdigit(s[i - 1])) {
+  while (i > 0 && cmsysString_isdigit(s[i - 1])) {
     --i;
   }
   return i;
@@ -3892,7 +3870,7 @@ static size_t cm_strverscmp_find_digits_begin(char const* s, size_t i)
 static size_t cm_strverscmp_find_digits_end(char const* s, size_t i)
 {
   /* Step forward over digits.  */
-  while (isdigit(s[i])) {
+  while (cmsysString_isdigit(s[i])) {
     ++i;
   }
   return i;
@@ -3902,7 +3880,7 @@ static size_t cm_strverscmp_count_leading_zeros(char const* s, size_t b)
 {
   size_t i = b;
   /* Step forward over zeros that are followed by another digit.  */
-  while (s[i] == '0' && isdigit(s[i + 1])) {
+  while (s[i] == '0' && cmsysString_isdigit(s[i + 1])) {
     ++i;
   }
   return i - b;
@@ -3914,7 +3892,8 @@ static int cm_strverscmp(char const* lhs, char const* rhs)
   if (lhs[i] != rhs[i]) {
     /* The strings differ starting at 'i'.  Check for a digit sequence.  */
     size_t const b = cm_strverscmp_find_digits_begin(lhs, i);
-    if (b != i || (isdigit(lhs[i]) && isdigit(rhs[i]))) {
+    if (b != i ||
+        (cmsysString_isdigit(lhs[i]) && cmsysString_isdigit(rhs[i]))) {
       /* A digit sequence starts at 'b', preceding or at 'i'.  */
 
       /* Look for leading zeros, implying a leading decimal point.  */
@@ -4197,21 +4176,21 @@ bool cmSystemTools::CheckRPath(std::string const& file,
   return newRPath.empty();
 }
 
-bool cmSystemTools::RepeatedRemoveDirectory(std::string const& dir)
+cmsys::Status cmSystemTools::RepeatedRemoveDirectory(std::string const& dir)
 {
 #ifdef _WIN32
   // Windows sometimes locks files temporarily so try a few times.
   WindowsFileRetry retry = cmSystemTools::GetWindowsFileRetry();
 
-  for (unsigned int i = 0; i < retry.Count; ++i) {
-    if (cmSystemTools::RemoveADirectory(dir)) {
-      return true;
-    }
+  cmsys::Status status;
+  unsigned int tries = 0;
+  while (!(status = cmSystemTools::RemoveADirectory(dir)) &&
+         ++tries < retry.Count) {
     cmSystemTools::Delay(retry.Delay);
   }
-  return false;
+  return status;
 #else
-  return static_cast<bool>(cmSystemTools::RemoveADirectory(dir));
+  return cmSystemTools::RemoveADirectory(dir);
 #endif
 }
 
@@ -4388,4 +4367,30 @@ char cmSystemTools::GetSystemPathlistSeparator()
 #else
   return ':';
 #endif
+}
+
+cm::string_view cmSystemTools::GetFilenameNameView(cm::string_view filename)
+{
+// implementation mostly taken from cmsys::SystemTools
+#if defined(_WIN32) || defined(KWSYS_SYSTEMTOOLS_SUPPORT_WINDOWS_SLASHES)
+  cm::static_string_view separators = "/\\"_s;
+#else
+  char separators = '/';
+#endif
+  std::string::size_type slash_pos = filename.find_last_of(separators);
+  if (slash_pos == std::string::npos) {
+    return filename;
+  }
+  return filename.substr(slash_pos + 1);
+}
+
+cm::string_view cmSystemTools::GetFilenameLastExtensionView(
+  cm::string_view filename)
+{
+  cm::string_view name = cmSystemTools::GetFilenameNameView(filename);
+  cm::string_view::size_type dot_pos = name.rfind('.');
+  if (dot_pos == std::string::npos) {
+    return cm::string_view();
+  }
+  return name.substr(dot_pos);
 }

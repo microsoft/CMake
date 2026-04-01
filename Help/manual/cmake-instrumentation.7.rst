@@ -3,7 +3,7 @@
 cmake-instrumentation(7)
 ************************
 
-.. versionadded:: 4.0
+.. versionadded:: 4.3
 
 .. only:: html
 
@@ -12,75 +12,101 @@ cmake-instrumentation(7)
 Introduction
 ============
 
-.. note::
-
-   This feature is only available when experimental support for instrumentation
-   has been enabled by the ``CMAKE_EXPERIMENTAL_INSTRUMENTATION`` gate.
-
 The CMake Instrumentation API allows for the collection of timing data, target
 information and system diagnostic information during the configure, generate,
 build, test and install steps for a CMake project.
-
-This feature is only available for projects using the
-:ref:`Makefile Generators`, :ref:`Ninja Generators` or :generator:`FASTBuild`.
 
 All interactions with the CMake instrumentation API must specify both an API
 version and a Data version. At this time, there is only one version for each of
 these: the `API v1`_ and `Data v1`_.
 
+.. note::
+
+  This feature is only available for projects using the
+  :ref:`Makefile Generators`, :ref:`Ninja Generators` or :generator:`FASTBuild`.
+
+Overview
+--------
+
+CMake Instrumentation works in 2 major stages: `Data Collection`_, and
+`Indexing`_.
+
+`Data Collection`_ is the process by which CMake writes out instrumentation
+data into a project build tree. The commands instrumented in this way range
+from overall builds, to individual compile commands. The full list of commands
+instrumented is documented under the `v1 Snippet File`_.
+
+Collected data will accumulate until `Indexing`_ occurs: the process of
+collating the generated data. Indexing occurs on events called "hooks",
+which can be configured as part of the `v1 Query Files`_. A `v1 Index File`_ is
+created and passed to any user-defined `Callbacks`_ provided to process
+the data. Once all `Callbacks`_ have run, CMake deletes the files.
+
+Without the need for any custom `Callbacks`_, CMake can submit instrumentation
+data to `CDash`_, or generate a `Google Trace File`_ for visualization.
+
 Data Collection
 ---------------
 
-Whenever a command is executed with
-instrumentation enabled, a `v1 Snippet File`_ is created in the project build
-tree with data specific to that command. These files remain until after
-`Indexing`_ occurs.
+Whenever a command is executed with instrumentation enabled, a
+`v1 Snippet File`_ is created in the project build tree with data specific to
+that command. These files remain until after `Indexing`_ occurs.
 
 CMake sets the :prop_gbl:`RULE_LAUNCH_COMPILE`, :prop_gbl:`RULE_LAUNCH_LINK`
-and :prop_gbl:`RULE_LAUNCH_CUSTOM` global properties to use the
-``ctest --instrument`` launcher in order to capture details of each compile,
-link, and custom command respectively. If the project has been configured with
-:module:`CTestUseLaunchers`, ``ctest --instrument`` will also include the
-behavior usually performed by ``ctest --launch``.
+and :prop_gbl:`RULE_LAUNCH_CUSTOM` global properties to wrap each compile, link
+and custom command invocation in a launcher that performs instrumentation and
+writes out a `v1 Snippet File`_. If the project has been configured with
+:module:`CTestUseLaunchers`, the launcher will collect instrumentation data in
+addition to performing the communication typically handled by that module.
+
+.. _`cmake-instrumentation Indexing`:
 
 Indexing
 --------
 
-Indexing is the process of collating generated instrumentation data. Indexing
-occurs at specific intervals called hooks, such as after every build. These
-hooks are configured as part of the `v1 Query Files`_. Whenever a hook is
-triggered, an index file is generated containing a list of snippet files newer
-than the previous indexing.
+Indexing is the process of collating generated instrumentation data. The
+available hooks to trigger indexing include options such as after every build,
+or every :manual:`ctest <ctest(1)>` invocation, and are configured as part of the `v1 Query Files`_.
+Whenever a hook is triggered, an index file is generated containing a list of
+snippet files newer than the previous indexing. This index file is passed to
+user-defined `Callbacks`_ commands to process the data.
 
 Indexing and can also be performed by manually invoking
-``ctest --collect-instrumentation <build>``.
+:option:`ctest --collect-instrumentation`.
+
+.. _`cmake-instrumentation Callbacks`:
 
 Callbacks
----------
+^^^^^^^^^
 
 As part of the `v1 Query Files`_, users can provide a list of callbacks
 intended to handle data collected by this feature.
 
 Whenever `Indexing`_ occurs, each provided callback is executed, passing the
-path to the generated index file as an argument.
+path to the generated `v1 Index File`_ as an additional argument.
 
-These callbacks, defined either at the user-level or project-level should read
+These callbacks, defined either at the user-level or project-level, should read
 the instrumentation data and perform any desired handling of it. The index file
 and its listed snippets are automatically deleted by CMake once all callbacks
 have completed. Note that a callback should never move or delete these data
 files manually as they may be needed by other callbacks.
 
+If indexing is triggered again before `Callbacks`_ have finished running,
+the generated index file will contain only instrumentation data generated since
+the previous indexing.
+
 Enabling Instrumentation
 ========================
 
 Instrumentation can be enabled either for an individual CMake project, or
-for all CMake projects configured and built by a user. For both cases,
-see the `v1 Query Files`_ for details on configuring this feature.
+for all CMake projects configured and built by a user. In all cases, a "query"
+represents a request for instrumentation behavior. See the `v1 Query Files`_
+for details on configuring this feature.
 
 Enabling Instrumentation at the Project-Level
 ---------------------------------------------
 
-Project code can contain instrumentation queries with the
+Project code can contain instrumentation queries by using the
 :command:`cmake_instrumentation` command.
 
 In addition, query files can be placed manually under
@@ -94,12 +120,15 @@ Instrumentation can be configured at the user-level by placing query files in
 the :envvar:`CMAKE_CONFIG_DIR` under
 ``<config_dir>/instrumentation/<version>/query/``.
 
+.. _`CDash`:
+
 Enabling Instrumentation for CDash Submissions
 ----------------------------------------------
 
-You can enable instrumentation when using CTest in :ref:`Dashboard Client`
-mode by setting the :envvar:`CTEST_USE_INSTRUMENTATION` environment variable.
-Doing so automatically enables the ``dynamicSystemInformation`` option.
+You can enable instrumentation when using :module:`CTest` in
+:ref:`Dashboard Client` mode by setting the :envvar:`CTEST_USE_INSTRUMENTATION`
+environment variable. Doing so automatically enables the
+``dynamicSystemInformation`` option.
 
 The following table shows how each type of instrumented command gets mapped
 to a corresponding type of CTest XML file.
@@ -155,7 +184,8 @@ subdirectories:
   Holds query files generated by a CMake project with the
   :command:`cmake_instrumentation` command or the
   :envvar:`CTEST_USE_INSTRUMENTATION` variable. These files are owned by CMake
-  and are deleted and regenerated automatically during the CMake configure step.
+  and are deleted and regenerated automatically during the CMake configure
+  step.
 
 ``data/``
   Holds instrumentation data collected on the project. CMake owns all data
@@ -209,15 +239,16 @@ key is required, but all other fields are optional.
   * ``postGenerate``
   * ``preBuild`` (called when ``ninja``  or ``make`` is invoked)
   * ``postBuild`` (called when ``ninja`` or ``make`` completes)
-  * ``preCMakeBuild`` (called when ``cmake --build`` is invoked)
-  * ``postCMakeBuild`` (called when ``cmake --build`` completes)
+  * ``preCMakeBuild`` (called when :option:`cmake --build` is invoked)
+  * ``postCMakeBuild`` (called when :option:`cmake --build` completes)
   * ``postCMakeInstall``
+  * ``postCMakeWorkflow``
   * ``postCTest``
 
   ``preBuild`` and ``postBuild`` are not supported when using the
   :generator:`MSYS Makefiles` or :generator:`FASTBuild` generators.
   Additionally, they will not be triggered when the build tool is invoked by
-  ``cmake --build``.
+  :option:`cmake --build`.
 
 ``options``
   A list of strings used to enable certain optional behavior, including the
@@ -236,15 +267,15 @@ key is required, but all other fields are optional.
       after the command is executed.
 
     ``cdashSubmit``
-      Enables including instrumentation data in CDash. This does not
-      automatically enable ``dynamicSystemInformation``, but is otherwise
+      Enables including instrumentation data in CDash. This is
       equivalent to having the :envvar:`CTEST_USE_INSTRUMENTATION` environment
       variable enabled.
 
     ``cdashVerbose``
       Enables including the full untruncated commands in data submitted to
       CDash. Equivalent to having the
-      :envvar:`CTEST_USE_VERBOSE_INSTRUMENTATION` environment variable enabled.
+      :envvar:`CTEST_USE_VERBOSE_INSTRUMENTATION` and
+      :envvar:`CTEST_USE_INSTRUMENTATION` environment variables enabled.
 
     ``trace``
       Enables generation of a `Google Trace File`_ during `Indexing`_ to
@@ -259,6 +290,9 @@ file requests optional data using the ``options`` field, any related data will
 be present in all snippet files. User written ``callbacks`` should be able to
 handle the presence of this optional data, since it may be requested by an
 unrelated query.
+
+The JSON format is described in machine-readable form by
+:download:`this JSON schema </manual/instrumentation/query-v1-schema.json>`.
 
 Example:
 
@@ -282,20 +316,21 @@ Example:
     ]
   }
 
-In this example, after every ``cmake --build`` or ``cmake --install``
-invocation, an index file ``index-<timestamp>.json`` will be generated in
-``<build>/.cmake/instrumentation/v1/data/index`` containing a list of data
-snippet files created since the previous indexing. The commands
-``/usr/bin/python callback.py index-<timestamp>.json`` and
-``/usr/bin/cmake -P callback.cmake arg index-<timestamp>.json`` will be executed
-in that order. The index file will contain the ``staticSystemInformation`` data
-and each snippet file listed in the index will contain the
-``dynamicSystemInformation`` data. Additionally, the index file will contain
-the path to the generated `Google Trace File`_. Once both callbacks have completed,
-the index file and data files listed by it (including snippet files, but not
-the trace file) will be deleted from the project build tree. The instrumentation
-data will be present in the XML files submitted to CDash, but with truncated
-command strings because ``cdashVerbose`` was not enabled.
+In this example, after every :option:`cmake --build` or
+:option:`cmake --install` invocation, an index file ``index-<timestamp>.json``
+will be generated in ``<build>/.cmake/instrumentation/v1/data/index``
+containing a list of data snippet files created since the previous indexing.
+The commands ``/usr/bin/python callback.py index-<timestamp>.json`` and
+``/usr/bin/cmake -P callback.cmake arg index-<timestamp>.json`` will be
+executed in that order. The index file will contain the
+``staticSystemInformation`` data and each snippet file listed in the index will
+contain the ``dynamicSystemInformation`` data. Additionally, the index file
+will contain the path to the generated `Google Trace File`_. Once both
+callbacks have completed, the index file and data files listed by it (including
+snippet files, but not the trace file) will be deleted from the project build
+tree. The instrumentation data will be present in the XML files submitted to
+CDash, but with truncated command strings because ``cdashVerbose`` was not
+enabled.
 
 .. _`cmake-instrumentation Data v1`:
 
@@ -317,21 +352,32 @@ v1 Snippet File
 ---------------
 
 Snippet files are generated for every compile, link and custom command invoked
-as part of the CMake build or install step and contain instrumentation data about
-the command executed. Additionally, snippet files are created for the following:
+as part of the CMake build or install step and contain instrumentation data
+about the command executed. Additionally, snippet files are created for the
+following:
 
 * The CMake configure step
 * The CMake generate step
-* Entire build step (executed with ``cmake --build``)
-* Entire install step (executed with ``cmake --install``)
-* Each ``ctest`` invocation
-* Each individual test executed by ``ctest``.
+* Entire build step (executed with :option:`cmake --build`)
+* Entire install step (executed with :option:`cmake --install`)
+* Each time :manual:`ctest <ctest(1)>` is invoked to
+  :ref:`run tests <Run Tests>` (even if no tests are found)
+* Each individual test executed by :manual:`ctest <ctest(1)>`
 
 These files remain in the build tree until after `Indexing`_ occurs and any
 user-specified `Callbacks`_ are executed.
 
-Snippet files have a filename with the syntax ``<role>-<hash>-<timestamp>.json``
-and contain the following data:
+.. note::
+
+  Configure and generate snippet files are not written by CMake until the
+  generate step is complete. When using :manual:`cmake-gui(1)` or
+  :manual:`ccmake(1)`, triggering only configure step(s) without generating the
+  project files will not generate any configure snippets. Once the generate
+  step is run, there will be one configure snippet for each time the configure
+  step was run.
+
+Snippet files have a filename with the syntax
+``<role>-<hash>-<timestamp>.json`` and contain the following data:
 
   ``version``
     The Data version of the snippet file, an integer. Currently the version is
@@ -356,17 +402,19 @@ and contain the following data:
     * ``link``: an individual link step invoked during the build
     * ``custom``: an individual custom command invoked during the build
     * ``build``: a complete ``make`` or ``ninja`` invocation
-      (not through ``cmake --build``).
-    * ``cmakeBuild``: a complete ``cmake --build`` invocation
-    * ``cmakeInstall``: a complete ``cmake --install`` invocation
+      (not through :option:`cmake --build`).
+    * ``cmakeBuild``: a complete :option:`cmake --build` invocation
+    * ``cmakeInstall``: a complete :option:`cmake --install` invocation
     * ``install``: an individual ``cmake -P cmake_install.cmake`` invocation
-    * ``ctest``: a complete ``ctest`` invocation
-    * ``test``: a single test executed by CTest
+    * ``ctest``: a complete :manual:`ctest <ctest(1)>` command invocation
+    * ``test``: a single test executed by :manual:`ctest <ctest(1)>`
 
   ``target``
-    The CMake target associated with the command. Only included when ``role`` is
-    ``compile`` or ``link``. In conjunction with ``cmakeContent``, this can
-    be used to look up the target type and labels.
+    The CMake target associated with the command. Only included when ``role``
+    is ``compile`` or ``link``, or when ``role`` is ``custom`` and the custom
+    command is attached to a target with :command:`add_custom_command(TARGET)`.
+    In conjunction with ``cmakeContent``, this can be used to look up the
+    target :prop_tgt:`TYPE` and :prop_tgt:`LABELS`.
 
   ``timeStart``
     Time at which the command started, expressed as the number of milliseconds
@@ -388,16 +436,17 @@ and contain the following data:
     The source file being compiled. Only included when ``role`` is ``compile``.
 
   ``language``
-    The language of the source file being compiled. Only included when ``role`` is
-    ``compile`` or ``link``.
+    The language of the source file being compiled. Only included when ``role``
+    is ``compile`` or ``link``.
 
   ``testName``
-    The name of the test being executed. Only included when ``role`` is ``test``.
+    The name of the test being executed. Only included when ``role`` is
+    ``test``.
 
   ``config``
-    The type of build, such as ``Release`` or ``Debug``. Only included when
-    ``role`` is one of: ``compile``, ``link``, ``custom``, ``install``,
-    ``test``.
+    The :ref:`Build Configuration <Build Configurations>`, such as ``Release``
+    or ``Debug``. Only included when ``role`` is one of: ``compile``, ``link``,
+    ``custom``, ``install``, ``test``.
 
   ``dynamicSystemInformation``
     Specifies the dynamic information collected about the host machine
@@ -416,17 +465,20 @@ and contain the following data:
       determined.
 
     ``afterCPULoadAverage``
-      The Average CPU Load at ``timeStart + duration``, or ``null`` if it cannot
-      be determined.
+      The Average CPU Load at ``timeStart + duration``, or ``null`` if it
+      cannot be determined.
 
   ``cmakeContent``
     The path to a `v1 CMake Content File`_ located under ``data``, which
     contains information about the CMake configure and generate steps
-    responsible for generating the ``command`` in this snippet.
+    responsible for generating the ``command`` in this snippet. When using
+    :manual:`cmake-gui(1)` or :manual:`ccmake(1)`, this field may be ``null``
+    for all configure steps up to the most recent one before the generate step.
 
   ``showOnly``
-    A boolean representing whether the ``--show-only`` option was passed to
-    ``ctest``. Only included when ``role`` is ``ctest``.
+    A boolean representing whether the
+    :option:`--show-only <ctest --show-only>` option was passed to
+    :manual:`ctest <ctest(1)>`. Only included when ``role`` is ``ctest``.
 
 Example:
 
@@ -436,7 +488,7 @@ Example:
     "version": 1,
     "command" : "\"/usr/bin/c++\" \"-MD\" \"-MT\" \"CMakeFiles/main.dir/main.cxx.o\" \"-MF\" \"CMakeFiles/main.dir/main.cxx.o.d\" \"-o\" \"CMakeFiles/main.dir/main.cxx.o\" \"-c\" \"<src>/main.cxx\"",
     "role" : "compile",
-    "return" : 1,
+    "result" : 1,
     "target": "main",
     "language" : "C++",
     "outputs" : [ "CMakeFiles/main.dir/main.cxx.o" ],
@@ -475,23 +527,35 @@ generated whenever `Indexing`_ occurs and deleted after any user-specified
 
 ``hook``
   The name of the hook responsible for generating the index file. In addition
-  to the hooks that can be specified by one of the `v1 Query Files`_, this value may
-  be set to ``manual`` if indexing is performed by invoking
-  ``ctest --collect-instrumentation <build>``.
+  to the hooks that can be specified by one of the `v1 Query Files`_, this
+  value may be set to ``manual`` if indexing is performed by invoking
+  :option:`ctest --collect-instrumentation`.
+
+  Note that the hook is not directly tied to what data may be available.
+  A ``postBuild`` hook, for example, may include ``test`` or ``install``
+  snippets, if these steps were run since the previous indexing.
 
 ``snippets``
   Contains a list of `v1 Snippet Files <v1 Snippet File_>`_. This includes all
   snippet files generated since the previous index file was created. The file
   paths are relative to ``dataDir``.
 
-``trace``:
+  This list may be empty if indexing was run twice in succession, such as when
+  building multiple times with both the ``preBuild`` and ``postBuild`` hooks
+  enabled.
+
+``trace``
   Contains the path to the `Google Trace File`_. This includes data from all
   corresponding ``snippets`` in the index file. The file path is relative to
   ``dataDir``. Only included when enabled by the `v1 Query Files`_.
 
 ``staticSystemInformation``
   Specifies the static information collected about the host machine
-  CMake is being run from. Only included when enabled by the `v1 Query Files`_.
+  CMake is being run from. If CMake is unable to determine the value of any
+  given field, it will be ``null``. See :command:`cmake_host_system_information`
+  for a description of each of the following fields.
+
+  Only included when enabled by the `v1 Query Files`_.
 
   * ``OSName``
   * ``OSPlatform``
@@ -501,6 +565,7 @@ generated whenever `Indexing`_ occurs and deleted after any user-specified
   * ``hostname``
   * ``is64Bits``
   * ``modelId``
+  * ``modelName``
   * ``numberOfLogicalCPU``
   * ``numberOfPhysicalCPU``
   * ``processorAPICID``
@@ -546,29 +611,42 @@ corresponding to the CMake invocation responsible for generating its command.
 
 Each CMake content file contains the following:
 
+  ``project``
+    The value of :variable:`CMAKE_PROJECT_NAME`.
+
   ``custom``
     An object containing arbitrary JSON data specified by the user with the
     :ref:`cmake_instrumentation CUSTOM_CONTENT` functionality of the
     :command:`cmake_instrumentation` command.
 
   ``targets``
-    An object containing CMake targets, indexed by name, that have corresponding
-    instrumentation data. Each target contains the following:
+    An object containing CMake targets, indexed by name, that have
+    corresponding instrumentation data. Each target contains the following:
 
     ``type``
-      The target type. One of ``EXECUTABLE``, ``STATIC_LIBRARY``,
-      ``SHARED_LIBRARY`` or ``OBJECT_LIBRARY``.
+      The :prop_tgt:`TYPE` property of the target. Only ``EXECUTABLE``,
+      ``STATIC_LIBRARY``, ``SHARED_LIBRARY``, ``MODULE_LIBRARY`` and
+      ``OBJECT_LIBRARY`` targets are included.
 
     ``labels``
       The :prop_tgt:`LABELS` property of the target.
 
+.. _`cmake-instrumentation Google Trace File`:
+
 Google Trace File
 -----------------
 
-Trace files follow the `Google Trace Event Format`_. They include data from
-all `v1 Snippet Files <v1 Snippet File_>`_ listed in the current index file.
-These files remain in the build tree even after `Indexing`_ occurs and all
-`Callbacks`_ are executed, until the next time `Indexing`_ occurs.
+CMake can generate a file in the `Google Trace Event Format`_ to help visualize
+collected instrumentation data. Enabling the ``trace`` option in the
+`v1 Query Files`_ causes such a file to be generated under
+``<build>/.cmake/v1/instrumentation/data/trace`` whenever `Indexing`_ occurs.
+
+Generated trace files include data from all
+`v1 Snippet Files <v1 Snippet File_>`_ listed in the current index file.
+
+When instrumentation data is deleted by CMake after `Indexing`_, the most
+recent trace file remains so that it can be manually inspected without the need
+for any custom `Callbacks`_.
 
 Trace files are stored in the ``JSON Array Format``, where each
 `v1 Snippet File`_ corresponds to a single trace event object. Each trace
@@ -581,7 +659,7 @@ event contains the following data:
   The ``role`` from the `v1 Snippet File`_.
 
 ``ph``
-  Currently, always ``"X"`` to represent ``Complete Events``.
+  Currently, always ``"X"`` to represent "Complete Events".
 
 ``ts``
   The ``timeStart`` from the `v1 Snippet File`_, converted from milliseconds to
@@ -601,6 +679,7 @@ event contains the following data:
   order to produce a more useful visualization of the process concurrency.
 
 ``args``
-  Contains all data from the `v1 Snippet File`_ corresponding to this trace event.
+  Contains all data from the `v1 Snippet File`_ corresponding to this trace
+  event.
 
 .. _`Google Trace Event Format`: https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview

@@ -135,7 +135,48 @@ private:
 
 cmCPackGenerator* cmCPackArchiveGenerator::Create7ZGenerator()
 {
+  return cmCPackArchiveGenerator::Create7ZLzmaGenerator();
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::Create7ZStoreGenerator()
+{
   return new cmCPackArchiveGenerator(cmArchiveWrite::CompressNone, "7zip",
+                                     ".7z");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::Create7ZDeflateGenerator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressGZip, "7zip",
+                                     ".7z");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::Create7ZBzip2Generator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressBZip2, "7zip",
+                                     ".7z");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::Create7ZLzmaGenerator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressLZMA, "7zip",
+                                     ".7z");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::Create7ZLzma2Generator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressXZ, "7zip",
+                                     ".7z");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::Create7ZZstdGenerator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressZstd, "7zip",
+                                     ".7z");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::Create7ZPPMdGenerator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressPPMd, "7zip",
                                      ".7z");
 }
 
@@ -177,7 +218,42 @@ cmCPackGenerator* cmCPackArchiveGenerator::CreateTarGenerator()
 
 cmCPackGenerator* cmCPackArchiveGenerator::CreateZIPGenerator()
 {
+  return cmCPackArchiveGenerator::CreateZipDeflateGenerator();
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::CreateZipStoreGenerator()
+{
   return new cmCPackArchiveGenerator(cmArchiveWrite::CompressNone, "zip",
+                                     ".zip");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::CreateZipDeflateGenerator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressGZip, "zip",
+                                     ".zip");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::CreateZipBzip2Generator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressBZip2, "zip",
+                                     ".zip");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::CreateZipLzmaGenerator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressLZMA, "zip",
+                                     ".zip");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::CreateZipLzma2Generator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressXZ, "zip",
+                                     ".zip");
+}
+
+cmCPackGenerator* cmCPackArchiveGenerator::CreateZipZstdGenerator()
+{
+  return new cmCPackArchiveGenerator(cmArchiveWrite::CompressZstd, "zip",
                                      ".zip");
 }
 
@@ -233,7 +309,7 @@ int cmCPackArchiveGenerator::InitializeInternal()
   cmValue newExtensionValue = this->GetOption("CPACK_ARCHIVE_FILE_EXTENSION");
   if (!newExtensionValue.IsEmpty()) {
     std::string newExtension = *newExtensionValue;
-    if (!cmHasLiteralPrefix(newExtension, ".")) {
+    if (!cmHasPrefix(newExtension, '.')) {
       newExtension = cmStrCat('.', newExtension);
     }
     cmCPackLogger(cmCPackLog::LOG_DEBUG,
@@ -316,8 +392,12 @@ int cmCPackArchiveGenerator::addOneComponentToArchive(
                     << (filename) << ">." << std::endl);                      \
     return 0;                                                                 \
   }                                                                           \
-  cmArchiveWrite archive(gf, this->Compress, this->ArchiveFormat, 0,          \
+  cmArchiveWrite archive(gf, this->Compress, this->ArchiveFormat,             \
+                         this->GetCompressionLevel(),                         \
                          this->GetThreadCount());                             \
+  if (this->UID >= 0 && this->GID >= 0) {                                     \
+    archive.SetUIDAndGID(this->UID, this->GID);                               \
+  }                                                                           \
   do {                                                                        \
     if (!archive.Open()) {                                                    \
       cmCPackLogger(cmCPackLog::LOG_ERROR,                                    \
@@ -436,6 +516,19 @@ int cmCPackArchiveGenerator::PackageFiles()
   cmCPackLogger(cmCPackLog::LOG_DEBUG,
                 "Toplevel: " << this->toplevel << std::endl);
 
+  if (cmValue UIDoption = this->GetOptionIfSet("CPACK_ARCHIVE_UID")) {
+    long u;
+    if (cmStrToLong(*UIDoption, &u)) {
+      this->UID = static_cast<int>(u);
+    }
+  }
+  if (cmValue GIDoption = this->GetOptionIfSet("CPACK_ARCHIVE_GID")) {
+    long g;
+    if (cmStrToLong(*GIDoption, &g)) {
+      this->GID = static_cast<int>(g);
+    }
+  }
+
   if (this->WantsComponentInstallation()) {
     // CASE 1 : COMPONENT ALL-IN-ONE package
     // If ALL COMPONENTS in ONE package has been requested
@@ -502,4 +595,18 @@ int cmCPackArchiveGenerator::GetThreadCount() const
   }
 
   return threads;
+}
+
+int cmCPackArchiveGenerator::GetCompressionLevel() const
+{
+  int level = 0;
+
+  // CPACK_ARCHIVE_COMPRESSION_LEVEL overrides CPACK_COMPRESSION_LEVEL
+  if (cmValue v = this->GetOptionIfSet("CPACK_ARCHIVE_COMPRESSION_LEVEL")) {
+    level = std::stoi(*v);
+  } else if (cmValue v2 = this->GetOptionIfSet("CPACK_COMPRESSION_LEVEL")) {
+    level = std::stoi(*v2);
+  }
+
+  return level;
 }

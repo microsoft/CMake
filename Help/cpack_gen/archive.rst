@@ -4,29 +4,85 @@ CPack Archive Generator
 CPack generator for packaging files into an archive, which can have
 any of the following formats:
 
-- 7Z - 7zip - (``.7z``)
+- 7Z - 7zip - (``.7z``) - LZMA compressed
 
   .. versionadded:: 3.1
 
-- TAR (``.tar``)
+  This is an alias for ``7Z_LZMA``
+
+- 7Z_BZ2 - 7zip - (``.7z``) - BZip2 compressed
+
+  .. versionadded:: 4.3
+
+- 7Z_DEFLATE - 7zip - (``.7z``) - Deflate compressed
+
+  .. versionadded:: 4.3
+
+- 7Z_LZMA - 7zip - (``.7z``) - LZMA compressed
+
+  .. versionadded:: 4.3
+
+- 7Z_LZMA2 - 7zip - (``.7z``) - LZMA2 compressed
+
+  .. versionadded:: 4.3
+
+- 7Z_PPMD - 7zip - (``.7z``) - PPMd compressed
+
+  .. versionadded:: 4.3
+
+- 7Z_STORE - 7zip - (``.7z``) - no compression is used
+
+  .. versionadded:: 4.3
+
+- 7Z_ZSTD - 7zip - (``.7z``) - Zstandard compressed
+
+  .. versionadded:: 4.3
+
+- TAR (``.tar``) - no compression is used
 
   .. versionadded:: 4.0
 
-- TBZ2 (``.tar.bz2``)
+- TBZ2 (``.tar.bz2``) - BZip2 compressed
 
-- TGZ (``.tar.gz``)
+- TGZ (``.tar.gz``) - Deflate compressed
 
-- TXZ (``.tar.xz``)
+- TXZ (``.tar.xz``) - LZMA2 compressed
 
   .. versionadded:: 3.1
 
-- TZ (``.tar.Z``)
+- TZ (``.tar.Z``) - LZW compressed
 
-- TZST (``.tar.zst``)
+- TZST (``.tar.zst``) - Zstandard compressed
 
   .. versionadded:: 3.16
 
-- ZIP (``.zip``)
+- ZIP (``.zip``) - Deflate compressed
+
+  This is an alias for ``ZIP_DEFLATE``
+
+- ZIP_BZ2 (``.zip``) - BZip2 compressed
+
+  .. versionadded:: 4.3
+
+- ZIP_DEFLATE (``.zip``) - Deflate compressed
+
+  .. versionadded:: 4.3
+
+- ZIP_LZMA (``.zip``) - LZMA compressed
+
+  .. versionadded:: 4.3
+
+- ZIP_LZMA2 (``.zip``) - LZMA2 compressed
+
+  .. versionadded:: 4.3
+
+- ZIP_STORE (``.zip``) - no compression is used
+
+  .. versionadded:: 4.3
+
+- ZIP_ZSTD (``.zip``) - Zstandard compressed
+
+  .. versionadded:: 4.3
 
 When this generator is called from ``CPackSourceConfig.cmake`` (or through
 the ``package_source`` target), then the generated archive will contain all
@@ -100,6 +156,24 @@ Variables specific to CPack Archive generator
   If enabled (``ON``) multiple packages are generated. By default a single package
   containing files of all components is generated.
 
+.. variable:: CPACK_ARCHIVE_UID
+
+  .. versionadded: 4.3
+
+  Set the UID of entries contained in the archive.
+  Specify ``-1`` to use the UID of the current user.
+
+  :Default: ``0`` (see policy :policy:`CMP0206`)
+
+.. variable:: CPACK_ARCHIVE_GID
+
+  .. versionadded: 4.3
+
+  Set the GID of entries contained in the archive.
+  Specify ``-1`` to use the GID of the current user.
+
+  :Default: ``0`` (see policy :policy:`CMP0206`)
+
 Variables used by CPack Archive generator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -125,3 +199,21 @@ CPack generators which are essentially archives at their core. These include:
     Official CMake binaries available on ``cmake.org`` now ship
     with a ``liblzma`` that supports parallel compression.
     Older versions did not.
+
+.. variable:: CPACK_ARCHIVE_COMPRESSION_LEVEL
+
+  .. versionadded:: 4.3
+
+  The compression level to use when compressing the archive.
+
+  :Default: value of :variable:`CPACK_COMPRESSION_LEVEL`
+
+  The compression level should be between ``0`` and ``9``.
+
+  The compression level of the Zstandard-based algorithm can be set
+  between ``0`` and ``19``, except for the ``ZIP_ZSTD`` mode.
+
+  The value ``0`` is used to specify the default compression level.
+  It is selected automatically by the archive library backend and
+  not directly set by CMake itself. The default compression level
+  may vary between archive formats, platforms, etc.

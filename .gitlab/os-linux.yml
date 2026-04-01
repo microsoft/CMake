@@ -11,7 +11,7 @@
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci"
 
 .linux_release_x86_64:
-    image: "kitware/cmake:build-linux-x86_64-deps-2023-08-16@sha256:aa0ebdbd90a51cc83d31f393c5c48ec4599a28f7ccdc288558522c6265b24fae"
+    image: "kitware/cmake:build-linux-x86_64-deps-2026-01-13@sha256:eae18d032e8d7be3caa97d2e5754ae2b7196d7a3d375b7b4d1ba9034f1229317"
 
     variables:
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci"
@@ -19,11 +19,10 @@
         CMAKE_ARCH: x86_64
 
 .linux_release_aarch64:
-    image: "kitware/cmake:build-linux-aarch64-deps-2020-12-21@sha256:0bd7dfe4e45593b04e39cd21e44011034610cfd376900558c5ef959bb1af15af"
+    image: "kitware/cmake:build-linux-aarch64-deps-2026-01-13@sha256:7373fe775ea571a3113251b3e8b5857ef321f6e9b5dfa5963f6e44d062349244"
 
     variables:
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci"
-        LAUNCHER: "scl enable devtoolset-7 --"
         CMAKE_ARCH: aarch64
 
 .linux_package:
@@ -52,14 +51,14 @@
     needs:
         - b:centos7-x86_64
 
-.needs_centos7_aarch64:
+.needs_centos8_aarch64:
     needs:
-        - b:centos7-aarch64
+        - b:centos8-aarch64
 
 ### Debian
 
 .debian13:
-    image: "kitware/cmake:ci-debian13-x86_64-2025-11-11"
+    image: "kitware/cmake:ci-debian13-x86_64-2026-02-08"
 
     variables:
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci"
@@ -74,7 +73,7 @@
         CMAKE_CI_NO_INSTALL: 1
 
 .debian13_aarch64:
-    image: "kitware/cmake:ci-debian13-aarch64-2025-11-11"
+    image: "kitware/cmake:ci-debian13-aarch64-2026-02-08"
 
     variables:
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci"
@@ -83,7 +82,7 @@
 ### Fedora
 
 .fedora43:
-    image: "kitware/cmake:ci-fedora43-x86_64-2025-11-06"
+    image: "kitware/cmake:ci-fedora43-x86_64-2026-02-08"
 
     variables:
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci/long file name for testing purposes"
@@ -139,6 +138,14 @@
     variables:
         CMAKE_CONFIGURATION: fedora43_clang_analyzer
         CMAKE_CI_BUILD_TYPE: Debug
+        CTEST_NO_WARNINGS_ALLOWED: 1
+        CMAKE_CI_NO_INSTALL: 1
+
+.fedora43_clang_fuzzing:
+    extends: .fedora43
+
+    variables:
+        CMAKE_CONFIGURATION: fedora43_clang_fuzzing
         CTEST_NO_WARNINGS_ALLOWED: 1
         CMAKE_CI_NO_INSTALL: 1
 
@@ -236,14 +243,6 @@
         CMAKE_CI_BUILD_TYPE: Release
         CTEST_NO_WARNINGS_ALLOWED: 1
 
-.fedora43_ninja_multi:
-    extends: .fedora43
-
-    variables:
-        CMAKE_CONFIGURATION: fedora43_ninja_multi
-        CTEST_NO_WARNINGS_ALLOWED: 1
-        CMAKE_GENERATOR: "Ninja Multi-Config"
-
 .fedora43_makefiles:
     extends: .fedora43
 
@@ -269,6 +268,14 @@
         CMAKE_CONFIGURATION: fedora43_fastbuild
         CTEST_NO_WARNINGS_ALLOWED: 1
         CMAKE_GENERATOR: "FASTBuild"
+
+.fedora43_ninja_instrumentation:
+    extends: .fedora43
+
+    variables:
+        CMAKE_CONFIGURATION: fedora43_ninja_instrumentation
+        CTEST_NO_WARNINGS_ALLOWED: 1
+        CMAKE_GENERATOR: "Ninja"
 
 ### Clang Compiler
 
@@ -310,6 +317,13 @@
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake-ci"
         CMAKE_CONFIGURATION: fedora43_ninja_lfortran
         CTEST_LABELS: "Fortran"
+
+.fedora43_ninja_multi:
+    extends: .fedora43
+
+    variables:
+        CMAKE_CONFIGURATION: fedora43_ninja_multi
+        CMAKE_GENERATOR: "Ninja Multi-Config"
 
 .fedora43_ninja_clang:
     extends: .fedora43
@@ -353,7 +367,6 @@
 
     variables:
         CMAKE_CONFIGURATION: fedora43_asan
-
 
 .fedora43_ninja_valgrind:
     extends:
@@ -533,6 +546,18 @@
         CTEST_NO_WARNINGS_ALLOWED: 1
         CMAKE_GENERATOR: "FASTBuild"
 
+.cuda13.0_aarch64:
+    extends: .cuda
+    image: "kitware/cmake:ci-cuda13.0-aarch64-2025-10-31"
+    variables:
+        CMAKE_ARCH: aarch64
+
+.cuda13.0_aarch64_nvidia:
+    extends: .cuda13.0_aarch64
+    variables:
+        CMAKE_CONFIGURATION: cuda13.0_aarch64_nvidia
+        CTEST_NO_WARNINGS_ALLOWED: 1
+
 ### HIP builds
 
 .hip6.3:
@@ -572,6 +597,7 @@
     variables:
         CMAKE_CONFIGURATION: hip6.3_nvidia
         CTEST_LABELS: "HIP"
+        CMAKE_CUDA_ARCHITECTURES_NATIVE_CLAMP: 1
 
 ### C++ modules
 
@@ -706,6 +732,13 @@
     tags:
         - cmake
         - build
+        - docker
+        - linux-aarch64
+
+.linux_aarch64_tags_cuda_arch_75:
+    tags:
+        - cmake
+        - cuda-arch-75
         - docker
         - linux-aarch64
 
@@ -866,36 +899,23 @@
 
     interruptible: true
 
-.cmake_test_linux_external:
-    stage: test-ext
-
-    script:
-        - *before_script_linux
-        - .gitlab/ci/sccache.sh
-        - sccache --start-server
-        - sccache --show-stats
-        - "$LAUNCHER build/install/bin/ctest --output-on-failure -V -S .gitlab/ci/ctest_standalone.cmake"
-        - sccache --show-stats
-
-    interruptible: true
-
 .cmake_test_linux_intelclassic_makefiles:
     extends:
         - .intelclassic_makefiles
         - .cmake_test_linux_release
         - .linux_x86_64_tags
-        - .run_manually
+        - .rules
         - .needs_centos7_x86_64
     variables:
         CMAKE_CI_JOB_NIGHTLY: "true"
-        CMAKE_CI_NO_MR: "true"
+        CMAKE_CI_JOB_NO_MR: "true"
 
 .cmake_test_linux_inteloneapi_makefiles:
     extends:
         - .inteloneapi_makefiles
         - .cmake_test_linux_release
         - .linux_x86_64_tags
-        - .run_manually
+        - .rules
         - .needs_centos7_x86_64
     variables:
         CMAKE_CI_JOB_NIGHTLY: "true"
