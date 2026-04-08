@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 4.3)
 include(RunCMake)
 
 function(instrument test)
@@ -11,7 +11,7 @@ function(instrument test)
     "INSTALL"
     "INSTALL_PARALLEL"
     "TEST"
-    "NO_WARN"
+    "WORKFLOW"
     "COPY_QUERIES"
     "COPY_QUERIES_GENERATED"
     "STATIC_QUERY"
@@ -21,11 +21,11 @@ function(instrument test)
     "PRESERVE_DATA"
     "NO_CONFIGURE"
     "FAIL"
+    "BAD_QUERY"
   )
   cmake_parse_arguments(ARGS "${OPTIONS}" "CHECK_SCRIPT;CONFIGURE_ARG" "" ${ARGN})
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/${test})
-  set(uuid "ec7aa2dc-b87f-45a3-8022-fe01c5f59984")
-  set(v1 ${RunCMake_TEST_BINARY_DIR}/.cmake/instrumentation-${uuid}/v1)
+  set(v1 ${RunCMake_TEST_BINARY_DIR}/.cmake/instrumentation/v1)
   set(v1 ${v1} PARENT_SCOPE)
   set(query_dir ${CMAKE_CURRENT_LIST_DIR}/query)
   configure_file(${RunCMake_SOURCE_DIR}/initial.cmake.in ${RunCMake_BINARY_DIR}/initial.cmake)
@@ -37,6 +37,13 @@ function(instrument test)
   else()
     file(REMOVE_RECURSE ${RunCMake_TEST_BINARY_DIR})
   endif()
+
+  if (ARGS_BAD_QUERY)
+    set(schema_validate_result 1)
+  else()
+    set(schema_validate_result 0)
+  endif()
+  set(schema_validate_result ${schema_validate_result} PARENT_SCOPE)
 
   # Set hook command
   set(static_query_hook_arg 0)
@@ -55,7 +62,10 @@ function(instrument test)
   if (EXISTS ${query})
     file(MAKE_DIRECTORY ${v1}/query)
     configure_file(${query} ${v1}/query/${test}.json)
-  elseif (EXISTS ${cmake_file})
+  else ()
+    if (NOT EXISTS ${cmake_file} AND NOT EXISTS ${cmake_file}.in)
+      set(cmake_file ${query_dir}/default.cmake)
+    endif()
     list(APPEND ARGS_CONFIGURE_ARG "-DINSTRUMENT_COMMAND_FILE=${cmake_file}")
   endif()
 
@@ -81,15 +91,34 @@ function(instrument test)
 
   # Configure Test Case
   set(RunCMake_TEST_NO_CLEAN 1)
-  if (ARGS_NO_WARN)
-    list(APPEND ARGS_CONFIGURE_ARG "-Wno-dev")
-  endif()
   if (ARGS_FAIL)
     list(APPEND ARGS_CONFIGURE_ARG "-DFAIL=ON")
   endif()
   set(RunCMake_TEST_SOURCE_DIR ${RunCMake_SOURCE_DIR}/project)
   if(NOT RunCMake_GENERATOR_IS_MULTI_CONFIG)
     set(maybe_CMAKE_BUILD_TYPE -DCMAKE_BUILD_TYPE=Debug)
+  endif()
+  if (ARGS_WORKFLOW)
+    configure_file(
+      "${RunCMake_TEST_SOURCE_DIR}/CMakePresets.json.in"
+      "${RunCMake_TEST_BINARY_DIR}/CMakePresets.json"
+      @ONLY
+    )
+    configure_file(
+      "${cmake_file}.in"
+      "${RunCMake_TEST_BINARY_DIR}/cmake-command-workflow.cmake"
+      @ONLY
+    )
+    foreach(f IN ITEMS CMakeLists.txt main.cxx lib.cxx lib.h shell_redirect.txt)
+      configure_file(
+        "${RunCMake_TEST_SOURCE_DIR}/${f}"
+        "${RunCMake_TEST_BINARY_DIR}/${f}"
+        COPYONLY
+      )
+    endforeach()
+    set(v1 ${RunCMake_TEST_BINARY_DIR}/build/.cmake/instrumentation/v1)
+    run_cmake_command(${test}-workflow ${CMAKE_COMMAND} --workflow default)
+    set(ARGS_NO_CONFIGURE TRUE)
   endif()
   if (NOT ARGS_NO_CONFIGURE)
     run_cmake_with_options(${test} ${ARGS_CONFIGURE_ARG} ${maybe_CMAKE_BUILD_TYPE})
@@ -150,15 +179,29 @@ function(instrument test)
 endfunction()
 
 # Bad Queries
-instrument(bad-option)
-instrument(bad-hook)
-instrument(empty)
-instrument(bad-version)
+instrument(bad-option BAD_QUERY
+  CHECK_SCRIPT check-query-dir.cmake
+)
+instrument(bad-hook BAD_QUERY
+  CHECK_SCRIPT check-query-dir.cmake
+)
+instrument(empty BAD_QUERY
+  CHECK_SCRIPT check-query-dir.cmake
+)
+instrument(bad-version BAD_QUERY
+  CHECK_SCRIPT check-query-dir.cmake
+)
 
 # Verify Hooks Run and Index File
-instrument(hooks-1 BUILD INSTALL TEST STATIC_QUERY)
-instrument(hooks-2 BUILD INSTALL TEST)
-instrument(hooks-no-callbacks MANUAL_HOOK)
+instrument(hooks-1 BUILD INSTALL TEST STATIC_QUERY
+  CHECK_SCRIPT check-query-dir.cmake
+)
+instrument(hooks-2 BUILD INSTALL TEST
+  CHECK_SCRIPT check-query-dir.cmake
+)
+instrument(hooks-no-callbacks MANUAL_HOOK
+  CHECK_SCRIPT check-query-dir.cmake
+)
 
 # Check data file contents for optional query data
 instrument(no-query
@@ -176,30 +219,29 @@ instrument(both-query
 
 # Test cmake_instrumentation command
 instrument(cmake-command
-  COPY_QUERIES NO_WARN STATIC_QUERY DYNAMIC_QUERY
+  COPY_QUERIES STATIC_QUERY DYNAMIC_QUERY
   CHECK_SCRIPT check-generated-queries.cmake
 )
 instrument(cmake-command-data
-  COPY_QUERIES NO_WARN BUILD INSTALL TEST DYNAMIC_QUERY
+  COPY_QUERIES BUILD INSTALL TEST DYNAMIC_QUERY
   CHECK_SCRIPT check-data-dir.cmake
 )
-instrument(cmake-command-bad-api-version NO_WARN)
-instrument(cmake-command-bad-data-version NO_WARN)
-instrument(cmake-command-missing-version NO_WARN)
-instrument(cmake-command-bad-arg NO_WARN)
+instrument(cmake-command-bad-api-version)
+instrument(cmake-command-bad-data-version)
+instrument(cmake-command-missing-version)
+instrument(cmake-command-bad-arg)
 instrument(cmake-command-parallel-install
-  BUILD INSTALL TEST NO_WARN INSTALL_PARALLEL DYNAMIC_QUERY
+  BUILD INSTALL TEST INSTALL_PARALLEL DYNAMIC_QUERY
   CHECK_SCRIPT check-data-dir.cmake)
 instrument(cmake-command-initial-cache
   CONFIGURE_ARG "-C ${RunCMake_BINARY_DIR}/initial.cmake"
-  CHECK_SCRIPT check-data-dir.cmake
 )
 instrument(cmake-command-resets-generated
-  NO_WARN COPY_QUERIES_GENERATED
+  COPY_QUERIES_GENERATED
   CHECK_SCRIPT check-data-dir.cmake
 )
 instrument(cmake-command-cmake-build
-  NO_WARN BUILD
+  BUILD
   CHECK_SCRIPT check-no-make-program-hooks.cmake
 )
 if(RunCMake_GENERATOR STREQUAL "Borland Makefiles")
@@ -208,18 +250,22 @@ if(RunCMake_GENERATOR STREQUAL "Borland Makefiles")
 endif()
 if(NOT Skip_COMMAND_FAILURES_Case)
   instrument(cmake-command-failures
-    FAIL NO_WARN BUILD TEST INSTALL
+    FAIL BUILD TEST INSTALL
     CHECK_SCRIPT check-data-dir.cmake
   )
 endif()
+instrument(cmake-command-workflow
+  WORKFLOW
+  CHECK_SCRIPT check-workflow-hook.cmake
+)
 
 # Test CUSTOM_CONTENT
 instrument(cmake-command-custom-content
-  NO_WARN BUILD
+  BUILD
   CONFIGURE_ARG "-DN=1"
 )
 instrument(cmake-command-custom-content
-  NO_WARN BUILD PRESERVE_DATA
+  BUILD PRESERVE_DATA
   CONFIGURE_ARG "-DN=2"
   CHECK_SCRIPT check-custom-content.cmake
 )
@@ -230,18 +276,21 @@ file(TOUCH ${fakeIndex})
 # fakeIndex newer than all content files prevents their deletion
 set(EXPECTED_CONTENT_FILES 2)
 instrument(cmake-command-custom-content
-  NO_WARN NO_CONFIGURE MANUAL_HOOK PRESERVE_DATA
+  NO_CONFIGURE MANUAL_HOOK PRESERVE_DATA
   CHECK_SCRIPT check-custom-content-removed.cmake
 )
 file(REMOVE ${fakeIndex})
 # old content files will be removed if no index file exists
 set(EXPECTED_CONTENT_FILES 1)
 instrument(cmake-command-custom-content
-  NO_WARN NO_CONFIGURE MANUAL_HOOK PRESERVE_DATA
+  NO_CONFIGURE MANUAL_HOOK PRESERVE_DATA
   CHECK_SCRIPT check-custom-content-removed.cmake
 )
-instrument(cmake-command-custom-content-bad-type NO_WARN)
-instrument(cmake-command-custom-content-bad-content NO_WARN)
+instrument(cmake-command-custom-content-bad-type)
+instrument(cmake-command-custom-content-bad-content)
+instrument(cmake-command-custom-content-empty
+  CHECK_SCRIPT check-custom-content-empty.cmake
+)
 
 # Test Google trace
 instrument(trace-query
@@ -249,10 +298,10 @@ instrument(trace-query
   CHECK_SCRIPT check-generated-queries.cmake
 )
 instrument(cmake-command-trace
-  NO_WARN BUILD INSTALL TEST TRACE_QUERY
+  BUILD INSTALL TEST TRACE_QUERY
 )
 instrument(cmake-command-trace
-  NO_WARN BUILD PRESERVE_DATA
+  BUILD PRESERVE_DATA
   CHECK_SCRIPT check-trace-removed.cmake
 )
 
@@ -282,9 +331,9 @@ elseif(RunCMake_GENERATOR STREQUAL "NMake Makefiles")
 endif()
 if(NOT Skip_BUILD_MAKE_PROGRAM_Case)
   instrument(cmake-command-make-program
-    NO_WARN BUILD_MAKE_PROGRAM
+    BUILD_MAKE_PROGRAM
     CHECK_SCRIPT check-make-program-hooks.cmake)
   instrument(cmake-command-build-snippet
-    NO_WARN BUILD_MAKE_PROGRAM
+    BUILD_MAKE_PROGRAM
     CHECK_SCRIPT check-data-dir.cmake)
 endif()

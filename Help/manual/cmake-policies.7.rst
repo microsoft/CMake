@@ -7,6 +7,8 @@ cmake-policies(7)
 
    .. contents::
 
+.. _cmake-policies-intro:
+
 Introduction
 ============
 
@@ -34,10 +36,10 @@ For example:
 
 .. code-block:: cmake
 
-  cmake_minimum_required(VERSION 3.10...4.1)
+  cmake_minimum_required(VERSION 3.10...4.2)
 
-This uses the ``<min>...<max>`` syntax to enable the ``NEW`` behaviors
-of policies introduced in CMake 4.1 and earlier while only requiring a
+This uses the ``<min>...<policy_max>`` syntax to enable the ``NEW`` behaviors
+of policies introduced in CMake 4.2 and earlier while only requiring a
 minimum version of CMake 3.10.  The project is expected to work with
 both the ``OLD`` and ``NEW`` behaviors of policies introduced between
 those versions.
@@ -91,6 +93,19 @@ Supported Policies
 ==================
 
 The following policies are supported.
+
+Policies Introduced by CMake 4.3
+--------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   CMP0210: CMAKE_<LANG>_LINK_FLAGS adds link flags to all target types. </policy/CMP0210>
+   CMP0209: Verify interface header sets checks executables without exports. </policy/CMP0209>
+   CMP0208: export(EXPORT) does not allow empty arguments. </policy/CMP0208>
+   CMP0207: file(GET_RUNTIME_DEPENDENCIES) normalizes paths before matching. </policy/CMP0207>
+   CMP0206: The CPack Archive Generator defaults to UID 0 and GID 0. </policy/CMP0206>
+   CMP0205: file(CREATE_LINK) with COPY_ON_ERROR copies directory content. </policy/CMP0205>
 
 Policies Introduced by CMake 4.2
 --------------------------------

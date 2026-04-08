@@ -293,19 +293,50 @@ List of CPack DEB generator specific variables:
     Lempel–Ziv–Markov chain algorithm
 
   ``xz``
-    XZ Utils compression
+    XZ Utils LZMA2 (Lempel–Ziv–Markov chain algorithm, version 2) compression
 
   ``bzip2``
     bzip2 Burrows–Wheeler algorithm
 
   ``gzip``
-    GNU Gzip compression
+    GNU Gzip Deflate compression
 
   ``zstd``
     .. versionadded:: 3.22
 
     Zstandard compression
 
+.. variable:: CPACK_DEBIAN_COMPRESSION_LEVEL
+
+ .. versionadded:: 4.3
+
+ The compression level used for creating the Debian package.
+
+ :Mandatory: No
+ :Default: value of :variable:`CPACK_COMPRESSION_LEVEL`
+
+ This variable allows fine-tuning of the compression ratio and speed for the
+ Debian package archive. It controls the numeric compression level passed to
+ the compressor defined by :variable:`CPACK_DEBIAN_COMPRESSION_TYPE`.
+ If ``CPACK_DEBIAN_COMPRESSION_LEVEL`` is not set, or is set to ``0``,
+ the default value will be used.
+
+ The valid range and interpretation depend on the selected compression type:
+
+  - ``gzip``  – level 1–9
+  - ``bzip2`` – level 1–9
+  - ``xz``    – level 1–9
+  - ``lzma``  – level 1–9
+  - ``zstd``  – level 1–19
+
+ Example usage:
+
+ .. code-block:: cmake
+
+   set(CPACK_DEBIAN_COMPRESSION_TYPE "xz")
+   set(CPACK_DEBIAN_COMPRESSION_LEVEL 9)
+
+   include(CPack)
 
 .. variable:: CPACK_DEBIAN_PACKAGE_PRIORITY
               CPACK_DEBIAN_<COMPONENT>_PACKAGE_PRIORITY

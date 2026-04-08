@@ -86,6 +86,15 @@ where ``<dir>`` is one of:
 
   On Debian, this may be ``lib/<multiarch-tuple>`` when
   :variable:`CMAKE_INSTALL_PREFIX` is ``/usr``.
+
+  .. note::
+
+    When an alternative installation prefix is specified with the
+    :option:`--prefix <cmake--install --prefix>` option at install time,
+    the special case with multi-architecture tuple is evaluated based on
+    the configuration-time :variable:`CMAKE_INSTALL_PREFIX`, not on the
+    alternative prefix value.
+
 ``INCLUDEDIR``
   C header files (``include``)
 ``OLDINCLUDEDIR``
@@ -94,6 +103,12 @@ where ``<dir>`` is one of:
   read-only architecture-independent data root (``share``)
 ``DATADIR``
   read-only architecture-independent data (``DATAROOTDIR``)
+
+  The ``DATADIR`` and ``DATAROOTDIR`` are treated separately so that
+  ``DATADIR`` can be customized for project-specific data files, while
+  ``DATAROOTDIR`` remains unchanged for standard architecture-independent
+  locations ``INFODIR``, ``LOCALEDIR``, ``MANDIR``, and ``DOCDIR``.
+
 ``INFODIR``
   info documentation (``DATAROOTDIR/info``)
 ``LOCALEDIR``
@@ -167,6 +182,13 @@ The following values of :variable:`CMAKE_INSTALL_PREFIX` are special:
     to ``SYSCONFDIR``, ``LOCALSTATEDIR`` and ``RUNSTATEDIR`` are the
     absolute paths ``/etc/opt/...``, ``/var/opt/...`` and
     ``/var/run/opt/...`` respectively. See policy :policy:`CMP0192`.
+
+.. note::
+
+  When an alternative installation prefix is specified with the
+  :option:`--prefix <cmake--install --prefix>` option at install time,
+  these special cases are evaluated based on the configuration-time
+  :variable:`CMAKE_INSTALL_PREFIX`, not on the alternative prefix value.
 
 .. _`Filesystem Hierarchy Standard`: https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html
 

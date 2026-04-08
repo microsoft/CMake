@@ -1007,7 +1007,7 @@ cm::VS::Solution cmGlobalVisualStudioGenerator::CreateSolution(
         root->MaybeRelativeToCurBinDir(lg->GetCurrentBinaryDirectory());
       if (dir == "."_s) {
         dir.clear();
-      } else if (!cmHasLiteralSuffix(dir, "/")) {
+      } else if (!cmHasSuffix(dir, '/')) {
         dir += "/";
       }
 
@@ -1060,9 +1060,6 @@ cm::VS::Solution cmGlobalVisualStudioGenerator::CreateSolution(
   }
 
   cmMakefile* mf = root->GetMakefile();
-  // Unfortunately we have to copy the source groups because
-  // FindSourceGroup uses a regex which is modifying the group.
-  std::vector<cmSourceGroup> sourceGroups = mf->GetSourceGroups();
   std::vector<std::string> items =
     cmList{ root->GetMakefile()->GetProperty("VS_SOLUTION_ITEMS") };
   for (std::string item : items) {
@@ -1070,7 +1067,8 @@ cm::VS::Solution cmGlobalVisualStudioGenerator::CreateSolution(
       item =
         cmSystemTools::CollapseFullPath(item, mf->GetCurrentSourceDirectory());
     }
-    cmSourceGroup* sg = mf->FindSourceGroup(item, sourceGroups);
+    cmSourceGroup* sg =
+      cmSourceGroup::FindSourceGroup(item, mf->GetSourceGroups());
     std::string folderName = sg->GetFullName();
     if (folderName.empty()) {
       folderName = "Solution Items";

@@ -18,6 +18,7 @@
 #include "cmsys/FStream.hxx"
 #include "cmsys/RegularExpression.hxx"
 
+#include "cmCxxModuleMetadata.h"
 #include "cmExecutionStatus.h"
 #include "cmList.h"
 #include "cmListFileCache.h"
@@ -129,7 +130,7 @@ bool CheckSchemaVersion(Json::Value const& data)
   // Check that we understand this version.
   return cmSystemTools::VersionCompare(cmSystemTools::OP_GREATER_EQUAL,
                                        version, "0.13") &&
-    cmSystemTools::VersionCompare(cmSystemTools::OP_LESS, version, "1");
+    cmSystemTools::VersionCompare(cmSystemTools::OP_LESS, version, "0.15");
 
   // TODO Eventually this probably needs to return the version tuple, and
   // should share code with cmPackageInfoReader::ParseVersion.
@@ -137,8 +138,14 @@ bool CheckSchemaVersion(Json::Value const& data)
 
 bool ComparePathSuffix(std::string const& path, std::string const& suffix)
 {
-  std::string const& tail = path.substr(path.size() - suffix.size());
-  return cmSystemTools::ComparePath(tail, suffix);
+  std::string::size_type const ps = path.size();
+  std::string::size_type const ss = suffix.size();
+
+  if (ss > ps) {
+    return false;
+  }
+
+  return cmSystemTools::ComparePath(path.substr(ps - ss), suffix);
 }
 
 std::string DeterminePrefix(std::string const& filepath,
@@ -223,7 +230,7 @@ std::vector<std::string> ReadList(Json::Value const& data, char const* key)
 std::string NormalizeTargetName(std::string const& name,
                                 std::string const& context)
 {
-  if (cmHasLiteralPrefix(name, ":")) {
+  if (cmHasPrefix(name, ':')) {
     return cmStrCat(context, ':', name);
   }
 
@@ -245,6 +252,21 @@ void AppendProperty(cmMakefile* makefile, cmTarget* target,
       cmStrCat("$<$<CONFIG:", configuration, ">:", value, '>');
     target->AppendProperty(fullprop, genexValue, makefile->GetBacktrace());
   } else {
+    target->AppendProperty(fullprop, value, makefile->GetBacktrace());
+  }
+}
+
+void AppendImportProperty(cmMakefile* makefile, cmTarget* target,
+                          cm::string_view property,
+                          cm::string_view configuration,
+                          std::string const& value)
+{
+  if (!configuration.empty()) {
+    std::string const fullprop = cmStrCat(
+      "IMPORTED_", property, '_', cmSystemTools::UpperCase(configuration));
+    target->AppendProperty(fullprop, value, makefile->GetBacktrace());
+  } else {
+    std::string const fullprop = cmStrCat("IMPORTED_", property);
     target->AppendProperty(fullprop, value, makefile->GetBacktrace());
   }
 }
@@ -768,10 +790,31 @@ void cmPackageInfoReader::SetTargetProperties(
                    NormalizeTargetName(dep, package));
   }
 
+  for (std::string const& dep : ReadList(data, "compile_requires")) {
+    std::string const& lib =
+      cmStrCat("$<COMPILE_ONLY:"_s, NormalizeTargetName(dep, package), '>');
+    AppendProperty(makefile, target, "LINK_LIBRARIES"_s, configuration, lib);
+  }
+
   for (std::string const& dep : ReadList(data, "link_requires")) {
     std::string const& lib =
       cmStrCat("$<LINK_ONLY:"_s, NormalizeTargetName(dep, package), '>');
     AppendProperty(makefile, target, "LINK_LIBRARIES"_s, configuration, lib);
+  }
+
+  for (std::string const& dep : ReadList(data, "dyld_requires")) {
+    AppendImportProperty(makefile, target, "LINK_DEPENDENT_LIBRARIES"_s,
+                         configuration, NormalizeTargetName(dep, package));
+  }
+
+  for (std::string const& lib : ReadList(data, "link_libraries")) {
+    AppendProperty(makefile, target, "LINK_LIBRARIES"_s, configuration, lib);
+  }
+
+  // TODO: Handle non-configuration modules
+  // once IMPORTED_CXX_MODULES supports it
+  if (!configuration.empty()) {
+    this->ReadCxxModulesMetadata(makefile, target, configuration, data);
   }
 
   // Add other information.
@@ -781,12 +824,37 @@ void cmPackageInfoReader::SetTargetProperties(
   }
 }
 
+void cmPackageInfoReader::ReadCxxModulesMetadata(
+  cmMakefile* makefile, cmTarget* target, cm::string_view configuration,
+  Json::Value const& object) const
+{
+#ifndef CMAKE_BOOTSTRAP
+  Json::Value const& path = object["cpp_module_metadata"];
+
+  if (!path.isString()) {
+    return;
+  }
+
+  cmCxxModuleMetadata::ParseResult result =
+    cmCxxModuleMetadata::LoadFromFile(this->ResolvePath(path.asString()));
+
+  if (!result) {
+    makefile->IssueMessage(
+      MessageType::WARNING,
+      cmStrCat("Error parsing module manifest:\n"_s, result.Error));
+    return;
+  }
+
+  cmCxxModuleMetadata::PopulateTarget(*target, *result.Meta, configuration);
+#endif
+}
+
 cmTarget* cmPackageInfoReader::AddLibraryComponent(
   cmMakefile* makefile, cmStateEnums::TargetType type, std::string const& name,
-  Json::Value const& data, std::string const& package) const
+  Json::Value const& data, std::string const& package, bool global) const
 {
   // Create the imported target.
-  cmTarget* const target = makefile->AddImportedTarget(name, type, false);
+  cmTarget* const target = makefile->AddImportedTarget(name, type, global);
   target->SetOrigin(cmTarget::Origin::Cps);
 
   // Set target properties.
@@ -800,7 +868,7 @@ cmTarget* cmPackageInfoReader::AddLibraryComponent(
 }
 
 bool cmPackageInfoReader::ImportTargets(cmMakefile* makefile,
-                                        cmExecutionStatus& status)
+                                        cmExecutionStatus& status, bool global)
 {
   std::string const& package = this->GetName();
 
@@ -822,23 +890,23 @@ bool cmPackageInfoReader::ImportTargets(cmMakefile* makefile,
       }
     }
 
+    auto createTarget = [&](cmStateEnums::TargetType typeEnum) {
+      return this->AddLibraryComponent(makefile, typeEnum, fullName, *ci,
+                                       package, global);
+    };
+
     cmTarget* target = nullptr;
     if (type == "symbolic"_s) {
-      target = this->AddLibraryComponent(
-        makefile, cmStateEnums::INTERFACE_LIBRARY, fullName, *ci, package);
+      target = createTarget(cmStateEnums::INTERFACE_LIBRARY);
       target->SetSymbolic(true);
     } else if (type == "dylib"_s) {
-      target = this->AddLibraryComponent(
-        makefile, cmStateEnums::SHARED_LIBRARY, fullName, *ci, package);
+      target = createTarget(cmStateEnums::SHARED_LIBRARY);
     } else if (type == "module"_s) {
-      target = this->AddLibraryComponent(
-        makefile, cmStateEnums::MODULE_LIBRARY, fullName, *ci, package);
+      target = createTarget(cmStateEnums::MODULE_LIBRARY);
     } else if (type == "archive"_s) {
-      target = this->AddLibraryComponent(
-        makefile, cmStateEnums::STATIC_LIBRARY, fullName, *ci, package);
+      target = createTarget(cmStateEnums::STATIC_LIBRARY);
     } else if (type == "interface"_s) {
-      target = this->AddLibraryComponent(
-        makefile, cmStateEnums::INTERFACE_LIBRARY, fullName, *ci, package);
+      target = createTarget(cmStateEnums::INTERFACE_LIBRARY);
     } else {
       makefile->IssueMessage(MessageType::WARNING,
                              cmStrCat(R"(component ")"_s, fullName,
@@ -862,7 +930,7 @@ bool cmPackageInfoReader::ImportTargets(cmMakefile* makefile,
     }
 
     cmTarget* const target = makefile->AddImportedTarget(
-      package, cmStateEnums::INTERFACE_LIBRARY, false);
+      package, cmStateEnums::INTERFACE_LIBRARY, global);
     for (std::string const& name : defaultComponents) {
       std::string const& fullName = cmStrCat(package, "::"_s, name);
       AppendProperty(makefile, target, "LINK_LIBRARIES"_s, {}, fullName);

@@ -18,9 +18,9 @@
 #include <cm/string_view>
 #include <cmext/string_view>
 
+#include "cmBuildArgs.h"
 #include "cmDocumentationEntry.h" // IWYU pragma: keep
 #include "cmGeneratedFileStream.h"
-#include "cmGlobalGeneratorFactory.h"
 #include "cmInstalledFile.h"
 #include "cmListFileCache.h"
 #include "cmMessageType.h"
@@ -54,6 +54,7 @@ class cmGlobalGenerator;
 class cmMakefile;
 class cmMessenger;
 class cmVariableWatch;
+class cmGlobalGeneratorFactory;
 struct cmBuildOptions;
 struct cmGlobCacheEntry;
 
@@ -84,13 +85,6 @@ struct cmGlobCacheEntry;
 class cmake
 {
 public:
-  enum Role
-  {
-    RoleInternal, // no commands
-    RoleScript,   // script commands
-    RoleProject   // all commands
-  };
-
   enum DiagLevel
   {
     DIAG_IGNORE,
@@ -165,12 +159,14 @@ public:
 
   using InstalledFilesMap = std::map<std::string, cmInstalledFile>;
 
-  static int const NO_BUILD_PARALLEL_LEVEL = -1;
-  static int const DEFAULT_BUILD_PARALLEL_LEVEL = 0;
+  static int const NO_BUILD_PARALLEL_LEVEL =
+    cmBuildArgs::NO_BUILD_PARALLEL_LEVEL;
+  static int const DEFAULT_BUILD_PARALLEL_LEVEL =
+    cmBuildArgs::DEFAULT_BUILD_PARALLEL_LEVEL;
 
   /// Default constructor
-  cmake(Role role, cmState::Mode mode,
-        cmState::ProjectKind projectKind = cmState::ProjectKind::Normal);
+  cmake(cmState::Role role,
+        cmState::TryCompile isTryCompile = cmState::TryCompile::No);
   /// Destructor
   ~cmake();
 
@@ -456,18 +452,9 @@ public:
   //! Do all the checks before running configure
   int DoPreConfigureChecks();
 
-  void SetWorkingMode(WorkingMode mode, CommandFailureAction policy)
-  {
-    this->CurrentWorkingMode = mode;
-    this->CurrentCommandFailureAction = policy;
-  }
+  bool RoleSupportsExitCode() const;
 
-  WorkingMode GetWorkingMode() const { return this->CurrentWorkingMode; }
-
-  CommandFailureAction GetCommandFailureAction() const
-  {
-    return this->CurrentCommandFailureAction;
-  }
+  CommandFailureAction GetCommandFailureAction() const;
 
   //! Debug the try compile stuff by not deleting the files
   bool GetDebugTryCompile() const { return this->DebugTryCompile; }
@@ -675,11 +662,10 @@ public:
     cmListFileBacktrace const& backtrace = cmListFileBacktrace()) const;
 
   //! run the --build option
-  int Build(int jobs, std::string dir, std::vector<std::string> targets,
-            std::string config, std::vector<std::string> nativeOptions,
-            cmBuildOptions& buildOptions, bool verbose,
-            std::string const& presetName, bool listPresets,
-            std::vector<std::string> const& args);
+  int Build(cmBuildArgs buildArgs, std::vector<std::string> targets,
+            std::vector<std::string> nativeOptions,
+            cmBuildOptions& buildOptions, std::string const& presetName,
+            bool listPresets, std::vector<std::string> const& args);
 
   enum class DryRun
   {
@@ -716,6 +702,9 @@ public:
 #endif
   void InitializeFileAPI();
   void InitializeInstrumentation();
+
+  bool GetInInitialCache() const { return this->InInitialCache; }
+  void SetInInitialCache(bool v) { this->InInitialCache = v; }
 
   cmState* GetState() const { return this->State.get(); }
   void SetCurrentSnapshot(cmStateSnapshot const& snapshot)
@@ -822,9 +811,6 @@ private:
   std::vector<std::string> cmdArgs;
   std::string CMakeWorkingDirectory;
   ProgressCallbackType ProgressCallback;
-  WorkingMode CurrentWorkingMode = NORMAL_MODE;
-  CommandFailureAction CurrentCommandFailureAction =
-    CommandFailureAction::FATAL_ERROR;
   bool DebugOutput = false;
   bool DebugFindOutput = false;
   // Elements of `cmakeLangTraceCmdStack` are "trace requests" pushed
@@ -863,6 +849,7 @@ private:
   bool DebugTryCompile = false;
   bool FreshCache = false;
   bool RegenerateDuringBuild = false;
+  bool InInitialCache = false;
   std::string CMakeListName;
   std::unique_ptr<cmFileTimeCache> FileTimeCache;
   std::string GraphVizFile;

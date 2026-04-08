@@ -194,6 +194,7 @@ public:
     std::string TestMeasurementsOutput;
     std::string InstrumentationFile;
     int TestCount = 0;
+    cm::optional<cmDuration> StartTestTime;
     cmCTestTestProperties* Properties = nullptr;
   };
 

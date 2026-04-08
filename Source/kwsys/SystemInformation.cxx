@@ -28,6 +28,7 @@
 // https://msdn.microsoft.com/en-us/library/ms683219(VS.85).aspx
 
 #include "kwsysPrivate.h"
+#include KWSYS_HEADER(String.h)
 #include KWSYS_HEADER(SystemInformation.hxx)
 #include KWSYS_HEADER(Process.h)
 
@@ -35,6 +36,7 @@
 // duplicate the above list of headers.
 #if 0
 #  include "Process.h.in"
+#  include "String.h.in"
 #  include "SystemInformation.hxx.in"
 #endif
 
@@ -165,7 +167,6 @@ using ResourceLimitType = struct rlimit;
 #  undef KWSYS_SYSTEMINFORMATION_HAS_SYMBOL_LOOKUP
 #endif
 
-#include <cctype> // int isdigit(int c);
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -4131,6 +4132,10 @@ bool SystemInformationImplementation::QueryWindowsMemory()
   this->TotalPhysicalMemory = tp >> 10 >> 10;
   this->AvailableVirtualMemory = av >> 10 >> 10;
   this->AvailablePhysicalMemory = ap >> 10 >> 10;
+
+  // The virtual WinAPI memory contains both physical memory and page file.
+  this->TotalVirtualMemory -= this->TotalPhysicalMemory;
+  this->AvailableVirtualMemory -= this->AvailablePhysicalMemory;
   return true;
 #else
   return false;
@@ -4163,11 +4168,11 @@ bool SystemInformationImplementation::QueryLinuxMemory()
     char majorChar = unameInfo.release[0];
     char minorChar = unameInfo.release[2];
 
-    if (isdigit(majorChar)) {
+    if (kwsysString_isdigit(majorChar)) {
       linuxMajor = majorChar - '0';
     }
 
-    if (isdigit(minorChar)) {
+    if (kwsysString_isdigit(minorChar)) {
       linuxMinor = minorChar - '0';
     }
   }

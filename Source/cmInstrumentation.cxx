@@ -4,6 +4,7 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <iterator>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -25,7 +26,6 @@
 
 #include "cmCMakePath.h"
 #include "cmCryptoHash.h"
-#include "cmExperimental.h"
 #include "cmFileLock.h"
 #include "cmFileLockResult.h"
 #include "cmGeneratorTarget.h"
@@ -40,6 +40,7 @@
 #include "cmTimestamp.h"
 #include "cmUVProcessChain.h"
 #include "cmValue.h"
+#include "cmake.h"
 
 using LoadQueriesAfter = cmInstrumentation::LoadQueriesAfter;
 
@@ -93,18 +94,13 @@ std::map<std::string, std::string> cmInstrumentation::cdashSnippetsMap = {
 cmInstrumentation::cmInstrumentation(std::string const& binary_dir,
                                      LoadQueriesAfter loadQueries)
 {
-  std::string const uuid =
-    cmExperimental::DataForFeature(cmExperimental::Feature::Instrumentation)
-      .Uuid;
   this->binaryDir = binary_dir;
-  this->timingDirv1 =
-    cmStrCat(this->binaryDir, "/.cmake/instrumentation-", uuid, "/v1");
+  this->timingDirv1 = cmStrCat(this->binaryDir, "/.cmake/instrumentation/v1");
   this->cdashDir = cmStrCat(this->timingDirv1, "/cdash");
   this->dataDir = cmStrCat(this->timingDirv1, "/data");
   if (cm::optional<std::string> configDir =
         cmSystemTools::GetCMakeConfigDirectory()) {
-    this->userTimingDirv1 =
-      cmStrCat(configDir.value(), "/instrumentation-", uuid, "/v1");
+    this->userTimingDirv1 = cmStrCat(configDir.value(), "/instrumentation/v1");
   }
   if (loadQueries == LoadQueriesAfter::Yes) {
     this->LoadQueries();
@@ -113,6 +109,7 @@ cmInstrumentation::cmInstrumentation(std::string const& binary_dir,
 
 void cmInstrumentation::LoadQueries()
 {
+  this->ResetQueries();
   auto const readJSONQueries = [this](std::string const& dir) {
     if (cmSystemTools::FileIsDirectory(dir) && this->ReadJSONQueries(dir)) {
       this->hasQuery = true;
@@ -125,35 +122,30 @@ void cmInstrumentation::LoadQueries()
   }
 }
 
+void cmInstrumentation::ResetQueries()
+{
+  this->hasQuery = false;
+  this->options.clear();
+  this->hooks.clear();
+  this->callbacks.clear();
+  this->queryFiles.clear();
+  this->errorMsg.clear();
+}
+
 void cmInstrumentation::CheckCDashVariable()
 {
   std::string envVal;
   if (cmSystemTools::GetEnv("CTEST_USE_INSTRUMENTATION", envVal) &&
       !cmIsOff(envVal)) {
-    if (cmSystemTools::GetEnv("CTEST_EXPERIMENTAL_INSTRUMENTATION", envVal)) {
-      std::string const uuid = cmExperimental::DataForFeature(
-                                 cmExperimental::Feature::Instrumentation)
-                                 .Uuid;
-      if (envVal == uuid) {
-        std::set<cmInstrumentationQuery::Option> options_ = {
-          cmInstrumentationQuery::Option::CDashSubmit,
-          cmInstrumentationQuery::Option::DynamicSystemInformation
-        };
-        if (cmSystemTools::GetEnv("CTEST_USE_VERBOSE_INSTRUMENTATION",
-                                  envVal) &&
-            !cmIsOff(envVal)) {
-          options_.insert(cmInstrumentationQuery::Option::CDashVerbose);
-        }
-        for (auto const& option : options_) {
-          this->AddOption(option);
-        }
-        std::set<cmInstrumentationQuery::Hook> hooks_ = {
-          cmInstrumentationQuery::Hook::PrepareForCDash
-        };
-        this->AddHook(cmInstrumentationQuery::Hook::PrepareForCDash);
-        this->WriteJSONQuery(options_, hooks_, {});
-      }
+    std::set<cmInstrumentationQuery::Option> options_ = {
+      cmInstrumentationQuery::Option::CDashSubmit
+    };
+    if (cmSystemTools::GetEnv("CTEST_USE_VERBOSE_INSTRUMENTATION", envVal) &&
+        !cmIsOff(envVal)) {
+      options_.insert(cmInstrumentationQuery::Option::CDashVerbose);
     }
+    std::set<cmInstrumentationQuery::Hook> hooks_;
+    this->WriteJSONQuery(options_, hooks_, {});
   }
 }
 
@@ -186,6 +178,13 @@ void cmInstrumentation::ReadJSONQuery(std::string const& file)
   auto query = cmInstrumentationQuery();
   query.ReadJSON(file, this->errorMsg, this->options, this->hooks,
                  this->callbacks);
+  if (this->HasOption(cmInstrumentationQuery::Option::CDashVerbose)) {
+    this->AddOption(cmInstrumentationQuery::Option::CDashSubmit);
+  }
+  if (this->HasOption(cmInstrumentationQuery::Option::CDashSubmit)) {
+    this->AddHook(cmInstrumentationQuery::Hook::PrepareForCDash);
+    this->AddOption(cmInstrumentationQuery::Option::DynamicSystemInformation);
+  }
   if (!this->errorMsg.empty()) {
     cmSystemTools::Error(cmStrCat(
       "Could not load instrumentation queries from ",
@@ -234,6 +233,8 @@ void cmInstrumentation::WriteCMakeContent(
   Json::Value root;
   root["targets"] = this->DumpTargets(gg);
   root["custom"] = this->customContent;
+  root["project"] =
+    gg->GetCMakeInstance()->GetCacheDefinition("CMAKE_PROJECT_NAME").GetCStr();
   this->WriteInstrumentationJson(
     root, "data/content",
     cmStrCat("cmake-", this->ComputeSuffixTime(), ".json"));
@@ -322,6 +323,7 @@ void cmInstrumentation::ClearGeneratedQueries()
   if (cmSystemTools::FileIsDirectory(dir)) {
     cmSystemTools::RemoveADirectory(dir);
   }
+  this->writtenJsonQueries = 0;
 }
 
 bool cmInstrumentation::HasQuery() const
@@ -465,11 +467,17 @@ void cmInstrumentation::InsertStaticSystemInformation(Json::Value& root)
     info.RunOSCheck();
     this->ranOSCheck = true;
   }
+  if (!this->ranSystemChecks) {
+    info.RunCPUCheck();
+    info.RunMemoryCheck();
+    this->ranSystemChecks = true;
+  }
   Json::Value infoRoot;
   infoRoot["familyId"] = info.GetFamilyID();
   infoRoot["hostname"] = info.GetHostname();
   infoRoot["is64Bits"] = info.Is64Bits();
   infoRoot["modelId"] = info.GetModelID();
+  infoRoot["modelName"] = info.GetModelName();
   infoRoot["numberOfLogicalCPU"] = info.GetNumberOfLogicalCPU();
   infoRoot["numberOfPhysicalCPU"] = info.GetNumberOfPhysicalCPU();
   infoRoot["OSName"] = info.GetOSName();
@@ -487,6 +495,14 @@ void cmInstrumentation::InsertStaticSystemInformation(Json::Value& root)
     static_cast<Json::Value::UInt64>(info.GetTotalVirtualMemory());
   infoRoot["vendorID"] = info.GetVendorID();
   infoRoot["vendorString"] = info.GetVendorString();
+
+  // Record fields unable to be determined as null JSON objects.
+  for (std::string const& field : infoRoot.getMemberNames()) {
+    if ((infoRoot[field].isNumeric() && infoRoot[field].asInt64() <= 0) ||
+        (infoRoot[field].isString() && infoRoot[field].asString().empty())) {
+      infoRoot[field] = Json::nullValue;
+    }
+  }
   root["staticSystemInformation"] = infoRoot;
 }
 
@@ -727,15 +743,21 @@ int cmInstrumentation::InstrumentCommand(
 
   // Don't write configure snippet until generate time
   if (command_type == "configure") {
-    this->configureSnippetData = root;
-    this->configureSnippetName = file_name;
+    this->configureSnippetData[file_name] = root;
   } else {
     // Add reference to CMake content and write out configure snippet after
     // generate
     if (command_type == "generate") {
-      addCMakeContent(this->configureSnippetData);
-      this->WriteInstrumentationJson(this->configureSnippetData, "data",
-                                     this->configureSnippetName);
+      for (auto it = this->configureSnippetData.begin();
+           it != this->configureSnippetData.end(); ++it) {
+        if (std::next(it) != this->configureSnippetData.end()) {
+          it->second["cmakeContent"] = Json::nullValue;
+        } else {
+          addCMakeContent(it->second);
+        }
+        this->WriteInstrumentationJson(it->second, "data", it->first);
+      }
+      this->configureSnippetData.clear();
     }
     this->WriteInstrumentationJson(root, "data", file_name);
   }
@@ -794,6 +816,7 @@ bool cmInstrumentation::IsInstrumentableTargetType(
   return type == cmStateEnums::TargetType::EXECUTABLE ||
     type == cmStateEnums::TargetType::SHARED_LIBRARY ||
     type == cmStateEnums::TargetType::STATIC_LIBRARY ||
+    type == cmStateEnums::TargetType::MODULE_LIBRARY ||
     type == cmStateEnums::TargetType::OBJECT_LIBRARY;
 }
 

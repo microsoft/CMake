@@ -760,9 +760,7 @@ int cmCPackGenerator::InstallCMakeProject(
                   "-   Install component: " << component << std::endl);
   }
 
-  cmake cm(cmake::RoleScript, cmState::CPack);
-  cm.SetHomeDirectory("");
-  cm.SetHomeOutputDirectory("");
+  cmake cm(cmState::Role::CPack);
   cm.GetCurrentSnapshot().SetDefaultDefinitions();
   cm.AddCMakePaths();
   cm.SetProgressCallback([this](std::string const& msg, float prog) {
@@ -836,7 +834,7 @@ int cmCPackGenerator::InstallCMakeProject(
     // Make sure that DESTDIR + CPACK_INSTALL_PREFIX directory
     // exists:
     //
-    if (cmHasLiteralPrefix(dir, "/")) {
+    if (cmHasPrefix(dir, '/')) {
       dir = tempInstallDirectory + dir;
     } else {
       dir = tempInstallDirectory + "/" + dir;
@@ -1612,12 +1610,12 @@ std::string cmCPackGenerator::GetSanitizedDirOrFileName(
                                               "[Ll][Pp][Tt][1-9]"
                                               ")[.]?$");
     if (reserved_pattern.find(name)) {
-      return "_" + name;
+      return cmStrCat('_', std::move(name));
     }
     // Given name ends in a dot (on Windows)?
     // Then return it appended with an underscore.
     if (name.back() == '.') {
-      return name + '_';
+      return cmStrCat(std::move(name), '_');
     }
 #endif
   }

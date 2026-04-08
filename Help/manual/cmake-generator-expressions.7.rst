@@ -115,6 +115,17 @@ using an alternate generator expression:
     VERBATIM
   )
 
+For tools that expect ``-I``'s value to be a separate argument, use the
+semicolon trick learned earlier:
+
+.. code-block:: cmake
+
+  add_custom_target(run_some_tool
+    COMMAND some_tool "$<LIST:TRANSFORM,$<TARGET_PROPERTY:tgt,INCLUDE_DIRECTORIES>,PREPEND,-I;>"
+    COMMAND_EXPAND_LISTS
+    VERBATIM
+  )
+
 A common mistake is to try to split a generator expression across multiple
 lines with indenting:
 
@@ -273,20 +284,8 @@ This section covers the primary and most widely used comparison types.
 Other more specific comparison types are documented in their own separate
 sections further below.
 
-String Comparisons
-^^^^^^^^^^^^^^^^^^
-
-.. genex:: $<STREQUAL:string1,string2>
-
-  ``1`` if ``string1`` and ``string2`` are equal, else ``0``.
-  The comparison is case-sensitive.  For a case-insensitive comparison,
-  combine with a :ref:`string transforming generator expression
-  <String Transforming Generator Expressions>`.  For example, the following
-  evaluates to ``1`` if ``${foo}`` is any of ``BAR``, ``Bar``, ``bar``, etc.
-
-  .. code-block:: cmake
-
-    $<STREQUAL:$<UPPER_CASE:${foo}>,BAR>
+Numeric Comparisons
+^^^^^^^^^^^^^^^^^^^
 
 .. genex:: $<EQUAL:value1,value2>
 
@@ -319,10 +318,401 @@ Version Comparisons
 
   ``1`` if ``v1`` is a version greater than or equal to ``v2``, else ``0``.
 
+String Expressions
+------------------
+
+Most of the expressions in this section are closely associated with the
+:command:`string` command, providing the same capabilities, but in
+the form of a generator expression.
+
+In each of the following string-related generator expressions, the ``string``
+must not contain any commas if that generator expression expects something to
+be provided after the ``string``.  For example, the expression
+``$<STRING:FIND,string,value>`` requires a ``value`` after the ``string``.
+Since a comma is used to separate the ``string`` and the ``value``, the
+``string`` cannot itself contain a comma.  This restriction does not apply to
+the :command:`string` command, it is specific to the string-handling generator
+expressions only. The :genex:`$<COMMA>` generator expression can be used to
+specify a comma as part of the arguments of the string-related generator
+expressions.
+
+.. _`String Comparisons Generator Expressions`:
+
+String Comparisons
+^^^^^^^^^^^^^^^^^^
+
+The comparisons are case-sensitive.  For a case-insensitive comparison,
+combine with a :ref:`string transforming generator expression
+<String Transforming Generator Expressions>`.  For example, the following
+evaluates to ``1`` if ``${foo}`` is any of ``BAR``, ``Bar``, ``bar``, etc.
+
+  .. code-block:: cmake
+
+    $<STREQUAL:$<STRING:TOUPPER,${foo}>,BAR>
+
+.. genex:: $<STREQUAL:string1,string2>
+
+  ``1`` if ``string1`` and ``string2`` are lexicographically equal, else ``0``.
+
+.. genex:: $<STRLESS:string1,string2>
+
+  .. versionadded:: 4.3
+
+  ``1`` if ``string1`` is lexicographically less than ``string2``, else ``0``.
+
+.. genex:: $<STRGREATER:string1,string2>
+
+  .. versionadded:: 4.3
+
+  ``1`` if ``string1`` is lexicographically greater than ``string2``, else
+  ``0``.
+
+.. genex:: $<STRLESS_EQUAL:string1,string2>
+
+  .. versionadded:: 4.3
+
+  ``1`` if ``string1`` is lexicographically less than or equal to ``string2``,
+  else ``0``.
+
+.. genex:: $<STRGREATER_EQUAL:string1,string2>
+
+  .. versionadded:: 4.3
+
+  ``1`` if ``string1`` is lexicographically greater than or equal to
+  ``string2``, else ``0``.
+
+.. _`String Queries Generator Expressions`:
+
+String Queries
+^^^^^^^^^^^^^^
+
+.. genex:: $<STRING:LENGTH,string>
+
+  .. versionadded:: 4.3
+
+  The given string's length in bytes. Note that this means, if ``string``
+  contains multi-byte characters, the result will *not* be the number of
+  characters.
+
+.. genex:: $<STRING:SUBSTRING,string,begin,length>
+
+  .. versionadded:: 4.3
+
+  The substring of the given ``string``. If ``length`` is ``-1`` or greater
+  than the ``string`` length the remainder of the string starting at ``begin``
+  will be returned.
+
+  Both ``begin`` and ``length`` are counted in bytes, so care must
+  be exercised if ``string`` could contain multi-byte characters.
+
+.. genex:: $<STRING:FIND,string[,FROM:(BEGIN|END)],substring>
+
+  .. versionadded:: 4.3
+
+  The position where the given ``substring`` was found in the supplied
+  ``string``. If the ``substring`` is not found, a position of -1 is returned.
+
+  The ``FROM:`` option defines how the search will be done:
+
+  ``BEGIN``
+    The search will start at the beginning of the ``string``. This the default.
+
+  ``END``
+    The search will start from the end of the ``string``.
+
+  The ``$<STRING:FIND>`` generator expression treats all strings as ASCII-only
+  characters. The index returned will also be counted in bytes, so strings
+  containing multi-byte characters may lead to unexpected results.
+
+.. genex:: $<STRING:MATCH,string[,SEEK:(ONCE|ALL)],regular_expression>
+
+  .. versionadded:: 4.3
+
+  Match, in the ``string``, the ``regular_expression``.
+
+  The ``SEEK:`` option specifies the match behavior:
+
+  ``ONCE``
+    Match only the first occurrence. This is the default.
+
+  ``ALL``
+    Match as many times as possible and return the matches as a list.
+
+  See the :ref:`Regular expressions specification <Regex Specification>` for
+  the syntax of the ``regular_expression`` parameter.
+
+.. _`String Generating Generator Expressions`:
+
+String Generations
+^^^^^^^^^^^^^^^^^^
+
+.. genex:: $<STRING:JOIN,glue,input[,input]...>
+
+  .. versionadded:: 4.3
+
+  Join all the ``input`` arguments together using the ``glue`` string.
+
+.. genex:: $<STRING:ASCII,number[,number]...>
+
+  .. versionadded:: 4.3
+
+  Convert all numbers, in the range 1-255, into corresponding ASCII
+  characters. Any number outside this range will raise an error.
+
+.. genex:: $<STRING:TIMESTAMP[,(UTC|format)]...>
+
+  .. versionadded:: 4.3
+
+  Produce a string representation of the current date and/or time.
+
+  If the generator expression is unable to obtain a timestamp, the result will
+  be the empty string ``""``.
+
+  The optional ``UTC`` flag requests the current date/time representation to
+  be in Coordinated Universal Time (UTC) rather than local time.
+
+  If the ``SOURCE_DATE_EPOCH`` environment variable is set, its value will be
+  used instead of the current time.
+  See https://reproducible-builds.org/specs/source-date-epoch/ for details.
+
+  The optional ``<format>`` may contain the following format specifiers:
+
+  ``%%``
+    A literal percent sign (%).
+
+  ``%d``
+    The day of the current month (01-31).
+
+  ``%H``
+    The hour on a 24-hour clock (00-23).
+
+  ``%I``
+    The hour on a 12-hour clock (01-12).
+
+  ``%j``
+    The day of the current year (001-366).
+
+  ``%m``
+    The month of the current year (01-12).
+
+  ``%b``
+    Abbreviated month name (e.g. Oct).
+
+  ``%B``
+    Full month name (e.g. October).
+
+  ``%M``
+    The minute of the current hour (00-59).
+
+  ``%s``
+    Seconds since midnight (UTC) 1-Jan-1970 (UNIX time).
+
+  ``%S``
+    The second of the current minute.  60 represents a leap second. (00-60)
+
+  ``%f``
+    The microsecond of the current second (000000-999999).
+
+  ``%U``
+    The week number of the current year (00-53).
+
+  ``%V``
+    The ISO 8601 week number of the current year (01-53).
+
+  ``%w``
+    The day of the current week. 0 is Sunday. (0-6)
+
+  ``%a``
+    Abbreviated weekday name (e.g. Fri).
+
+  ``%A``
+    Full weekday name (e.g. Friday).
+
+  ``%y``
+    The last two digits of the current year (00-99).
+
+  ``%Y``
+    The current year.
+
+  ``%z``
+    The offset of the time zone from UTC, in hours and minutes,
+    with format ``+hhmm`` or ``-hhmm``.
+
+  ``%Z``
+    The time zone name.
+
+  Unknown format specifiers will be ignored and copied to the output
+  as-is.
+
+  If no explicit ``format`` is given, it will default to:
+
+  * ``%Y-%m-%dT%H:%M:%S`` for local time.
+  * ``%Y-%m-%dT%H:%M:%SZ`` for UTC.
+
+.. genex:: $<STRING:RANDOM[,(LENGTH:length|ALPHABET:alphabet|RANDOM_SEED:seed)]...>
+
+  .. versionadded:: 4.3
+
+  Produce a random string of ASCII characters. The possible options are:
+
+  ``LENGTH:length``
+    Define the length of the string. The default length is 5 characters.
+
+  ``ALPHABET:alphabet``
+    Define the characters used for the generation. The alphabet is always
+    interpreted as holding ASCII characters. The default alphabet is all
+    numbers and upper and lower case letters.
+
+  ``RANDOM_SEED:seed``
+    Specify an integer which will be used to seed the random number generator.
+
+.. genex:: $<STRING:UUID,NAMESPACE:namespace,TYPE:(MD5|SHA1)[,NAME:name][,CASE:(LOWER|UPPER)]>
+
+  .. versionadded:: 4.3
+
+  Create a universally unique identifier (aka GUID) as per RFC4122.
+  A UUID has the format ``xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx``
+  where each ``x`` represents an hexadecimal character.
+
+  The UUID is based on the hash of the combined values of:
+
+  ``NAMESPACE:namespace``
+    ``namespace`` which has to be a valid UUID.
+
+  ``NAME:name``
+    ``name`` is an arbitrary string.
+
+  ``TYPE:``
+    The hash algorithm can be either:
+
+    ``MD5``
+      Version 3 UUID.
+
+    ``SHA1``
+      Version 5 UUID.
+
+  ``CASE:``
+    Specify the case of the hexadecimal characters.
+
+    ``LOWER``
+      Hexadecimal characters are all of lowercase. This is the default.
+
+    ``UPPER``
+      Hexadecimal characters are all of uppercase.
+
 .. _`String Transforming Generator Expressions`:
 
 String Transformations
-----------------------
+^^^^^^^^^^^^^^^^^^^^^^
+
+.. genex:: $<STRING:REPLACE[,(STRING|REGEX)],string,match_string,replace_string>
+
+  .. versionadded:: 4.3
+
+  Replace all occurrences of ``match_string`` in the ``string`` with
+  ``replace_string``.
+
+  The ``match_string`` can be of two different types:
+
+  ``STRING``
+    ``match_string`` is a literal string and match will be done by simple
+    string comparison. This is the default.
+
+  ``REGEX``
+    ``match_string`` is a regular expression. Match this regular_expression as
+    many times as possible and substitute the ``replace_string`` for the match
+    in the ``string``.
+
+    The ``replace_string`` may refer to parenthesis-delimited subexpressions of
+    the match using \\1, \\2, ..., \\9. Note that two backslashes (\\\\1) are
+    required in CMake code to get a backslash through argument parsing.
+
+.. genex:: $<STRING:APPEND,string,input[,input]...>
+
+  .. versionadded:: 4.3
+
+  Append all the ``input`` arguments to the ``string``.
+
+.. genex:: $<STRING:PREPEND,string,input[,input]...>
+
+  .. versionadded:: 4.3
+
+  Prepend all the ``input`` arguments to the ``string``.
+
+.. genex:: $<STRING:TOLOWER,string>
+
+  .. versionadded:: 4.3
+
+  Content of ``string`` converted to lower case.
+
+.. genex:: $<STRING:TOUPPER,string>
+
+  .. versionadded:: 4.3
+
+  Content of ``string`` converted to upper case.
+
+.. genex:: $<STRING:STRIP,SPACES,string>
+
+  .. versionadded:: 4.3
+
+  Remove the specified elements from the ``string``. The possible options are:
+
+  ``SPACES``
+    Remove the leading and trailing spaces of the ``string``.
+
+.. genex:: $<STRING:QUOTE,REGEX,string>
+
+  .. versionadded:: 4.3
+
+  Escape the specified elements of the ``string``. The possible options are:
+
+  ``REGEX``
+    Escape all characters that have special meaning in a regular expressions,
+    such that the ``string`` can be used as part of a regular expression to
+    match the input literally.
+
+.. genex:: $<STRING:HEX,string>
+
+  .. versionadded:: 4.3
+
+  Convert each byte in the ``string`` to its hexadecimal representation.
+  Letters in the result (a through f) are in lowercase.
+
+.. genex:: $<STRING:HASH,string,ALGORITHM:algorithm>
+
+  .. versionadded:: 4.3
+
+  Compute a cryptographic hash of the ``string``. The supported algorithm
+  names, as specified by the ``ALGORITHM:`` option are:
+
+  ``MD5``
+    Message-Digest Algorithm 5, RFC 1321.
+  ``SHA1``
+    US Secure Hash Algorithm 1, RFC 3174.
+  ``SHA224``
+    US Secure Hash Algorithms, RFC 4634.
+  ``SHA256``
+    US Secure Hash Algorithms, RFC 4634.
+  ``SHA384``
+    US Secure Hash Algorithms, RFC 4634.
+  ``SHA512``
+    US Secure Hash Algorithms, RFC 4634.
+  ``SHA3_224``
+    Keccak SHA-3.
+  ``SHA3_256``
+    Keccak SHA-3.
+  ``SHA3_384``
+    Keccak SHA-3.
+  ``SHA3_512``
+    Keccak SHA-3.
+
+.. genex:: $<STRING:MAKE_C_IDENTIFIER,string>
+
+  .. versionadded:: 4.3
+
+  Convert each non-alphanumeric character in the ``string`` to an underscore.
+  If the first character of the ``string`` is a digit, an underscore will also
+  be prepended.
 
 .. genex:: $<LOWER_CASE:string>
 
@@ -332,10 +722,10 @@ String Transformations
 
   Content of ``string`` converted to upper case.
 
-.. genex:: $<MAKE_C_IDENTIFIER:...>
+.. genex:: $<MAKE_C_IDENTIFIER:string>
 
-  Content of ``...`` converted to a C identifier.  The conversion follows the
-  same behavior as :command:`string(MAKE_C_IDENTIFIER)`.
+  Content of ``string`` converted to a C identifier.  The conversion follows
+  the same behavior as :command:`string(MAKE_C_IDENTIFIER)`.
 
 List Expressions
 ----------------
@@ -568,9 +958,9 @@ List Transformations
 
   Joins the ``list`` with the content of the ``glue`` string inserted between
   each item.  This is conceptually the same operation as
-  :ref:`$\<LIST:JOIN,list,glue\> <GenEx LIST-JOIN>`, but the two have
+  :cref:`$\<LIST:JOIN,list,glue\> <GenEx LIST-JOIN>`, but the two have
   different behavior with regard to empty items.
-  :ref:`$\<LIST:JOIN,list,glue\> <GenEx LIST-JOIN>` preserves all empty items,
+  :cref:`$\<LIST:JOIN,list,glue\> <GenEx LIST-JOIN>` preserves all empty items,
   whereas ``$<JOIN:list,glue>`` drops all empty items from the list.
 
 .. genex:: $<REMOVE_DUPLICATES:list>
@@ -580,7 +970,7 @@ List Transformations
   Removes duplicated items in the given ``list``. The relative order of items
   is preserved, and if duplicates are encountered, only the first instance is
   retained.  The result is the same as
-  :ref:`$\<LIST:REMOVE_DUPLICATES,list\> <GenEx LIST-REMOVE_DUPLICATES>`.
+  :cref:`$\<LIST:REMOVE_DUPLICATES,list\> <GenEx LIST-REMOVE_DUPLICATES>`.
 
 .. genex:: $<FILTER:list,INCLUDE|EXCLUDE,regex>
 
@@ -588,7 +978,7 @@ List Transformations
 
   Includes or removes items from ``list`` that match the regular expression
   ``regex``.  The result is the same as
-  :ref:`$\<LIST:FILTER,list,INCLUDE|EXCLUDE,regex\> <GenEx LIST-FILTER>`.
+  :cref:`$\<LIST:FILTER,list,INCLUDE|EXCLUDE,regex\> <GenEx LIST-FILTER>`.
 
 .. _GenEx List Ordering:
 
@@ -660,7 +1050,7 @@ Most of the expressions in this section are closely associated with the
 the form of a generator expression.
 
 For all generator expressions in this section, paths are expected to be in
-cmake-style format. The :ref:`$\<PATH:CMAKE_PATH\> <GenEx PATH-CMAKE_PATH>`
+cmake-style format. The :cref:`$\<PATH:CMAKE_PATH\> <GenEx PATH-CMAKE_PATH>`
 generator expression can be used to convert a native path to a cmake-style
 one.
 
@@ -2031,6 +2421,135 @@ closely related to most of the expressions in this sub-section.
   ``1`` if CMake's linker frontend variant of the HIP linker matches
   any one of the entries in ``variant_ids``, otherwise ``0``.
 
+
+.. _`Source-Dependent Expressions`:
+
+Source-Dependent Expressions
+----------------------------
+
+The source file, as specified in the following expressions, can be nonexistent
+on the file system (i.e. generated file) but must be known from CMake. A source
+file becomes known from CMake if it is part of some target (library or
+executable) or when a source file property is defined. Moreover, this
+information is specific to the directory where the declaration occurred.
+
+For example, these generator expressions enable to offer a uniform behavior,
+for the :command:`add_custom_command` and :command:`add_custom_target`
+commands, regarding the source properties:
+
+.. code-block:: cmake
+
+  function(custom_add_library target)
+    unset(sources)
+    foreach(source IN LISTS ARGN)
+      add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${source}.bin
+        COMMAND my-compiler -o ${CMAKE_CURRENT_BINARY_DIR}/${source}.bin
+                            "$<$<SOURCE_EXISTS:${source}>:$<SOURCE_PROPERTY:${source},COMPILE_OPTIONS>>"
+                            ${source})
+      list(APPEND sources ${CMAKE_CURRENT_BINARY_DIR}/${source}.bin)
+    endforeach()
+    add_custom_target(${target}
+                      DEPENDS ${sources})
+  endfunction()
+
+  custom_add_library(my-lib file1.x file2.x file3.x)
+  set_property(SOURCE file1.x PROPERTY COMPILE_OPTIONS -X)
+  set_property(SOURCE file2.x PROPERTY COMPILE_OPTIONS -Y)
+
+Source Meta-Data
+^^^^^^^^^^^^^^^^
+
+These expressions look up information about a source file.
+
+.. genex:: $<SOURCE_EXISTS:src[,(DIRECTORY:dir|TARGET_DIRECTORY:tgt)]>
+
+  .. versionadded:: 4.3
+
+  ``1`` if ``src`` exists as a CMake source file, else ``0``. By default, the
+  source file is searched in the scope of the current source directory or the
+  directory of the consuming target.
+
+  Directory scope can be overridden with one of the following sub-options:
+
+  ``DIRECTORY:dir``
+    The source file will be searched in the ``dir`` directory's scope.
+    CMake must know about the directory, either by having added  it through a
+    call to :command:`add_subdirectory` or ``dir`` being the top level
+    directory. Relative paths are treated as relative to the current source
+    directory.
+
+  ``TARGET_DIRECTORY:target``
+      The source file will be searched in the directory scope in which
+      ``target`` was created (``target`` must therefore exist).
+
+Source Properties
+^^^^^^^^^^^^^^^^^
+
+These expressions look up the values of
+:ref:`source file properties <Source File Properties>`.
+
+.. genex:: $<SOURCE_PROPERTY:src[,(DIRECTORY:dir|TARGET_DIRECTORY:target)],prop>
+
+  .. versionadded:: 4.3
+
+  Value of the property ``prop`` on the source file ``src``, or empty if
+  the property is not set. An error will be raised if the source file is not
+  known by CMake. By default, the source file's property will be read from the
+  current source directory's scope or the directory of the consuming target.
+
+  Directory scope can be overridden with one of the following sub-options:
+
+  ``DIRECTORY:dir``
+    The source file property will be read from the ``dir`` directory's scope.
+    CMake must know about the directory, either by having added  it through a
+    call to :command:`add_subdirectory` or ``dir`` being the top level
+    directory. Relative paths are treated as relative to the current source
+    directory.
+
+  ``TARGET_DIRECTORY:target``
+      The source file property will be read from the directory scope in which
+      ``target`` was created (``target`` must therefore exist).
+
+.. _`FileSet-Dependent Expressions`:
+
+FileSet-Dependent Expressions
+-----------------------------
+
+FileSet Meta-Data
+^^^^^^^^^^^^^^^^^
+
+These expressions look up information about a file set.
+
+.. genex:: $<FILE_SET_EXISTS:fileset,TARGET:target>
+
+  .. versionadded:: 4.3
+
+  ``1`` if the ``fileset`` exists as a CMake file set attached to the
+  ``target``, else ``0``.
+
+  The possible sub-options are:
+
+  ``TARGET:target``
+    The target on which the file set depends.
+
+FileSet Properties
+^^^^^^^^^^^^^^^^^^
+
+These expressions look up the values of file set properties.
+
+.. genex:: $<FILE_SET_PROPERTY:fileset,TARGET:target,prop>
+
+  .. versionadded:: 4.3
+
+  Value of the property ``prop`` on the file set ``fileset``, or empty if
+  the property is not set. An error will be raised if the file set is not
+  known by CMake.
+
+  The possible sub-options are:
+
+  ``TARGET:target``
+    The target on which the file set depends.
 
 .. _`Target-Dependent Expressions`:
 

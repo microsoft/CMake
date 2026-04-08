@@ -1,3 +1,5 @@
+glibc-locale-source
+
 # Install build requirements.
 ncurses-devel
 openssl-devel
@@ -16,6 +18,7 @@ git-core
 lfortran
 llvm-devel
 make
+rust
 
 # Install optional external build dependencies.
 bzip2-devel

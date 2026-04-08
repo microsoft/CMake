@@ -62,6 +62,9 @@ from pygments.token import (Comment, Name, Number, Operator, Punctuation,
 #   be present.
 
 CMakeLexer.tokens["root"] = [
+  # [[string]]
+  (r'\[\[(?:\W[\w\W]*?)?\]\]', String.Multiline),
+  (r'\[(?P<level>=+)\[[\w\W]*?\](?P=level)\]', String.Multiline),
   # fctn(
   (r'\b(\w+)([ \t]*)(\()',
    bygroups(Name.Function, Text, Name.Function), '#push'),
@@ -101,8 +104,12 @@ CMakeLexer.tokens["root"] = [
   (r'(?s)"(\\"|[^"])*"', String),
   (r'\.\.\.', Name.Variable),
   # <..|..> is different from <expr>
-  (r'<', Operator, '#push'),
-  (r'>', Operator, '#pop'),
+  # TODO: <..|..> should be {..|..}; remove when all instances are converted?
+  (r'<', Punctuation, '#push'),
+  (r'>', Punctuation, '#pop'),
+  # {..|..}
+  (r'\{', Punctuation, '#push'),
+  (r'\}', Punctuation, '#pop'),
   (r'\n', Whitespace),
   (r'[ \t]+', Whitespace),
   (r'#.*\n', Comment),

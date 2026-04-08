@@ -8,8 +8,7 @@
 #include <ratio>
 #include <utility>
 
-#include <cm3p/uv.h>
-
+#include "cmBuildArgs.h"
 #include "cmBuildOptions.h"
 #include "cmCTest.h"
 #include "cmCTestTestHandler.h"
@@ -19,7 +18,6 @@
 #include "cmState.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
-#include "cmUVHandlePtr.h"
 #include "cmUVProcessChain.h"
 #include "cmUVStream.h"
 #include "cmWorkingDirectory.h"
@@ -91,11 +89,8 @@ bool cmCTestBuildAndTest::RunTest(std::vector<std::string> const& argv,
   auto chain = builder.Start();
 
   cmProcessOutput processOutput(cmProcessOutput::Auto);
-  cm::uv_pipe_ptr outputStream;
-  outputStream.init(chain.GetLoop(), 0);
-  uv_pipe_open(outputStream, chain.OutputStream());
   auto outputHandle = cmUVStreamRead(
-    outputStream,
+    chain.OutputStream(),
     [&processOutput](std::vector<char> data) {
       std::string decoded;
       processOutput.DecodeText(data.data(), data.size(), decoded);
@@ -179,9 +174,7 @@ int cmCTestBuildAndTest::Run()
     return 1;
   }
 
-  cmake cm(cmake::RoleProject, cmState::Project);
-  cm.SetHomeDirectory("");
-  cm.SetHomeOutputDirectory("");
+  cmake cm(cmState::Role::Project);
   cmCTestBuildAndTestCaptureRAII captureRAII(cm);
   static_cast<void>(captureRAII);
 
@@ -258,12 +251,17 @@ int cmCTestBuildAndTest::Run()
       config = "Debug";
     }
 
+    cmBuildArgs buildArgs;
+    buildArgs.jobs = cmake::NO_BUILD_PARALLEL_LEVEL;
+    buildArgs.binaryDir = this->BinaryDir;
+    buildArgs.projectName = this->BuildProject;
+    buildArgs.verbose = false;
+
     cmBuildOptions buildOptions(!this->BuildNoClean, false,
                                 PackageResolveMode::Disable);
     int retVal = cm.GetGlobalGenerator()->Build(
-      cmake::NO_BUILD_PARALLEL_LEVEL, this->SourceDir, this->BinaryDir,
-      this->BuildProject, { tar }, std::cout, this->BuildMakeProgram, config,
-      buildOptions, false, remainingTime, cmSystemTools::OUTPUT_PASSTHROUGH);
+      buildArgs, { tar }, std::cout, this->BuildMakeProgram, config,
+      buildOptions, remainingTime, cmSystemTools::OUTPUT_PASSTHROUGH);
     // if the build failed then return
     if (retVal) {
       return 1;

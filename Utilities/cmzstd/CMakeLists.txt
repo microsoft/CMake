@@ -21,8 +21,8 @@ add_library(cmzstd STATIC
   lib/compress/fse_compress.c
   lib/compress/hist.c
   lib/compress/huf_compress.c
-  lib/compress/zstd_compress_literals.c
   lib/compress/zstd_compress.c
+  lib/compress/zstd_compress_literals.c
   lib/compress/zstd_compress_sequences.c
   lib/compress/zstd_compress_superblock.c
   lib/compress/zstd_double_fast.c
@@ -31,6 +31,7 @@ add_library(cmzstd STATIC
   lib/compress/zstd_ldm.c
   lib/compress/zstdmt_compress.c
   lib/compress/zstd_opt.c
+  lib/compress/zstd_preSplit.c
   lib/decompress/huf_decompress.c
   lib/decompress/zstd_ddict.c
   lib/decompress/zstd_decompress_block.c
@@ -52,4 +53,11 @@ target_compile_definitions(cmzstd PRIVATE
   ZSTD_DISABLE_ASM=1
   )
 
-install(FILES LICENSE DESTINATION ${CMAKE_DOC_DIR}/cmzstd)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "AIX")
+  target_compile_definitions(cmzstd PRIVATE
+    # Enable threaded compression.
+    ZSTD_MULTITHREAD
+    )
+endif()
+
+install(FILES LICENSE DESTINATION ${CMake_INSTALL_DOC_DIR}/cmzstd)

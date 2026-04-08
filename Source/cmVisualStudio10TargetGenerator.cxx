@@ -2024,29 +2024,24 @@ void cmVisualStudio10TargetGenerator::WriteGroups()
     return;
   }
 
-  // collect up group information
-  std::vector<cmSourceGroup> sourceGroups = this->Makefile->GetSourceGroups();
-
   std::vector<cmGeneratorTarget::AllConfigSource> const& sources =
     this->GeneratorTarget->GetAllConfigSources();
 
   std::set<cmSourceGroup const*> groupsUsed;
   for (cmGeneratorTarget::AllConfigSource const& si : sources) {
     std::string const& source = si.Source->GetFullPath();
-    cmSourceGroup* sourceGroup =
-      this->Makefile->FindSourceGroup(source, sourceGroups);
+    cmSourceGroup* sourceGroup = this->LocalGenerator->FindSourceGroup(source);
     groupsUsed.insert(sourceGroup);
   }
 
   if (cmSourceFile const* srcCMakeLists =
         this->LocalGenerator->CreateVCProjBuildRule()) {
     std::string const& source = srcCMakeLists->GetFullPath();
-    cmSourceGroup* sourceGroup =
-      this->Makefile->FindSourceGroup(source, sourceGroups);
+    cmSourceGroup* sourceGroup = this->LocalGenerator->FindSourceGroup(source);
     groupsUsed.insert(sourceGroup);
   }
 
-  this->AddMissingSourceGroups(groupsUsed, sourceGroups);
+  this->AddMissingSourceGroups(groupsUsed, this->Makefile->GetSourceGroups());
 
   // Write out group file
   std::string path = cmStrCat(
@@ -2066,7 +2061,7 @@ void cmVisualStudio10TargetGenerator::WriteGroups()
                  "http://schemas.microsoft.com/developer/msbuild/2003");
 
     for (auto const& ti : this->Tools) {
-      this->WriteGroupSources(e0, ti.first, ti.second, sourceGroups);
+      this->WriteGroupSources(e0, ti.first, ti.second);
     }
 
     // Added files are images and the manifest.
@@ -2161,17 +2156,17 @@ void cmVisualStudio10TargetGenerator::WriteGroups()
 // Add to groupsUsed empty source groups that have non-empty children.
 void cmVisualStudio10TargetGenerator::AddMissingSourceGroups(
   std::set<cmSourceGroup const*>& groupsUsed,
-  std::vector<cmSourceGroup> const& allGroups)
+  SourceGroupVector const& allGroups)
 {
-  for (cmSourceGroup const& current : allGroups) {
-    std::vector<cmSourceGroup> const& children = current.GetGroupChildren();
+  for (auto const& current : allGroups) {
+    SourceGroupVector const& children = current->GetGroupChildren();
     if (children.empty()) {
       continue; // the group is really empty
     }
 
     this->AddMissingSourceGroups(groupsUsed, children);
 
-    if (groupsUsed.count(&current) > 0) {
+    if (groupsUsed.count(current.get()) > 0) {
       continue; // group has already been added to set
     }
 
@@ -2179,31 +2174,29 @@ void cmVisualStudio10TargetGenerator::AddMissingSourceGroups(
     // (at least one child must already have been added)
     auto child_it = children.begin();
     while (child_it != children.end()) {
-      if (groupsUsed.count(&(*child_it)) > 0) {
+      if (groupsUsed.count(child_it->get()) > 0) {
         break; // found a child that was already added => add current group too
       }
-      child_it++;
+      ++child_it;
     }
 
     if (child_it == children.end()) {
       continue; // no descendants have source files => ignore this group
     }
 
-    groupsUsed.insert(&current);
+    groupsUsed.insert(current.get());
   }
 }
 
 void cmVisualStudio10TargetGenerator::WriteGroupSources(
-  Elem& e0, std::string const& name, ToolSources const& sources,
-  std::vector<cmSourceGroup>& sourceGroups)
+  Elem& e0, std::string const& name, ToolSources const& sources)
 {
   Elem e1(e0, "ItemGroup");
   e1.SetHasElements();
   for (ToolSource const& s : sources) {
     cmSourceFile const* sf = s.SourceFile;
     std::string const& source = sf->GetFullPath();
-    cmSourceGroup* sourceGroup =
-      this->Makefile->FindSourceGroup(source, sourceGroups);
+    cmSourceGroup* sourceGroup = this->LocalGenerator->FindSourceGroup(source);
     std::string const& filter = sourceGroup->GetFullName();
     std::string path = this->ConvertPath(source, s.RelativePath);
     ConvertToWindowsSlash(path);
@@ -2769,13 +2762,22 @@ void cmVisualStudio10TargetGenerator::WriteAllSources(Elem& e0)
         customObjectName =
           this->LocalGenerator->GetCustomObjectFileName(*si.Source);
       }
+      if (customObjectName.empty()) {
+        if (this->GeneratorTarget->HasExplicitObjectName(si.Source)) {
+          customObjectName = this->GeneratorTarget->GetObjectName(si.Source);
+        }
+      } else {
+        customObjectName =
+          cmStrCat(std::move(customObjectName),
+                   this->GlobalGenerator->GetLanguageOutputExtension(
+                     si.Source->GetLanguage()));
+      }
       if (!customObjectName.empty()) {
         std::string outputName = "ObjectFileName";
         if (si.Source->GetLanguage() == "CUDA"_s) {
           outputName = "CompileOut";
         }
-        e2.Element(outputName,
-                   cmStrCat("$(IntDir)", customObjectName, ".obj"));
+        e2.Element(outputName, cmStrCat("$(IntDir)", customObjectName));
       }
 
       this->FinishWritingSource(e2, toolSettings);
@@ -2861,9 +2863,9 @@ void cmVisualStudio10TargetGenerator::OutputSourceSpecificFlags(
   // Force language if the file extension does not match.
   // Note that MSVC treats the upper-case '.C' extension as C and not C++.
   std::string const ext = sf.GetExtension();
-  std::string const extLang = ext == "C"_s
-    ? "C"
-    : this->GlobalGenerator->GetLanguageFromExtension(ext.c_str());
+  cm::string_view const extLang = ext == "C"_s
+    ? "C"_s
+    : this->GlobalGenerator->GetLanguageFromExtension(ext);
   std::string lang = this->LocalGenerator->GetSourceFileLanguage(sf);
   char const* compileAs = nullptr;
   if (lang != extLang) {
@@ -2877,15 +2879,6 @@ void cmVisualStudio10TargetGenerator::OutputSourceSpecificFlags(
   }
 
   bool noWinRT = this->TargetCompileAsWinRT && lang == "C"_s;
-  // for the first time we need a new line if there is something
-  // produced here.
-  if (!objectName.empty()) {
-    if (lang == "CUDA"_s) {
-      e2.Element("CompileOut", cmStrCat("$(IntDir)/", objectName));
-    } else {
-      e2.Element("ObjectFileName", cmStrCat("$(IntDir)/", objectName));
-    }
-  }
 
   if (lang == "ASM_NASM"_s) {
     if (cmValue objectDeps = sf.GetProperty("OBJECT_DEPENDS")) {
@@ -3939,7 +3932,8 @@ bool cmVisualStudio10TargetGenerator::ComputeCudaOptions(
   auto cudaVersion = this->GlobalGenerator->GetPlatformToolsetCudaString();
 
   // Get compile flags for CUDA in this directory.
-  std::string flags;
+  std::string flags =
+    this->Makefile->GetSafeDefinition("_CMAKE_CUDA_EXTRA_FLAGS");
   this->LocalGenerator->AddLanguageFlags(
     flags, this->GeneratorTarget, cmBuildStep::Compile, "CUDA", configName);
   this->LocalGenerator->AddCompileOptions(flags, this->GeneratorTarget, "CUDA",
@@ -4602,29 +4596,15 @@ bool cmVisualStudio10TargetGenerator::ComputeLinkOptions(
     return false;
   }
 
-  std::string CONFIG = cmSystemTools::UpperCase(config);
-
-  char const* linkType = "SHARED";
-  if (this->GeneratorTarget->GetType() == cmStateEnums::MODULE_LIBRARY) {
-    linkType = "MODULE";
-  }
-  if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
-    linkType = "EXE";
-  }
   std::string flags;
-  this->LocalGenerator->AddConfigVariableFlags(
-    flags, cmStrCat("CMAKE_", linkType, "_LINKER_FLAGS"),
-    this->GeneratorTarget, cmBuildStep::Link, linkLanguage, config);
-  cmValue targetLinkFlags = this->GeneratorTarget->GetProperty("LINK_FLAGS");
-  if (targetLinkFlags) {
-    flags += ' ';
-    flags += *targetLinkFlags;
-  }
-  std::string flagsProp = cmStrCat("LINK_FLAGS_", CONFIG);
-  if (cmValue flagsConfig = this->GeneratorTarget->GetProperty(flagsProp)) {
-    flags += ' ';
-    flags += *flagsConfig;
-  }
+  this->LocalGenerator->AddTargetTypeLinkerFlags(flags, this->GeneratorTarget,
+                                                 linkLanguage, config);
+
+  this->LocalGenerator->AddPerLanguageLinkFlags(flags, this->GeneratorTarget,
+                                                linkLanguage, config);
+
+  this->LocalGenerator->AddTargetPropertyLinkFlags(
+    flags, this->GeneratorTarget, config);
 
   std::vector<std::string> opts;
   this->GeneratorTarget->GetLinkOptions(opts, config, linkLanguage);
@@ -6110,11 +6090,8 @@ std::string cmVisualStudio10TargetGenerator::GetCSharpSourceLink(
   std::string const& fullFileName = source->GetFullPath();
   std::string const& srcDir = this->Makefile->GetCurrentSourceDirectory();
   std::string const& binDir = this->Makefile->GetCurrentBinaryDirectory();
-  // unfortunately we have to copy the source groups, because
-  // FindSourceGroup uses a regex which is modifying the group
-  std::vector<cmSourceGroup> sourceGroups = this->Makefile->GetSourceGroups();
   cmSourceGroup* sourceGroup =
-    this->Makefile->FindSourceGroup(fullFileName, sourceGroups);
+    this->LocalGenerator->FindSourceGroup(fullFileName);
   if (sourceGroup && !sourceGroup->GetFullName().empty()) {
     sourceGroupedFile =
       cmStrCat(sourceGroup->GetFullName(), '/',

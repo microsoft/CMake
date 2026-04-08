@@ -77,7 +77,8 @@ public:
   std::vector<std::string> GetComponentNames() const;
 
   /// Create targets for components specified in the CPS file.
-  bool ImportTargets(cmMakefile* makefile, cmExecutionStatus& status);
+  bool ImportTargets(cmMakefile* makefile, cmExecutionStatus& status,
+                     bool global);
 
   /// Add configuration-specific properties for targets.
   bool ImportTargetConfigurations(cmMakefile* makefile,
@@ -90,7 +91,7 @@ private:
                                 cmStateEnums::TargetType type,
                                 std::string const& name,
                                 Json::Value const& data,
-                                std::string const& package) const;
+                                std::string const& package, bool global) const;
 
   void AddTargetConfiguration(cmTarget* target,
                               cm::string_view configuration) const;
@@ -107,6 +108,9 @@ private:
                        std::string const& property, Json::Value const& object,
                        std::string const& attribute,
                        std::string const& defaultValue = {}) const;
+  void ReadCxxModulesMetadata(cmMakefile* makefile, cmTarget* target,
+                              cm::string_view configuration,
+                              Json::Value const& object) const;
 
   std::string ResolvePath(std::string path) const;
 

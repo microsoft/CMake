@@ -3,7 +3,7 @@
 
 if(NOT CMake_SOURCE_DIR)
   set(CMakeDeveloperReference_STANDALONE 1)
-  cmake_minimum_required(VERSION 3.13...4.0 FATAL_ERROR)
+  cmake_minimum_required(VERSION 3.13...4.1 FATAL_ERROR)
   get_filename_component(tmp "${CMAKE_CURRENT_SOURCE_DIR}" PATH)
   get_filename_component(CMake_SOURCE_DIR "${tmp}" PATH)
   include(${CMake_SOURCE_DIR}/Modules/CTestUseLaunchers.cmake)
@@ -82,14 +82,14 @@ if (CMake_BUILD_DEVELOPER_REFERENCE OR CMakeDeveloperReference_STANDALONE)
   if(CMake_BUILD_DEVELOPER_REFERENCE_HTML)
     CMake_OPTIONAL_COMPONENT(cmake-developer-reference-html)
     install(DIRECTORY "${CMakeDeveloperReference_BINARY_DIR}/developer-reference/html"
-      DESTINATION ${CMAKE_DOC_DIR}/developer-reference
+      DESTINATION ${CMake_INSTALL_DOC_DIR}/developer-reference
       ${COMPONENT})
   endif()
 
   if(CMake_BUILD_DEVELOPER_REFERENCE_QTHELP)
     CMake_OPTIONAL_COMPONENT(cmake-developer-reference-qthelp)
     install(FILES "${CMakeDeveloperReference_BINARY_DIR}/developer-reference/CMakeDeveloperReference-${CMake_VERSION_MAJOR}${CMake_VERSION_MINOR}${CMake_VERSION_PATCH}.qch"
-      DESTINATION ${CMAKE_DOC_DIR}/developer-reference
+      DESTINATION ${CMake_INSTALL_DOC_DIR}/developer-reference
       ${COMPONENT})
   endif()
 

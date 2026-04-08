@@ -5,10 +5,10 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <cctype>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -19,9 +19,12 @@
 #include <cmext/algorithm>
 #include <cmext/string_view>
 
+#include "cmsys/String.h"
+
 #include "cmAlgorithms.h"
 #include "cmComputeLinkInformation.h" // IWYU pragma: keep
 #include "cmCryptoHash.h"
+#include "cmCxxModuleMetadata.h"
 #include "cmCxxModuleUsageEffects.h"
 #include "cmExperimental.h"
 #include "cmFileSet.h"
@@ -321,7 +324,7 @@ std::string cmGeneratorTarget::GetOutputName(
     std::string configUpper = cmSystemTools::UpperCase(config);
     if (!type.empty() && !configUpper.empty()) {
       // <ARCHIVE|LIBRARY|RUNTIME>_OUTPUT_NAME_<CONFIG>
-      props.push_back(type + "_OUTPUT_NAME_" + configUpper);
+      props.push_back(cmStrCat(type, "_OUTPUT_NAME_", configUpper));
     }
     if (!type.empty()) {
       // <ARCHIVE|LIBRARY|RUNTIME>_OUTPUT_NAME
@@ -356,7 +359,8 @@ std::string cmGeneratorTarget::GetOutputName(
     // from the above block.
     this->LocalGenerator->GetCMakeInstance()->IssueMessage(
       MessageType::FATAL_ERROR,
-      "Target '" + this->GetName() + "' OUTPUT_NAME depends on itself.",
+      cmStrCat("Target '", this->GetName(),
+               "' OUTPUT_NAME depends on itself."),
       this->GetBacktrace());
   }
   return i->second;
@@ -530,6 +534,7 @@ cmValue cmGeneratorTarget::GetFileSuffixInternal(
 void cmGeneratorTarget::ClearSourcesCache()
 {
   this->AllConfigSources.clear();
+  this->AllConfigCompileLanguages.clear();
   this->KindedSourcesMap.clear();
   this->SourcesAreContextDependent = Tribool::Indeterminate;
   this->Objects.clear();
@@ -805,7 +810,8 @@ bool cmGeneratorTarget::IsIPOEnabled(std::string const& lang,
   cmPolicies::PolicyStatus cmp0069 = this->GetPolicyStatusCMP0069();
 
   if (cmp0069 == cmPolicies::OLD || cmp0069 == cmPolicies::WARN) {
-    if (this->Makefile->IsOn("_CMAKE_" + lang + "_IPO_LEGACY_BEHAVIOR")) {
+    if (this->Makefile->IsOn(
+          cmStrCat("_CMAKE_", lang, "_IPO_LEGACY_BEHAVIOR"))) {
       return true;
     }
     if (this->PolicyReportedCMP0069) {
@@ -2329,6 +2335,7 @@ cmGeneratorTarget::GetClassifiedFlagsForSource(cmSourceFile const* sf,
   }
 
   // C++ module flags.
+  bool useBmiTemplate = false;
   if (lang == "CXX"_s) {
     FlagClassification cls = FlagClassification::LocationFlag;
     FlagKind kind = FlagKind::BuildSystem;
@@ -2347,13 +2354,18 @@ cmGeneratorTarget::GetClassifiedFlagsForSource(cmSourceFile const* sf,
       }
 
       if (!this->Target->IsNormal()) {
-        auto flag = mf->GetSafeDefinition("CMAKE_CXX_MODULE_BMI_ONLY_FLAG");
-        cmRulePlaceholderExpander::RuleVariables compileObjectVars;
-        compileObjectVars.Object = sfVars.ObjectFileDir.c_str();
-        auto rulePlaceholderExpander = lg->CreateRulePlaceholderExpander();
-        rulePlaceholderExpander->ExpandRuleVariables(lg, flag,
-                                                     compileObjectVars);
-        lg->AppendCompileOptions(bmiFlags, flag);
+        if (!mf->GetDefinition("CMAKE_CXX_COMPILE_BMI").IsEmpty()) {
+          useBmiTemplate = true;
+        } else {
+          std::string flag =
+            mf->GetSafeDefinition("CMAKE_CXX_MODULE_BMI_ONLY_FLAG");
+          cmRulePlaceholderExpander::RuleVariables compileObjectVars;
+          compileObjectVars.Object = sfVars.ObjectFileDir.c_str();
+          auto rulePlaceholderExpander = lg->CreateRulePlaceholderExpander();
+          rulePlaceholderExpander->ExpandRuleVariables(lg, flag,
+                                                       compileObjectVars);
+          lg->AppendCompileOptions(bmiFlags, flag);
+        }
       }
     }
 
@@ -2376,7 +2388,8 @@ cmGeneratorTarget::GetClassifiedFlagsForSource(cmSourceFile const* sf,
     FlagClassification cls = FlagClassification::ExecutionFlag;
     FlagKind kind = FlagKind::NotAFlag;
 
-    std::string const cmdVar = cmStrCat("CMAKE_", lang, "_COMPILE_OBJECT");
+    std::string const cmdVar =
+      cmStrCat("CMAKE_", lang, "_COMPILE_", useBmiTemplate ? "BMI" : "OBJECT");
     std::string const& compileCmd = mf->GetRequiredDefinition(cmdVar);
     cmList compileCmds(compileCmd); // FIXME: which command to use?
     std::string& cmd = compileCmds[0];
@@ -2682,32 +2695,33 @@ void cmGeneratorTarget::AddCUDAArchitectureFlagsImpl(cmBuildStep compileOrLink,
     }
 
     for (CudaArchitecture& architecture : architectures) {
-      flags +=
-        " \"--generate-code=arch=compute_" + architecture.name + ",code=[";
+      flags = cmStrCat(std::move(flags), " \"--generate-code=arch=compute_",
+                       architecture.name, ",code=[");
 
       if (architecture.virtual_) {
-        flags += "compute_" + architecture.name;
+        flags = cmStrCat(std::move(flags), "compute_", architecture.name);
 
         if (ipoEnabled || architecture.real) {
-          flags += ",";
+          flags += ',';
         }
       }
 
       if (ipoEnabled) {
         if (compileOrLink == cmBuildStep::Compile) {
-          flags += "lto_" + architecture.name;
+          flags = cmStrCat(std::move(flags), "lto_", architecture.name);
         } else if (compileOrLink == cmBuildStep::Link) {
-          flags += "sm_" + architecture.name;
+          flags = cmStrCat(std::move(flags), "sm_", architecture.name);
         }
       } else if (architecture.real) {
-        flags += "sm_" + architecture.name;
+        flags = cmStrCat(std::move(flags), "sm_", architecture.name);
       }
 
       flags += "]\"";
     }
   } else if (compiler == "Clang" && compileOrLink == cmBuildStep::Compile) {
     for (CudaArchitecture& architecture : architectures) {
-      flags += " --cuda-gpu-arch=sm_" + architecture.name;
+      flags =
+        cmStrCat(std::move(flags), " --cuda-gpu-arch=sm_", architecture.name);
 
       if (!architecture.real) {
         this->Makefile->IssueMessage(
@@ -2716,7 +2730,8 @@ void cmGeneratorTarget::AddCUDAArchitectureFlagsImpl(cmBuildStep compileOrLink,
       }
 
       if (!architecture.virtual_) {
-        flags += " --no-cuda-include-ptx=sm_" + architecture.name;
+        flags = cmStrCat(std::move(flags), " --no-cuda-include-ptx=sm_",
+                         architecture.name);
       }
     }
   }
@@ -2749,9 +2764,10 @@ void cmGeneratorTarget::AddHIPArchitectureFlags(cmBuildStep compileOrLink,
   std::string arch = this->GetSafeProperty("HIP_ARCHITECTURES");
 
   if (arch.empty()) {
-    this->Makefile->IssueMessage(MessageType::FATAL_ERROR,
-                                 "HIP_ARCHITECTURES is empty for target \"" +
-                                   this->GetName() + "\".");
+    this->Makefile->IssueMessage(
+      MessageType::FATAL_ERROR,
+      cmStrCat("HIP_ARCHITECTURES is empty for target \"", this->GetName(),
+               "\"."));
   }
 
   // If HIP_ARCHITECTURES is false we don't add any architectures.
@@ -2762,6 +2778,11 @@ void cmGeneratorTarget::AddHIPArchitectureFlags(cmBuildStep compileOrLink,
   if (this->Makefile->GetSafeDefinition("CMAKE_HIP_PLATFORM") == "nvidia") {
     this->AddCUDAArchitectureFlagsImpl(compileOrLink, config, "HIP",
                                        std::move(arch), flags);
+    return;
+  }
+
+  // For spirv platform, chipStar handles targeting via the hip package
+  if (this->Makefile->GetSafeDefinition("CMAKE_HIP_PLATFORM") == "spirv") {
     return;
   }
 
@@ -2815,29 +2836,29 @@ std::string cmGeneratorTarget::GetCreateRuleVariable(
 {
   switch (this->GetType()) {
     case cmStateEnums::STATIC_LIBRARY: {
-      std::string var = "CMAKE_" + lang + "_CREATE_STATIC_LIBRARY";
+      std::string var = cmStrCat("CMAKE_", lang, "_CREATE_STATIC_LIBRARY");
       return this->GetFeatureSpecificLinkRuleVariable(var, lang, config);
     }
     case cmStateEnums::SHARED_LIBRARY:
       if (this->IsArchivedAIXSharedLibrary()) {
-        return "CMAKE_" + lang + "_CREATE_SHARED_LIBRARY_ARCHIVE";
+        return cmStrCat("CMAKE_", lang, "_CREATE_SHARED_LIBRARY_ARCHIVE");
       }
-      return "CMAKE_" + lang + "_CREATE_SHARED_LIBRARY";
+      return cmStrCat("CMAKE_", lang, "_CREATE_SHARED_LIBRARY");
     case cmStateEnums::MODULE_LIBRARY:
-      return "CMAKE_" + lang + "_CREATE_SHARED_MODULE";
+      return cmStrCat("CMAKE_", lang, "_CREATE_SHARED_MODULE");
     case cmStateEnums::EXECUTABLE:
       if (this->IsExecutableWithExports()) {
         std::string linkExeWithExports =
-          "CMAKE_" + lang + "_LINK_EXECUTABLE_WITH_EXPORTS";
+          cmStrCat("CMAKE_", lang, "_LINK_EXECUTABLE_WITH_EXPORTS");
         if (this->Makefile->IsDefinitionSet(linkExeWithExports)) {
           return linkExeWithExports;
         }
       }
-      return "CMAKE_" + lang + "_LINK_EXECUTABLE";
+      return cmStrCat("CMAKE_", lang, "_LINK_EXECUTABLE");
     default:
       break;
   }
-  return "";
+  return {};
 }
 
 //----------------------------------------------------------------------------
@@ -3275,9 +3296,9 @@ std::string cmGeneratorTarget::GetPchCreateCompileOptions(
     if (GlobalGenerator->IsFastbuild()) {
       // Account for potential spaces in a shell-friendly way.
       cmSystemTools::ReplaceString(createOptionList, "<PCH_HEADER>",
-                                   '"' + pchHeader + '"');
+                                   cmStrCat('"', pchHeader, '"'));
       cmSystemTools::ReplaceString(createOptionList, "<PCH_FILE>",
-                                   '"' + pchFile + '"');
+                                   cmStrCat('"', pchFile, '"'));
     } else {
       cmSystemTools::ReplaceString(createOptionList, "<PCH_HEADER>",
                                    pchHeader);
@@ -3319,9 +3340,9 @@ std::string cmGeneratorTarget::GetPchUseCompileOptions(
     if (GlobalGenerator->IsFastbuild()) {
       // Account for potential spaces in a shell-friendly way.
       cmSystemTools::ReplaceString(useOptionList, "<PCH_HEADER>",
-                                   '"' + pchHeader + '"');
+                                   cmStrCat('"', pchHeader, '"'));
       cmSystemTools::ReplaceString(useOptionList, "<PCH_FILE>",
-                                   '"' + pchFile + '"');
+                                   cmStrCat('"', pchFile, '"'));
     } else {
       cmSystemTools::ReplaceString(useOptionList, "<PCH_HEADER>", pchHeader);
       cmSystemTools::ReplaceString(useOptionList, "<PCH_FILE>", pchFile);
@@ -3940,8 +3961,7 @@ std::string cmGeneratorTarget::GetLinkerTool(std::string const& lang,
 
     if (linkerType != "DEFAULT"_s) {
       auto isCMakeLinkerType = [](std::string const& type) -> bool {
-        return std::all_of(type.cbegin(), type.cend(),
-                           [](char c) { return std::isupper(c); });
+        return std::all_of(type.cbegin(), type.cend(), cmsysString_isupper);
       };
       if (isCMakeLinkerType(linkerType)) {
         this->LocalGenerator->IssueMessage(
@@ -4020,7 +4040,7 @@ std::string cmGeneratorTarget::GetPDBOutputName(
     // from the above block.
     this->LocalGenerator->GetCMakeInstance()->IssueMessage(
       MessageType::FATAL_ERROR,
-      "Target '" + this->GetName() + "' PDB_NAME depends on itself.",
+      cmStrCat("Target '", this->GetName(), "' PDB_NAME depends on itself."),
       this->GetBacktrace());
   }
   return i->second;
@@ -4540,7 +4560,8 @@ cmGeneratorTarget::OutputInfo const* cmGeneratorTarget::GetOutputInfo(
     // from the above block.
     this->LocalGenerator->GetCMakeInstance()->IssueMessage(
       MessageType::FATAL_ERROR,
-      "Target '" + this->GetName() + "' OUTPUT_DIRECTORY depends on itself.",
+      cmStrCat("Target '", this->GetName(),
+               "' OUTPUT_DIRECTORY depends on itself."),
       this->GetBacktrace());
     return nullptr;
   }
@@ -5130,6 +5151,77 @@ bool cmGeneratorTarget::IsNullImpliedByLinkLibraries(
   return cm::contains(this->LinkImplicitNullProperties, p);
 }
 
+namespace {
+bool CreateCxxStdlibTarget(cmMakefile* makefile, cmLocalGenerator* lg,
+                           std::string const& targetName,
+                           std::string const& cxxTargetName,
+                           std::string const& stdLevel,
+                           std::vector<std::string> const& configs)
+{
+#ifndef CMAKE_BOOTSTRAP
+
+  static cm::optional<cmCxxModuleMetadata> metadata;
+
+  // Load metadata only when we need to create a target
+  if (!metadata) {
+    auto errorMessage =
+      makefile->GetDefinition("CMAKE_CXX_COMPILER_IMPORT_STD_ERROR_MESSAGE");
+    if (!errorMessage.IsEmpty()) {
+      makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat(R"(The "CXX_MODULE_STD" property on target ")", targetName,
+                 "\" requires toolchain support, but it was not provided.  "
+                 "Reason:\n  ",
+                 *errorMessage));
+      return false;
+    }
+
+    auto metadataPath =
+      makefile->GetDefinition("CMAKE_CXX_STDLIB_MODULES_JSON");
+    if (metadataPath.IsEmpty()) {
+      makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat(
+          R"("The "CXX_MODULE_STD" property on target ")", targetName,
+          "\" requires CMAKE_CXX_STDLIB_MODULES_JSON be set, but it was not "
+          "provided by the toolchain."));
+      return false;
+    }
+
+    auto parseResult = cmCxxModuleMetadata::LoadFromFile(*metadataPath);
+    if (!parseResult) {
+      makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("Failed to load C++ standard library modules metadata "
+                 "from \"",
+                 *metadataPath, "\": ", parseResult.Error));
+      return false;
+    }
+
+    metadata = std::move(*parseResult.Meta);
+  }
+
+  auto const localTargetName = cmStrCat("__cmake_cxx_std_", stdLevel);
+  cmStandardLevelResolver standardResolver(makefile);
+  auto* stdlibTgt = makefile->AddLibrary(
+    localTargetName, cmStateEnums::STATIC_LIBRARY, {}, true);
+  cmCxxModuleMetadata::PopulateTarget(*stdlibTgt, *metadata, configs);
+  standardResolver.AddRequiredTargetFeature(stdlibTgt,
+                                            cmStrCat("cxx_std_", stdLevel));
+  auto gt = cm::make_unique<cmGeneratorTarget>(stdlibTgt, lg);
+  for (auto const& config : configs) {
+    gt->ComputeCompileFeatures(config);
+  }
+
+  lg->AddGeneratorTarget(std::move(gt));
+  makefile->AddAlias(cxxTargetName, localTargetName);
+
+#endif // CMAKE_BOOTSTRAP
+
+  return true;
+}
+} // namespace
+
 bool cmGeneratorTarget::ApplyCXXStdTargets()
 {
   cmStandardLevelResolver standardResolver(this->Makefile);
@@ -5211,35 +5303,32 @@ bool cmGeneratorTarget::ApplyCXXStdTargets()
 
     auto const stdLevel =
       standardResolver.GetLevelString("CXX", *explicitLevel);
-    auto const targetName = cmStrCat("__CMAKE::CXX", stdLevel);
-    if (!this->Makefile->FindTargetToUse(targetName)) {
-      auto basicReason = this->Makefile->GetDefinition(cmStrCat(
-        "CMAKE_CXX", stdLevel, "_COMPILER_IMPORT_STD_NOT_FOUND_MESSAGE"));
-      std::string reason;
-      if (!basicReason.IsEmpty()) {
-        reason = cmStrCat("  Reason:\n  ", basicReason);
-      }
-      this->Makefile->IssueMessage(
-        MessageType::FATAL_ERROR,
-        cmStrCat(R"(The "CXX_MODULE_STD" property on the target ")",
-                 this->GetName(), "\" requires that the \"", targetName,
-                 "\" target exist, but it was not provided by the toolchain.",
-                 reason));
-      break;
-    }
+    auto const cxxTargetName = cmStrCat("__CMAKE::CXX", stdLevel);
 
-    // Check the experimental feature here as well. A toolchain may have
-    // provided the target and skipped the check in the toolchain preparation
-    // logic.
-    if (!cmExperimental::HasSupportEnabled(
-          *this->Makefile, cmExperimental::Feature::CxxImportStd)) {
-      break;
+    // Create the __CMAKE::CXX## target if it doesn't already exist
+    if (!this->Makefile->FindTargetToUse(cxxTargetName) &&
+        !CreateCxxStdlibTarget(this->Makefile, this->LocalGenerator,
+                               this->GetName(), cxxTargetName, stdLevel,
+                               configs)) {
+      return false;
     }
 
     this->Target->AppendProperty(
       "LINK_LIBRARIES",
-      cmStrCat("$<BUILD_LOCAL_INTERFACE:$<$<CONFIG:", config, ">:", targetName,
-               ">>"));
+      cmStrCat("$<BUILD_LOCAL_INTERFACE:$<$<CONFIG:", config,
+               ">:", cxxTargetName, ">>"));
+  }
+
+  // Check the experimental feature here. A toolchain may have
+  // skipped the check in the toolchain preparation logic.
+  if (!cmExperimental::HasSupportEnabled(
+        *this->Makefile, cmExperimental::Feature::CxxImportStd)) {
+    this->Makefile->IssueMessage(
+      MessageType::FATAL_ERROR,
+      "Experimental `import std` support not enabled when detecting "
+      "toolchain; it must be set before `CXX` is enabled (usually a "
+      "`project()` call).");
+    return false;
   }
 
   return true;
@@ -5339,7 +5428,9 @@ bool cmGeneratorTarget::DiscoverSyntheticTargets(cmSyntheticTargetCache& cache,
         }
         // See `cmGlobalGenerator::ApplyCXXStdTargets` in
         // `cmGlobalGenerator::Compute` for non-synthetic target resolutions.
-        gtp->ApplyCXXStdTargets();
+        if (!gtp->ApplyCXXStdTargets()) {
+          return false;
+        }
 
         gtp->DiscoverSyntheticTargets(cache, config);
 
@@ -5483,8 +5574,27 @@ std::string cmGeneratorTarget::GetSupportDirectory(
   cmStateEnums::IntermediateDirKind kind) const
 {
   cmLocalGenerator* lg = this->GetLocalGenerator();
-  return cmStrCat(lg->GetObjectOutputRoot(kind), '/',
-                  lg->GetTargetDirectory(this, kind));
+  auto targetDir = cmStrCat(lg->GetObjectOutputRoot(kind), '/',
+                            lg->GetTargetDirectory(this, kind));
+
+#ifndef CMAKE_BOOTSTRAP
+  auto& tdr =
+    this->GetGlobalGenerator()->RegisterTargetDirectory(this, targetDir);
+  if (tdr.CollidesWith && !tdr.Warned) {
+    this->Makefile->IssueMessage(
+      MessageType::WARNING,
+      cmStrCat("The '", tdr.CollidesWith->GetName(), "' and '",
+               this->GetName(),
+               "' targets share an intermediate directory\n    ", targetDir,
+               "\nwhich may cause problems with the build graph. This project "
+               "is not compatible with the `SHORT` target intermediate "
+               "directory strategy. Possible remedies include: moving the "
+               "target into different directories or renaming a target."));
+    tdr.Warned = true;
+  }
+#endif
+
+  return targetDir;
 }
 
 std::string cmGeneratorTarget::GetCMFSupportDirectory(
@@ -5638,145 +5748,236 @@ cmGeneratorTarget::ManagedType cmGeneratorTarget::GetManagedType(
 
 bool cmGeneratorTarget::AddHeaderSetVerification()
 {
-  if (!this->GetPropertyAsBool("VERIFY_INTERFACE_HEADER_SETS")) {
-    return true;
-  }
-
-  if (this->GetType() != cmStateEnums::STATIC_LIBRARY &&
-      this->GetType() != cmStateEnums::SHARED_LIBRARY &&
-      this->GetType() != cmStateEnums::UNKNOWN_LIBRARY &&
-      this->GetType() != cmStateEnums::OBJECT_LIBRARY &&
-      this->GetType() != cmStateEnums::INTERFACE_LIBRARY &&
-      !this->IsExecutableWithExports()) {
-    return true;
-  }
-
-  auto verifyValue = this->GetProperty("INTERFACE_HEADER_SETS_TO_VERIFY");
-  bool const all = verifyValue.IsEmpty();
-  std::set<std::string> verifySet;
-  if (!all) {
-    cmList verifyList{ verifyValue };
-    verifySet.insert(verifyList.begin(), verifyList.end());
-  }
-
-  cmTarget* verifyTarget = nullptr;
-  cmTarget* allVerifyTarget =
-    this->GlobalGenerator->GetMakefiles().front()->FindTargetToUse(
-      "all_verify_interface_header_sets",
-      { cmStateEnums::TargetDomain::NATIVE });
-
-  auto interfaceFileSetEntries = this->Target->GetInterfaceHeaderSetsEntries();
-
-  std::set<cmFileSet*> fileSets;
-  for (auto const& entry : interfaceFileSetEntries) {
-    for (auto const& name : cmList{ entry.Value }) {
-      if (all || verifySet.count(name)) {
-        fileSets.insert(this->Target->GetFileSet(name));
-        verifySet.erase(name);
-      }
+  for (bool const isInterface : { false, true }) {
+    if (!this->GetPropertyAsBool(isInterface ? "VERIFY_INTERFACE_HEADER_SETS"
+                                             : "VERIFY_PRIVATE_HEADER_SETS")) {
+      continue;
     }
-  }
-  if (!verifySet.empty()) {
-    this->Makefile->IssueMessage(
-      MessageType::FATAL_ERROR,
-      cmStrCat("Property INTERFACE_HEADER_SETS_TO_VERIFY of target \"",
-               this->GetName(),
-               "\" contained the following header sets that are nonexistent "
-               "or not INTERFACE:\n  ",
-               cmJoin(verifySet, "\n  ")));
-    return false;
-  }
 
-  cm::optional<std::set<std::string>> languages;
-  for (auto* fileSet : fileSets) {
-    auto dirCges = fileSet->CompileDirectoryEntries();
-    auto fileCges = fileSet->CompileFileEntries();
+    if (this->GetType() != cmStateEnums::STATIC_LIBRARY &&
+        this->GetType() != cmStateEnums::SHARED_LIBRARY &&
+        (this->GetType() != cmStateEnums::MODULE_LIBRARY || isInterface) &&
+        this->GetType() != cmStateEnums::UNKNOWN_LIBRARY &&
+        this->GetType() != cmStateEnums::OBJECT_LIBRARY &&
+        this->GetType() != cmStateEnums::INTERFACE_LIBRARY &&
+        this->GetType() != cmStateEnums::EXECUTABLE) {
+      continue;
+    }
 
-    static auto const contextSensitive =
-      [](std::unique_ptr<cmCompiledGeneratorExpression> const& cge) {
-        return cge->GetHadContextSensitiveCondition();
-      };
-    bool dirCgesContextSensitive = false;
-    bool fileCgesContextSensitive = false;
+    char const* headerSetsProperty = isInterface
+      ? "INTERFACE_HEADER_SETS_TO_VERIFY"
+      : "PRIVATE_HEADER_SETS_TO_VERIFY";
 
-    std::vector<std::string> dirs;
-    std::map<std::string, std::vector<std::string>> filesPerDir;
-    bool first = true;
-    for (auto const& config : this->Makefile->GetGeneratorConfigs(
-           cmMakefile::GeneratorConfigQuery::IncludeEmptyConfig)) {
-      cm::GenEx::Context context(this->LocalGenerator, config);
-      if (first || dirCgesContextSensitive) {
-        dirs = fileSet->EvaluateDirectoryEntries(dirCges, context, this);
-        dirCgesContextSensitive =
-          std::any_of(dirCges.begin(), dirCges.end(), contextSensitive);
-      }
-      if (first || fileCgesContextSensitive) {
-        filesPerDir.clear();
-        for (auto const& fileCge : fileCges) {
-          fileSet->EvaluateFileEntry(dirs, filesPerDir, fileCge, context,
-                                     this);
-          if (fileCge->GetHadContextSensitiveCondition()) {
-            fileCgesContextSensitive = true;
-          }
+    auto verifyValue = this->GetProperty(headerSetsProperty);
+    bool const all = verifyValue.IsEmpty();
+    std::set<std::string> verifySet;
+    if (!all) {
+      cmList verifyList{ verifyValue };
+      verifySet.insert(verifyList.begin(), verifyList.end());
+    }
+
+    cmTarget* verifyTarget = nullptr;
+    std::string const verifyTargetName =
+      cmStrCat(this->GetName(),
+               isInterface ? "_verify_interface_header_sets"
+                           : "_verify_private_header_sets");
+
+    char const* allVerifyTargetName = isInterface
+      ? "all_verify_interface_header_sets"
+      : "all_verify_private_header_sets";
+    cmTarget* allVerifyTarget =
+      this->GlobalGenerator->GetMakefiles().front()->FindTargetToUse(
+        allVerifyTargetName, { cmStateEnums::TargetDomain::NATIVE });
+
+    auto fileSetEntries = isInterface
+      ? this->Target->GetInterfaceHeaderSetsEntries()
+      : this->Target->GetHeaderSetsEntries();
+
+    std::set<cmFileSet*> fileSets;
+    for (auto const& entry : fileSetEntries) {
+      for (auto const& name : cmList{ entry.Value }) {
+        if (all || verifySet.count(name)) {
+          fileSets.insert(this->Target->GetFileSet(name));
+          verifySet.erase(name);
         }
       }
-
-      for (auto const& files : filesPerDir) {
-        for (auto const& file : files.second) {
-          std::string filename = this->GenerateHeaderSetVerificationFile(
-            *this->Makefile->GetOrCreateSource(file), files.first, languages);
-          if (filename.empty()) {
-            continue;
-          }
-
-          if (!verifyTarget) {
-            {
-              cmMakefile::PolicyPushPop polScope(this->Makefile);
-              this->Makefile->SetPolicy(cmPolicies::CMP0119, cmPolicies::NEW);
-              verifyTarget = this->Makefile->AddLibrary(
-                cmStrCat(this->GetName(), "_verify_interface_header_sets"),
-                cmStateEnums::OBJECT_LIBRARY, {}, true);
-            }
-
-            verifyTarget->AddLinkLibrary(
-              *this->Makefile, this->GetName(),
-              cmTargetLinkLibraryType::GENERAL_LibraryType);
-            verifyTarget->SetProperty("AUTOMOC", "OFF");
-            verifyTarget->SetProperty("AUTORCC", "OFF");
-            verifyTarget->SetProperty("AUTOUIC", "OFF");
-            verifyTarget->SetProperty("DISABLE_PRECOMPILE_HEADERS", "ON");
-            verifyTarget->SetProperty("UNITY_BUILD", "OFF");
-            verifyTarget->SetProperty("CXX_SCAN_FOR_MODULES", "OFF");
-            verifyTarget->FinalizeTargetConfiguration(
-              this->Makefile->GetCompileDefinitionsEntries());
-
-            if (!allVerifyTarget) {
-              allVerifyTarget = this->GlobalGenerator->GetMakefiles()
-                                  .front()
-                                  ->AddNewUtilityTarget(
-                                    "all_verify_interface_header_sets", true);
-            }
-
-            allVerifyTarget->AddUtility(verifyTarget->GetName(), false);
-          }
-
-          if (fileCgesContextSensitive) {
-            filename = cmStrCat("$<$<CONFIG:", config, ">:", filename, '>');
-          }
-          verifyTarget->AddSource(filename);
-        }
-      }
-
-      if (!dirCgesContextSensitive && !fileCgesContextSensitive) {
-        break;
-      }
-      first = false;
     }
-  }
 
-  if (verifyTarget) {
-    this->LocalGenerator->AddGeneratorTarget(
-      cm::make_unique<cmGeneratorTarget>(verifyTarget, this->LocalGenerator));
+    if (isInterface) {
+      cmPolicies::PolicyStatus const cmp0209 = this->GetPolicyStatusCMP0209();
+      if (cmp0209 != cmPolicies::NEW &&
+          this->GetType() == cmStateEnums::EXECUTABLE &&
+          !this->GetPropertyAsBool("ENABLE_EXPORTS")) {
+        if (cmp0209 == cmPolicies::WARN && !fileSets.empty()) {
+          this->Makefile->IssueMessage(
+            MessageType::AUTHOR_WARNING,
+            cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0209),
+                     "\n"
+                     "Executable target \"",
+                     this->GetName(),
+                     "\" has interface header file sets, but it does not "
+                     "enable exports. Those headers would be verified under "
+                     "CMP0209 NEW behavior.\n"));
+        }
+        continue;
+      }
+    }
+
+    if (!verifySet.empty()) {
+      this->Makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("Property ", headerSetsProperty, " of target \"",
+                 this->GetName(),
+                 "\" contained the following header sets that are nonexistent "
+                 "or not ",
+                 isInterface ? "INTERFACE" : "PRIVATE", ":\n  ",
+                 cmJoin(verifySet, "\n  ")));
+      return false;
+    }
+
+    cm::optional<std::set<std::string>> languages;
+    for (auto* fileSet : fileSets) {
+      auto dirCges = fileSet->CompileDirectoryEntries();
+      auto fileCges = fileSet->CompileFileEntries();
+
+      static auto const contextSensitive =
+        [](std::unique_ptr<cmCompiledGeneratorExpression> const& cge) {
+          return cge->GetHadContextSensitiveCondition();
+        };
+      bool dirCgesContextSensitive = false;
+      bool fileCgesContextSensitive = false;
+
+      std::vector<std::string> dirs;
+      std::map<std::string, std::vector<std::string>> filesPerDir;
+      bool first = true;
+      for (auto const& config : this->Makefile->GetGeneratorConfigs(
+             cmMakefile::GeneratorConfigQuery::IncludeEmptyConfig)) {
+        cm::GenEx::Context context(this->LocalGenerator, config);
+        if (first || dirCgesContextSensitive) {
+          dirs = fileSet->EvaluateDirectoryEntries(dirCges, context, this);
+          dirCgesContextSensitive =
+            std::any_of(dirCges.begin(), dirCges.end(), contextSensitive);
+        }
+        if (first || fileCgesContextSensitive) {
+          filesPerDir.clear();
+          for (auto const& fileCge : fileCges) {
+            fileSet->EvaluateFileEntry(dirs, filesPerDir, fileCge, context,
+                                       this);
+            if (fileCge->GetHadContextSensitiveCondition()) {
+              fileCgesContextSensitive = true;
+            }
+          }
+        }
+
+        for (auto const& files : filesPerDir) {
+          for (auto const& file : files.second) {
+            std::string filename = this->GenerateHeaderSetVerificationFile(
+              *this->Makefile->GetOrCreateSource(file), files.first,
+              verifyTargetName, languages);
+            if (filename.empty()) {
+              continue;
+            }
+
+            if (!verifyTarget) {
+              {
+                cmMakefile::PolicyPushPop polScope(this->Makefile);
+                this->Makefile->SetPolicy(cmPolicies::CMP0119,
+                                          cmPolicies::NEW);
+                verifyTarget = this->Makefile->AddLibrary(
+                  verifyTargetName, cmStateEnums::OBJECT_LIBRARY, {}, true);
+              }
+
+              if (isInterface) {
+                // Link to the original target so that we pick up its
+                // interface compile options just like a consumer would.
+                // This also ensures any generated headers in the original
+                // target will be created.
+                verifyTarget->AddLinkLibrary(
+                  *this->Makefile, this->GetName(),
+                  cmTargetLinkLibraryType::GENERAL_LibraryType);
+              } else {
+                // For private file sets, we need to simulate compiling the
+                // same way as the original target. That includes linking to
+                // the same things so we pick up the same transitive
+                // properties. For the <LANG>_... properties, we don't care if
+                // we set them for languages this target won't eventually use.
+                // The verify header sets feature currently only supports the
+                // C and C++ languages, so we just always set those here for
+                // simplicity rather than working out all languages the target
+                // has to compile for.
+                static std::vector<std::string> propertiesToCopy = {
+                  "COMPILE_DEFINITIONS", "COMPILE_FEATURES",
+                  "COMPILE_FLAGS",       "COMPILE_OPTIONS",
+                  "DEFINE_SYMBOL",       "INCLUDE_DIRECTORIES",
+                  "LINK_LIBRARIES",      "C_STANDARD",
+                  "C_STANDARD_REQUIRED", "C_EXTENSIONS",
+                  "CXX_STANDARD",        "CXX_STANDARD_REQUIRED",
+                  "CXX_EXTENSIONS"
+                };
+                for (std::string const& prop : propertiesToCopy) {
+                  cmValue propValue = this->Target->GetProperty(prop);
+                  if (propValue.IsSet()) {
+                    verifyTarget->SetProperty(prop, propValue);
+                  }
+                }
+                // The original target might have generated headers. Since
+                // we only link to the original target for compilation,
+                // there's nothing to force such generation to happen yet.
+                // Our verify target must depend on the original target to
+                // ensure such generated files will be created.
+                verifyTarget->AddUtility(this->GetName(), false,
+                                         this->Makefile);
+                verifyTarget->AddCodegenDependency(this->GetName());
+              }
+
+              verifyTarget->SetProperty("AUTOMOC", "OFF");
+              verifyTarget->SetProperty("AUTORCC", "OFF");
+              verifyTarget->SetProperty("AUTOUIC", "OFF");
+              verifyTarget->SetProperty("DISABLE_PRECOMPILE_HEADERS", "ON");
+              verifyTarget->SetProperty("UNITY_BUILD", "OFF");
+              verifyTarget->SetProperty("CXX_SCAN_FOR_MODULES", "OFF");
+
+              if (isInterface) {
+                verifyTarget->FinalizeTargetConfiguration(
+                  this->Makefile->GetCompileDefinitionsEntries());
+              } else {
+                // Private verification only needs to add the directory scope
+                // definitions here
+                for (auto const& def :
+                     this->Makefile->GetCompileDefinitionsEntries()) {
+                  verifyTarget->InsertCompileDefinition(def);
+                }
+              }
+
+              if (!allVerifyTarget) {
+                allVerifyTarget =
+                  this->GlobalGenerator->GetMakefiles()
+                    .front()
+                    ->AddNewUtilityTarget(allVerifyTargetName, true);
+              }
+
+              allVerifyTarget->AddUtility(verifyTargetName, false);
+            }
+
+            if (fileCgesContextSensitive) {
+              filename = cmStrCat("$<$<CONFIG:", config, ">:", filename, '>');
+            }
+            verifyTarget->AddSource(filename);
+          }
+        }
+
+        if (!dirCgesContextSensitive && !fileCgesContextSensitive) {
+          break;
+        }
+        first = false;
+      }
+    }
+
+    if (verifyTarget) {
+      this->LocalGenerator->AddGeneratorTarget(
+        cm::make_unique<cmGeneratorTarget>(verifyTarget,
+                                           this->LocalGenerator));
+    }
   }
 
   return true;
@@ -5784,6 +5985,7 @@ bool cmGeneratorTarget::AddHeaderSetVerification()
 
 std::string cmGeneratorTarget::GenerateHeaderSetVerificationFile(
   cmSourceFile& source, std::string const& dir,
+  std::string const& verifyTargetName,
   cm::optional<std::set<std::string>>& languages) const
 {
   std::string extension;
@@ -5837,9 +6039,9 @@ std::string cmGeneratorTarget::GenerateHeaderSetVerificationFile(
   }
   headerFilename += source.GetLocation().GetName();
 
-  auto filename = cmStrCat(
-    this->LocalGenerator->GetCurrentBinaryDirectory(), '/', this->GetName(),
-    "_verify_interface_header_sets/", headerFilename, extension);
+  auto filename =
+    cmStrCat(this->LocalGenerator->GetCurrentBinaryDirectory(), '/',
+             verifyTargetName, '/', headerFilename, extension);
   auto* verificationSource = this->Makefile->GetOrCreateSource(filename);
   source.SetSpecialSourceType(
     cmSourceFile::SpecialSourceType::HeaderSetVerificationSource);
@@ -6282,7 +6484,8 @@ std::string cmGeneratorTarget::GetSwiftModuleFileName() const
   if (this->GetPolicyStatusCMP0195() == cmPolicies::NEW) {
     if (cmValue moduleTriple =
           this->Makefile->GetDefinition("CMAKE_Swift_MODULE_TRIPLE")) {
-      moduleFilename += "/" + *moduleTriple + ".swiftmodule";
+      moduleFilename = cmStrCat(std::move(moduleFilename), '/', *moduleTriple,
+                                ".swiftmodule");
     }
   }
   return moduleFilename;
@@ -6318,8 +6521,8 @@ std::string cmGeneratorTarget::GetSwiftModuleDirectory(
 std::string cmGeneratorTarget::GetSwiftModulePath(
   std::string const& config) const
 {
-  return this->GetSwiftModuleDirectory(config) + "/" +
-    this->GetSwiftModuleFileName();
+  return cmStrCat(this->GetSwiftModuleDirectory(config), '/',
+                  this->GetSwiftModuleFileName());
 }
 
 std::string cmGeneratorTarget::GetPropertyOrDefault(

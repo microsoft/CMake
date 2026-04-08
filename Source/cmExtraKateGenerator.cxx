@@ -209,7 +209,7 @@ void cmExtraKateGenerator::AppendTarget(
          << make << " -C \\\"" << (this->UseNinja ? homeOutputDir : path)
          << "\\\" "
          << ((this->UseNinja && configs.size() > 1)
-               ? std::string(" -f build-") + conf + ".ninja"
+               ? cmStrCat(" -f build-", conf, ".ninja")
                : std::string())
          << makeArgs << " " << target << "\"}\n";
 
@@ -328,7 +328,7 @@ std::string cmExtraKateGenerator::GenerateProjectName(
   std::string const& name, std::string const& type,
   std::string const& path) const
 {
-  return name + (type.empty() ? "" : "-") + type + '@' + path;
+  return cmStrCat(name, (type.empty() ? "" : "-"), type, '@', path);
 }
 
 std::string cmExtraKateGenerator::GetPathBasename(

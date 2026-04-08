@@ -102,7 +102,6 @@ set(properties
   "C_LINKER_LAUNCHER"                       "ccache"            "<SAME>"
   ### C++
   "CXX_LINKER_LAUNCHER"                     "ccache"            "<SAME>"
-  "CXX_MODULE_STD"                          "ON"                "<SAME>"
   ### CUDA
   "CUDA_RESOLVE_DEVICE_SYMBOLS"             "ON"                "<SAME>"
   "CUDA_RUNTIME_LIBRARY"                    "Static"            "<SAME>"
@@ -121,12 +120,14 @@ set(properties
   "C_CPPLINT"                               "cpplint"           "<SAME>"
   "C_CPPCHECK"                              "cppcheck"          "<SAME>"
   "C_INCLUDE_WHAT_YOU_USE"                  "iwyu"              "<SAME>"
+  "C_PVS_STUDIO"                            "pvs-studio-analyzer" "<SAME>"
   ## C++
   "CXX_CLANG_TIDY"                          "clang-tidy"        "<SAME>"
   "CXX_CLANG_TIDY_EXPORT_FIXES_DIR"         "${dir}"            "<SAME>"
   "CXX_CPPLINT"                             "cpplint"           "<SAME>"
   "CXX_CPPCHECK"                            "cppcheck"          "<SAME>"
   "CXX_INCLUDE_WHAT_YOU_USE"                "iwyu"              "<SAME>"
+  "CXX_PVS_STUDIO"                          "pvs-studio-analyzer" "<SAME>"
   ## Objective C
   "OBJC_CLANG_TIDY"                         "clang-tidy"        "<SAME>"
   "OBJC_CLANG_TIDY_EXPORT_FIXES_DIR"        "${dir}"            "<SAME>"
@@ -228,6 +229,15 @@ macro (add_language_properties lang std)
     "${lang}_VISIBILITY_PRESET"     "hidden"  "<SAME>"
     )
 endmacro ()
+
+set(_cmake_supported_import_std_experimental "")
+cmake_language(GET_EXPERIMENTAL_FEATURE_ENABLED "CxxImportStd" _cmake_supported_import_std_experimental)
+if(_cmake_supported_import_std_experimental)
+  list(APPEND properties
+    # property                      expected  alias
+    "CXX_MODULE_STD"                "ON"      "<SAME>"
+  )
+endif()
 
 # Mock up knowing the standard flag. This doesn't actually build, so nothing
 # should care at this point.

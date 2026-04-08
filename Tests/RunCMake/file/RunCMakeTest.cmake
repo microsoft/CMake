@@ -1,9 +1,5 @@
 include(RunCMake)
 
-run_cmake(CREATE_LINK)
-run_cmake(CREATE_LINK-COPY_ON_ERROR)
-run_cmake(CREATE_LINK-noarg)
-run_cmake(CREATE_LINK-noexist)
 run_cmake(TOUCH)
 run_cmake(TOUCH-error-in-source-directory)
 run_cmake(TOUCH-error-missing-directory)
@@ -66,6 +62,7 @@ run_cmake_script(RENAME-file-replace)
 run_cmake_script(RENAME-file-to-file)
 run_cmake_script(RENAME-file-to-dir-capture)
 run_cmake_script(RENAME-file-to-dir-fail)
+run_cmake_script(RENAME-file-NO_REPLACE-not-exists)
 run_cmake_script(RENAME-file-NO_REPLACE-capture)
 run_cmake_script(RENAME-file-NO_REPLACE-fail)
 run_cmake_script(RENAME-arg-missing)
@@ -87,8 +84,6 @@ run_cmake_command(GLOB-error-CONFIGURE_DEPENDS-SCRIPT_MODE ${CMAKE_COMMAND} -P
 if(NOT WIN32
     AND NOT MSYS # FIXME: This works on CYGWIN but not on MSYS
     )
-  run_cmake(CREATE_LINK-SYMBOLIC)
-  run_cmake(CREATE_LINK-SYMBOLIC-noexist)
   run_cmake(GLOB_RECURSE-cyclic-recursion)
   run_cmake(INSTALL-SYMLINK)
   run_cmake(READ_SYMLINK)
@@ -97,6 +92,8 @@ if(NOT WIN32
   if(NOT CYGWIN)
     run_cmake(INSTALL-FOLLOW_SYMLINK_CHAIN)
   endif()
+  # Test that file(LOCK) doesn't truncate symlink targets (CVE regression test)
+  run_cmake(LOCK-symlink-no-truncate)
 endif()
 
 run_cmake(REAL_PATH-non-existing)

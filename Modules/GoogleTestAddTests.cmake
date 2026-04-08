@@ -1,8 +1,7 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file LICENSE.rst or https://cmake.org/licensing for details.
 
-cmake_minimum_required(VERSION 3.30)
-cmake_policy(SET CMP0174 NEW)   # TODO: Remove this when we can update the above to 3.31
+cmake_minimum_required(VERSION 4.2)
 
 function(add_command name test_name)
   set(args "")
@@ -383,6 +382,7 @@ function(gtest_discover_tests_impl)
       "Error running test executable.\n"
       "  Path: '${path}'\n"
       "  Working directory: '${arg_TEST_WORKING_DIR}'\n"
+      "  Timeout: '${arg_TEST_DISCOVERY_TIMEOUT}'\n"
       "  Result: ${result}\n"
       "  Output:\n"
       "    ${output}\n"

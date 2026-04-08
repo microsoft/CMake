@@ -41,6 +41,7 @@ struct cmObjectLocation;
 struct cmObjectLocations;
 class cmRulePlaceholderExpander;
 class cmSourceFile;
+class cmSourceGroup;
 class cmState;
 class cmTarget;
 class cmake;
@@ -83,6 +84,13 @@ public:
    * Calls TraceVSDependencies() on all targets of this generator.
    */
   void TraceDependencies() const;
+
+#ifndef CMAKE_BOOTSTRAP
+  /**
+   * Resolve source group genex.
+   */
+  void ResolveSourceGroupGenex();
+#endif
 
   virtual void AddHelperCommands() {}
 
@@ -162,6 +170,10 @@ public:
    * Append flags after parsing, prefixes processing (like LINKER:) and
    * escaping
    */
+  void AppendLinkFlagsWithParsing(std::string& flags,
+                                  std::string const& newFlags,
+                                  cmGeneratorTarget const* target,
+                                  std::string const& lang);
   void AppendFlags(std::string& flags, std::string const& newFlags,
                    std::string const& name, cmGeneratorTarget const* target,
                    cmBuildStep compileOrLink, std::string const& lang);
@@ -169,12 +181,23 @@ public:
   void AddPchDependencies(cmGeneratorTarget* target);
   void AddUnityBuild(cmGeneratorTarget* target);
   virtual void AddXCConfigSources(cmGeneratorTarget* /* target */) {}
+  void AddPerLanguageLinkFlags(std::string& flags,
+                               cmGeneratorTarget const* target,
+                               std::string const& lang,
+                               std::string const& config);
   void AppendTargetCreationLinkFlags(std::string& flags,
                                      cmGeneratorTarget const* target,
                                      std::string const& linkLanguage);
   void AppendLinkerTypeFlags(std::string& flags, cmGeneratorTarget* target,
                              std::string const& config,
                              std::string const& linkLanguage);
+  void AddTargetTypeLinkerFlags(std::string& flags,
+                                cmGeneratorTarget const* target,
+                                std::string const& lang,
+                                std::string const& config);
+  void AddTargetPropertyLinkFlags(std::string& flags,
+                                  cmGeneratorTarget const* target,
+                                  std::string const& config);
   void AppendIPOLinkerFlags(std::string& flags, cmGeneratorTarget* target,
                             std::string const& config,
                             std::string const& lang);
@@ -566,6 +589,16 @@ public:
 
   std::string CreateSafeObjectFileName(std::string const& sin) const;
 
+  /**
+   * Build the search index from source files to source groups
+   */
+  void ComputeSourceGroupSearchIndex();
+
+  /**
+   * find what source group this source is in
+   */
+  cmSourceGroup* FindSourceGroup(std::string const& source);
+
 protected:
   // The default implementation converts to a Windows shortpath to
   // help older toolchains handle spaces and such.  A generator may
@@ -623,6 +656,12 @@ protected:
   std::unordered_map<std::string, std::string> AppleArchSysroots;
 
   bool EmitUniversalBinaryFlags;
+
+#if !defined(CMAKE_BOOTSTRAP)
+  // Map from source file path to source group for lookup acceleration
+  using SourceGroupMap = std::unordered_map<std::string, cmSourceGroup*>;
+  SourceGroupMap SourceGroupSearchIndex;
+#endif
 
 private:
   /**

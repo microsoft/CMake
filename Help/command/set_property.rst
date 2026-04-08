@@ -5,18 +5,19 @@ Set a named property in a given scope.
 
 .. code-block:: cmake
 
-  set_property(<GLOBAL                      |
-                DIRECTORY [<dir>]           |
-                TARGET    [<target1> ...]   |
-                SOURCE    [<src1> ...]
+  set_property({GLOBAL                                    |
+                DIRECTORY [<dir>]                         |
+                TARGET    <target>...                     |
+                FILE_SET  <file_set>... TARGET <target>   |
+                SOURCE    <source>...
                           [DIRECTORY <dirs> ...]
-                          [TARGET_DIRECTORY <targets> ...] |
-                INSTALL   [<file1> ...]     |
-                TEST      [<test1> ...]
-                          [DIRECTORY <dir>] |
-                CACHE     [<entry1> ...]    >
+                          [TARGET_DIRECTORY <targets>...] |
+                INSTALL   <file>...                       |
+                TEST      <test>...
+                          [DIRECTORY <dir>]               |
+                CACHE     <entry>...}
                [APPEND] [APPEND_STRING]
-               PROPERTY <name> [<value1> ...])
+               PROPERTY <name> [<value>...])
 
 Sets one property on zero or more objects of a scope.
 
@@ -40,6 +41,16 @@ It must be one of the following:
   See also the :command:`set_target_properties` command.
 
   :ref:`Alias Targets` do not support setting target properties.
+
+``FILE_SET``
+  .. versionadded:: 4.3
+
+  Scope may name zero or more existing file sets.
+
+  The following option is required:
+
+  ``TARGET <target>``
+    The target to which the file set is attached.
 
 ``SOURCE``
   Scope may name zero or more source files.  By default, source file properties

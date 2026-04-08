@@ -87,7 +87,7 @@ void cmExtraSublimeTextGenerator::CreateProjectFile(
   std::string projectName = lgs[0]->GetProjectName();
 
   std::string const filename =
-    outputDir + "/" + projectName + ".sublime-project";
+    cmStrCat(outputDir, '/', projectName, ".sublime-project");
 
   this->CreateNewProjectFile(lgs, filename);
 }
@@ -318,14 +318,12 @@ std::string cmExtraSublimeTextGenerator::BuildMakeCommand(
   std::string generator = this->GlobalGenerator->GetName();
   if (generator == "NMake Makefiles") {
     std::string makefileName = cmSystemTools::ConvertToOutputPath(makefile);
-    command += R"(, "/NOLOGO", "/f", ")";
-    command += makefileName + "\"";
-    command += ", \"" + target + "\"";
+    command = cmStrCat(std::move(command), R"(, "/NOLOGO", "/f", ")",
+                       std::move(makefileName), "\", \"", target, '"');
   } else if (generator == "Ninja") {
     std::string makefileName = cmSystemTools::ConvertToOutputPath(makefile);
-    command += R"(, "-f", ")";
-    command += makefileName + "\"";
-    command += ", \"" + target + "\"";
+    command = cmStrCat(std::move(command), R"(, "-f", ")",
+                       std::move(makefileName), "\", \"", target, '"');
   } else {
     std::string makefileName;
     if (generator == "MinGW Makefiles") {
@@ -335,9 +333,8 @@ std::string cmExtraSublimeTextGenerator::BuildMakeCommand(
     } else {
       makefileName = cmSystemTools::ConvertToOutputPath(makefile);
     }
-    command += R"(, "-f", ")";
-    command += makefileName + "\"";
-    command += ", \"" + target + "\"";
+    command = cmStrCat(std::move(command), R"(, "-f", ")",
+                       std::move(makefileName), "\", \"", target, '"');
   }
   return command;
 }
@@ -456,7 +453,8 @@ bool cmExtraSublimeTextGenerator::Open(std::string const& bindir,
     return false;
   }
 
-  std::string filename = bindir + "/" + projectName + ".sublime-project";
+  std::string filename =
+    cmStrCat(bindir, '/', projectName, ".sublime-project");
   if (dryRun) {
     return cmSystemTools::FileExists(filename, true);
   }

@@ -7,7 +7,7 @@
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci ext/$CI_CONCURRENT_ID"
         # TODO: Factor this out so that each job selects the Xcode version to
         # use so that different versions can be tested in a single pipeline.
-        DEVELOPER_DIR: "/Applications/Xcode-26.2.app/Contents/Developer"
+        DEVELOPER_DIR: "/Applications/Xcode-26.3.app/Contents/Developer"
 
 ### Build and test
 
@@ -77,6 +77,11 @@
         CTEST_NO_WARNINGS_ALLOWED: 1
         CMAKE_CI_NO_INSTALL: 1
 
+.macos_sign:
+    variables:
+        GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci"
+        CMAKE_CONFIGURATION: macos_sign
+
 ### External testing
 
 .macos_x86_64_xcode:
@@ -85,7 +90,7 @@
     variables:
         CMAKE_CONFIGURATION: macos_x86_64_xcode
         CMAKE_GENERATOR: Xcode
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .macos_arm64_xcode:
     extends: .macos
@@ -93,7 +98,7 @@
     variables:
         CMAKE_CONFIGURATION: macos_arm64_xcode
         CMAKE_GENERATOR: Xcode
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .macos_arm64_xcode_symlinked:
     extends: .macos
@@ -101,7 +106,7 @@
     variables:
         CMAKE_CONFIGURATION: macos_arm64_xcode_symlinked
         CMAKE_GENERATOR: Xcode
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
         CMAKE_CI_IN_SYMLINK_TREE: 1
         CMAKE_CI_BUILD_DIR: "real_work/work/build"
 
@@ -111,7 +116,7 @@
     variables:
         CMAKE_CONFIGURATION: macos_arm64_xcode_ub
         CMAKE_GENERATOR: Xcode
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .macos_arm64_ninja_multi:
     extends: .macos
@@ -119,14 +124,14 @@
     variables:
         CMAKE_CONFIGURATION: macos_arm64_ninja_multi
         CMAKE_GENERATOR: "Ninja Multi-Config"
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .macos_x86_64_ninja_ub:
     extends: .macos
 
     variables:
         CMAKE_CONFIGURATION: macos_x86_64_ninja_ub
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 .macos_arm64_fastbuild:
     extends: .macos
@@ -134,7 +139,7 @@
     variables:
         CMAKE_CONFIGURATION: macos_arm64_fastbuild
         CMAKE_GENERATOR: FASTBuild
-        CMAKE_CI_NIGHTLY_IGNORE_DEPS: "true"
+        CMAKE_CI_JOB_NIGHTLY_IGNORE_DEPS: "true"
 
 ## Tags
 
@@ -143,7 +148,7 @@
         - cmake # Since this is a bare runner, pin to a project.
         - macos-x86_64
         - shell
-        - xcode-26.2
+        - xcode-26.3
         - nonconcurrent
 
 .macos_x86_64_tags_ext:
@@ -151,7 +156,7 @@
         - cmake # Since this is a bare runner, pin to a project.
         - macos-x86_64
         - shell
-        - xcode-26.2
+        - xcode-26.3
         - concurrent
 
 .macos_arm64_tags:
@@ -159,7 +164,7 @@
         - cmake # Since this is a bare runner, pin to a project.
         - macos-arm64
         - shell
-        - xcode-26.2
+        - xcode-26.3
         - nonconcurrent
 
 .macos_arm64_tags_ext:
@@ -167,7 +172,7 @@
         - cmake # Since this is a bare runner, pin to a project.
         - macos-arm64
         - shell
-        - xcode-26.2
+        - xcode-26.3
         - concurrent
 
 .macos_arm64_tags_package:
@@ -175,9 +180,16 @@
         - cmake # Since this is a bare runner, pin to a project.
         - macos-arm64
         - shell
-        - xcode-26.2
+        - xcode-26.3
         - nonconcurrent
         - finder
+
+.macos_sign_tags:
+    tags:
+        - cmake # Since this is a bare runner, pin to a project.
+        - shell
+        - sign-macos-v1
+        - nonconcurrent
 
 ## macOS-specific scripts
 
@@ -229,4 +241,13 @@
         - "$LAUNCHER build/install/CMake.app/Contents/bin/ctest --output-on-failure -V -S .gitlab/ci/ctest_standalone.cmake"
         - sccache --show-stats
 
+    interruptible: true
+
+.cmake_sign_macos:
+    stage: package
+    environment:
+        name: sign-macos
+    script:
+        - source .gitlab/ci/env.sh
+        - source .gitlab/ci/package_macos_sign.sh
     interruptible: true

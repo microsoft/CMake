@@ -40,20 +40,22 @@ public:
   using Superclass = cmsys::SystemTools;
   using Encoding = cmProcessOutput::Encoding;
 
-  /**
-   * Return a lower case string
-   */
-  static std::string LowerCase(cm::string_view);
+  /** Return a lower-case string.  */
+  static std::string LowerCase(cm::string_view s)
+  {
+    return cmsys::SystemTools::LowerCase(std::string(s));
+  }
   static std::string LowerCase(char const* s)
   {
     return LowerCase(cm::string_view{ s });
   }
   using cmsys::SystemTools::LowerCase;
 
-  /**
-   * Return an upper case string
-   */
-  static std::string UpperCase(cm::string_view);
+  /** Return an upper-case string.  */
+  static std::string UpperCase(cm::string_view s)
+  {
+    return cmsys::SystemTools::UpperCase(std::string(s));
+  }
   static std::string UpperCase(char const* s)
   {
     return UpperCase(cm::string_view{ s });
@@ -204,15 +206,6 @@ public:
                                    std::string const& newname, CopyWhen when,
                                    CopyInputRecent inputRecent,
                                    std::string* err = nullptr);
-
-  /** Copy a file if it is newer than the destination. */
-  static bool CopyFileIfNewer(std::string const& source,
-                              std::string const& destination);
-
-  /** Copy directory contents with specified copy behavior. */
-  static bool CopyADirectory(std::string const& source,
-                             std::string const& destination,
-                             CopyWhen when = CopyWhen::Always);
 
   enum class Replace
   {
@@ -383,13 +376,11 @@ public:
     None,
     STDOUT,
     STDERR,
-    Timeout,
   };
 
   /** a general output handler for libuv  */
   static WaitForLineResult WaitForLine(uv_loop_t* loop, uv_stream_t* outPipe,
                                        uv_stream_t* errPipe, std::string& line,
-                                       cmDuration timeout,
                                        std::vector<char>& out,
                                        std::vector<char>& err);
 
@@ -556,8 +547,11 @@ public:
   {
     TarCompressGZip,
     TarCompressBZip2,
+    TarCompressLZMA,
     TarCompressXZ,
     TarCompressZstd,
+    TarCompressPPMd,
+    TarCompressAuto,
     TarCompressNone
   };
 
@@ -567,16 +561,16 @@ public:
     No
   };
 
-  static bool ListTar(std::string const& outFileName,
+  static bool ListTar(std::string const& arFileName,
                       std::vector<std::string> const& files, bool verbose);
-  static bool CreateTar(std::string const& outFileName,
+  static bool CreateTar(std::string const& arFileName,
                         std::vector<std::string> const& files,
                         std::string const& workingDirectory,
                         cmTarCompression compressType, bool verbose,
                         std::string const& mtime = std::string(),
                         std::string const& format = std::string(),
-                        int compressionLevel = 0);
-  static bool ExtractTar(std::string const& inFileName,
+                        int compressionLevel = 0, int numThreads = 1);
+  static bool ExtractTar(std::string const& arFileName,
                          std::vector<std::string> const& files,
                          cmTarExtractTimestamps extractTimestamps,
                          bool verbose);
@@ -644,7 +638,7 @@ public:
   static bool CheckRPath(std::string const& file, std::string const& newRPath);
 
   /** Remove a directory; repeat a few times in case of locked files.  */
-  static bool RepeatedRemoveDirectory(std::string const& dir);
+  static cmsys::Status RepeatedRemoveDirectory(std::string const& dir);
 
   /** Encode a string as a URL.  */
   static std::string EncodeURL(std::string const& in,
@@ -712,6 +706,16 @@ public:
 
   /** Get the system path separator character */
   static char GetSystemPathlistSeparator();
+
+  /** Return subview of the full filename (i.e. file name without path) */
+  static cm::string_view GetFilenameNameView(cm::string_view filename);
+
+  /**
+   * Return subview of file extension of a full filename (dot included).
+   * Warning: this is the shortest extension (for example: .gz of .tar.gz)
+   */
+  static cm::string_view GetFilenameLastExtensionView(
+    cm::string_view filename);
 
 private:
   static bool s_ForceUnixPaths;

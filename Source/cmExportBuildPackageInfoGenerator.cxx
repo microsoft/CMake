@@ -32,7 +32,7 @@ bool cmExportBuildPackageInfoGenerator::GenerateMainFile(std::ostream& os)
     return false;
   }
 
-  if (!this->CheckDefaultTargets()) {
+  if (!this->CheckPackage()) {
     return false;
   }
 
@@ -114,6 +114,9 @@ void cmExportBuildPackageInfoGenerator::GenerateInterfacePropertiesConfig(
 
   Json::Value component =
     this->GenerateInterfaceConfigProperties(suffix, properties);
+
+  this->GenerateCxxModules(component, target, this->FileDir, config);
+
   if (!component.empty()) {
     configurations[config.empty() ? std::string{ "noconfig" } : config] =
       std::move(component);
@@ -122,7 +125,5 @@ void cmExportBuildPackageInfoGenerator::GenerateInterfacePropertiesConfig(
 
 std::string cmExportBuildPackageInfoGenerator::GetCxxModulesDirectory() const
 {
-  // TODO: Implement a not-CMake-specific mechanism for providing module
-  // information.
-  return {};
+  return this->CxxModulesDirectory;
 }

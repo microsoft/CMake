@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <climits>
 #include <cstring>
 #include <functional>
@@ -20,6 +19,9 @@
 
 #include <cm3p/uv.h>
 
+#include "cmsys/String.h"
+
+#include "cmBuildArgs.h"
 #include "cmBuildOptions.h"
 #include "cmCommandLineArgument.h"
 #include "cmDocumentationEntry.h"
@@ -221,9 +223,7 @@ int do_cmake(int ac, char const* const* av)
   doc.addCMakeStandardDocSections();
   if (doc.CheckOptions(ac, av, "--")) {
     // Construct and print requested documentation.
-    cmake hcm(cmake::RoleInternal, cmState::Help);
-    hcm.SetHomeDirectory("");
-    hcm.SetHomeOutputDirectory("");
+    cmake hcm(cmState::Role::Help);
     hcm.AddCMakePaths();
 
     // the command line args are processed here so that you can do
@@ -262,7 +262,7 @@ int do_cmake(int ac, char const* const* av)
   // (Regex) Filter on the cached variable(s) to print.
   std::string filter_var_name;
   bool view_only = false;
-  cmake::WorkingMode workingMode = cmake::NORMAL_MODE;
+  cmState::Role role = cmState::Role::Project;
   std::vector<std::string> parsedArgs;
 
   using CommandArgument =
@@ -308,20 +308,20 @@ int do_cmake(int ac, char const* const* av)
                      CommandArgument::Values::One,
                      CommandArgument::RequiresSeparator::No,
                      [&](std::string const& value) -> bool {
-                       workingMode = cmake::SCRIPT_MODE;
+                       role = cmState::Role::Script;
                        parsedArgs.emplace_back("-P");
                        parsedArgs.push_back(value);
                        return true;
                      } },
     CommandArgument{ "--find-package", CommandArgument::Values::Zero,
                      [&](std::string const&) -> bool {
-                       workingMode = cmake::FIND_PACKAGE_MODE;
+                       role = cmState::Role::FindPackage;
                        parsedArgs.emplace_back("--find-package");
                        return true;
                      } },
     CommandArgument{ "--list-presets", CommandArgument::Values::ZeroOrOne,
                      [&](std::string const& value) -> bool {
-                       workingMode = cmake::HELP_MODE;
+                       role = cmState::Role::Help;
                        parsedArgs.emplace_back("--list-presets");
                        parsedArgs.emplace_back(value);
                        return true;
@@ -338,7 +338,7 @@ int do_cmake(int ac, char const* const* av)
 
     // Only in script mode do we stop parsing instead
     // of preferring the last mode flag provided
-    if (arg == "--" && workingMode == cmake::SCRIPT_MODE) {
+    if (arg == "--" && role == cmState::Role::Script) {
       parsedArgs = inputArgs;
       break;
     }
@@ -361,33 +361,11 @@ int do_cmake(int ac, char const* const* av)
   }
 
   if (sysinfo) {
-    cmake cm(cmake::RoleProject, cmState::Project);
-    cm.SetHomeDirectory("");
-    cm.SetHomeOutputDirectory("");
+    cmake cm(cmState::Role::Project);
     int ret = cm.GetSystemInformation(parsedArgs);
     return ret;
   }
-  cmake::Role const role =
-    workingMode == cmake::SCRIPT_MODE ? cmake::RoleScript : cmake::RoleProject;
-  cmState::Mode mode = cmState::Unknown;
-  switch (workingMode) {
-    case cmake::NORMAL_MODE:
-    case cmake::HELP_MODE:
-      mode = cmState::Project;
-      break;
-    case cmake::SCRIPT_MODE:
-      mode = cmState::Script;
-      break;
-    case cmake::FIND_PACKAGE_MODE:
-      mode = cmState::FindPackage;
-      break;
-  }
-  auto const failurePolicy = workingMode == cmake::NORMAL_MODE
-    ? cmake::CommandFailureAction::EXIT_CODE
-    : cmake::CommandFailureAction::FATAL_ERROR;
-  cmake cm(role, mode);
-  cm.SetHomeDirectory("");
-  cm.SetHomeOutputDirectory("");
+  cmake cm(role);
   cmSystemTools::SetMessageCallback(
     [&cm](std::string const& msg, cmMessageMetadata const& md) {
       cmakemainMessageCallback(msg, md, &cm);
@@ -395,7 +373,6 @@ int do_cmake(int ac, char const* const* av)
   cm.SetProgressCallback([&cm](std::string const& msg, float prog) {
     cmakemainProgressCallback(msg, prog, &cm);
   });
-  cm.SetWorkingMode(workingMode, failurePolicy);
 
   int res = cm.Run(parsedArgs, view_only);
   if (list_cached || list_all_cached) {
@@ -452,7 +429,7 @@ int do_cmake(int ac, char const* const* av)
 int extract_job_number(std::string const& command,
                        std::string const& jobString)
 {
-  int jobs = -1;
+  int jobs = cmake::NO_BUILD_PARALLEL_LEVEL;
   unsigned long numJobs = 0;
   if (jobString.empty()) {
     jobs = cmake::DEFAULT_BUILD_PARALLEL_LEVEL;
@@ -490,23 +467,22 @@ int do_build(int ac, char const* const* av)
   std::cerr << "This cmake does not support --build\n";
   return -1;
 #else
-  int jobs = cmake::NO_BUILD_PARALLEL_LEVEL;
+  cmBuildArgs buildArgs;
   std::vector<std::string> targets;
-  std::string config;
-  std::string dir;
   std::vector<std::string> nativeOptions;
   bool nativeOptionsPassed = false;
   bool cleanFirst = false;
   bool foundClean = false;
   bool foundNonClean = false;
   PackageResolveMode resolveMode = PackageResolveMode::Default;
-  bool verbose = cmSystemTools::HasEnv("VERBOSE");
+  buildArgs.verbose = cmSystemTools::HasEnv("VERBOSE");
   std::string presetName;
   bool listPresets = false;
 
-  auto jLambda = extract_job_number_lambda_builder(dir, jobs, "-j");
-  auto parallelLambda =
-    extract_job_number_lambda_builder(dir, jobs, "--parallel");
+  auto jLambda = extract_job_number_lambda_builder(buildArgs.binaryDir,
+                                                   buildArgs.jobs, "-j");
+  auto parallelLambda = extract_job_number_lambda_builder(
+    buildArgs.binaryDir, buildArgs.jobs, "--parallel");
 
   auto targetLambda = [&](std::string const& value) -> bool {
     if (!value.empty()) {
@@ -525,8 +501,7 @@ int do_build(int ac, char const* const* av)
   };
   auto resolvePackagesLambda = [&](std::string const& value) -> bool {
     std::string v = value;
-    std::transform(v.begin(), v.end(), v.begin(), ::tolower);
-
+    std::transform(v.begin(), v.end(), v.begin(), cmsysString_tolower);
     if (v == "on") {
       resolveMode = PackageResolveMode::Force;
     } else if (v == "only") {
@@ -540,7 +515,7 @@ int do_build(int ac, char const* const* av)
     return true;
   };
   auto verboseLambda = [&](std::string const&) -> bool {
-    verbose = true;
+    buildArgs.verbose = true;
     return true;
   };
 
@@ -560,7 +535,7 @@ int do_build(int ac, char const* const* av)
     CommandArgument{ "--target", CommandArgument::Values::OneOrMore,
                      targetLambda },
     CommandArgument{ "--config", CommandArgument::Values::One,
-                     CommandArgument::setToValue(config) },
+                     CommandArgument::setToValue(buildArgs.config) },
     CommandArgument{ "--clean-first", CommandArgument::Values::Zero,
                      CommandArgument::setToTrue(cleanFirst) },
     CommandArgument{ "--resolve-package-references",
@@ -595,12 +570,12 @@ int do_build(int ac, char const* const* av)
         }
       }
       if (!matched && i == 0) {
-        dir = cmSystemTools::ToNormalizedPathOnDisk(arg);
+        buildArgs.binaryDir = cmSystemTools::ToNormalizedPathOnDisk(arg);
         matched = true;
         parsed = true;
       }
       if (!(matched && parsed)) {
-        dir.clear();
+        buildArgs.binaryDir.clear();
         if (!matched) {
           std::cerr << "Unknown argument " << arg << std::endl;
         }
@@ -617,38 +592,38 @@ int do_build(int ac, char const* const* av)
     std::cerr << "Error: Building 'clean' and other targets together "
                  "is not supported."
               << std::endl;
-    dir.clear();
+    buildArgs.binaryDir.clear();
   }
 
-  if (jobs == cmake::NO_BUILD_PARALLEL_LEVEL) {
+  if (buildArgs.jobs == cmake::NO_BUILD_PARALLEL_LEVEL) {
     std::string parallel;
     if (cmSystemTools::GetEnv("CMAKE_BUILD_PARALLEL_LEVEL", parallel)) {
       if (parallel.empty()) {
-        jobs = cmake::DEFAULT_BUILD_PARALLEL_LEVEL;
+        buildArgs.jobs = cmake::DEFAULT_BUILD_PARALLEL_LEVEL;
       } else {
         unsigned long numJobs = 0;
         if (cmStrToULong(parallel, &numJobs)) {
           if (numJobs == 0) {
             std::cerr << "The CMAKE_BUILD_PARALLEL_LEVEL environment variable "
                          "requires a positive integer argument.\n\n";
-            dir.clear();
+            buildArgs.binaryDir.clear();
           } else if (numJobs > INT_MAX) {
             std::cerr << "The CMAKE_BUILD_PARALLEL_LEVEL environment variable "
                          "is too large.\n\n";
-            dir.clear();
+            buildArgs.binaryDir.clear();
           } else {
-            jobs = static_cast<int>(numJobs);
+            buildArgs.jobs = static_cast<int>(numJobs);
           }
         } else {
           std::cerr << "'CMAKE_BUILD_PARALLEL_LEVEL' environment variable\n"
                     << "invalid number '" << parallel << "' given.\n\n";
-          dir.clear();
+          buildArgs.binaryDir.clear();
         }
       }
     }
   }
 
-  if (dir.empty() && presetName.empty() && !listPresets) {
+  if (buildArgs.binaryDir.empty() && presetName.empty() && !listPresets) {
     /* clang-format off */
     std::cerr <<
       "Usage: cmake --build <dir>            "
@@ -685,7 +660,7 @@ int do_build(int ac, char const* const* av)
     return 1;
   }
 
-  cmake cm(cmake::RoleInternal, cmState::Project);
+  cmake cm(cmState::Role::Internal);
   cmSystemTools::SetMessageCallback(
     [&cm](std::string const& msg, cmMessageMetadata const& md) {
       cmakemainMessageCallback(msg, md, &cm);
@@ -697,9 +672,8 @@ int do_build(int ac, char const* const* av)
   cmBuildOptions buildOptions(cleanFirst, false, resolveMode);
   std::vector<std::string> cmd;
   cm::append(cmd, av, av + ac);
-  return cm.Build(jobs, dir, std::move(targets), std::move(config),
-                  std::move(nativeOptions), buildOptions, verbose, presetName,
-                  listPresets, cmd);
+  return cm.Build(buildArgs, std::move(targets), std::move(nativeOptions),
+                  buildOptions, presetName, listPresets, cmd);
 #endif
 }
 
@@ -967,7 +941,7 @@ int do_install(int ac, char const* const* av)
     } else {
       for (auto const& script : handler.GetScripts()) {
         std::vector<std::string> cmd = script.command;
-        cmake cm(cmake::RoleScript, cmState::Script);
+        cmake cm(cmState::Role::Script);
         cmSystemTools::SetMessageCallback(
           [&cm](std::string const& msg, cmMessageMetadata const& md) {
             cmakemainMessageCallback(msg, md, &cm);
@@ -975,11 +949,7 @@ int do_install(int ac, char const* const* av)
         cm.SetProgressCallback([&cm](std::string const& msg, float prog) {
           cmakemainProgressCallback(msg, prog, &cm);
         });
-        cm.SetHomeDirectory("");
-        cm.SetHomeOutputDirectory("");
         cm.SetDebugOutputOn(verbose);
-        cm.SetWorkingMode(cmake::SCRIPT_MODE,
-                          cmake::CommandFailureAction::FATAL_ERROR);
         ret_ = int(bool(cm.Run(cmd)));
       }
     }
@@ -1072,7 +1042,7 @@ int do_workflow(int ac, char const* const* av)
     return 1;
   }
 
-  cmake cm(cmake::RoleInternal, cmState::Project);
+  cmake cm(cmState::Role::Internal);
   cmSystemTools::SetMessageCallback(
     [&cm](std::string const& msg, cmMessageMetadata const& md) {
       cmakemainMessageCallback(msg, md, &cm);
@@ -1116,7 +1086,7 @@ int do_open(int ac, char const* const* av)
     return 1;
   }
 
-  cmake cm(cmake::RoleInternal, cmState::Unknown);
+  cmake cm(cmState::Role::Internal);
   cmSystemTools::SetMessageCallback(
     [&cm](std::string const& msg, cmMessageMetadata const& md) {
       cmakemainMessageCallback(msg, md, &cm);

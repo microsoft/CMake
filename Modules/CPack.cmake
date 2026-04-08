@@ -338,6 +338,24 @@ installers.  The most commonly-used variables are:
 
   Other compression methods ignore this value and use only one thread.
 
+.. variable:: CPACK_COMPRESSION_LEVEL
+
+  .. versionadded:: 4.3
+
+  Select the compression level to use when it's applicable,
+  such as compressing the installer package.
+
+  Some compression methods used by CPack generators such as Debian or Archive
+  may take advantage of different compression levels. The accepted values
+  are in the range ``0`` to ``9``. If you select the ``zstd`` compression method,
+  you can select the compression level between ``0`` and ``19``, except the ``zip``
+  archive format.
+
+  By default ``CPACK_COMPRESSION_LEVEL`` is set to ``0``, which selects the default
+  compression level. It is selected automatically by the archive library backend and
+  not directly set by CMake itself. The default compression level
+  may vary between archive formats, platforms, etc.
+
 Variables for Source Package Generators
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -554,16 +572,15 @@ endmacro()
 function(cpack_encode_variables)
   set(commands "")
   get_cmake_property(res VARIABLES)
-  foreach(var ${res})
-    if(var MATCHES "^CPACK")
-      if(CPACK_VERBATIM_VARIABLES)
-        _cpack_escape_for_cmake(value "${${var}}")
-      else()
-        set(value "${${var}}")
-      endif()
-
-      string(APPEND commands "\nset(${var} \"${value}\")")
+  list(FILTER res INCLUDE REGEX "^CPACK")
+  foreach(var IN LISTS res)
+    if(CPACK_VERBATIM_VARIABLES)
+      _cpack_escape_for_cmake(value "${${var}}")
+    else()
+      set(value "${${var}}")
     endif()
+
+    string(APPEND commands "\nset(${var} \"${value}\")")
   endforeach()
 
   set(_CPACK_OTHER_VARIABLES_ "${commands}" PARENT_SCOPE)
@@ -935,6 +952,24 @@ elseif(APPLE AND CPACK_BINARY_PRODUCTBUILD AND
   unset(_CMP0161_warning)
 endif()
 unset(_CPack_CMP0161)
+
+# Archive specific variables
+if(NOT DEFINED CPACK_ARCHIVE_UID AND NOT DEFINED CPACK_ARCHIVE_GID)
+  cmake_policy(GET CMP0206 _CPack_CMP0206)
+  if(NOT "x${_CPack_CMP0206}x" STREQUAL "xNEWx")
+    if(NOT "x${_CPack_CMP0206}x" STREQUAL "xOLDx" AND CMAKE_POLICY_WARNING_CMP0206)
+      cmake_policy(GET_WARNING CMP0206 _CMP0206_warning)
+      message(AUTHOR_WARNING
+        "${_CMP0206_warning}\n"
+        "For compatibility, CMake will set archive UID/GID to -1/-1."
+        )
+      unset(_CMP0206_warning)
+    endif()
+    _cpack_set_default(CPACK_ARCHIVE_UID "-1")
+    _cpack_set_default(CPACK_ARCHIVE_GID "-1")
+  endif()
+  unset(_CPack_CMP0206)
+endif()
 
 # set sysroot so SDK tools can be used
 if(CMAKE_OSX_SYSROOT)

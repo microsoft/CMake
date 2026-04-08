@@ -368,7 +368,7 @@ void cmRuntimeDependencyArchive::AddResolvedPath(
       break;
     }
   }
-  it->second.insert(path);
+  it->second.emplace(path);
   this->RPaths[path] = std::move(rpaths);
 }
 

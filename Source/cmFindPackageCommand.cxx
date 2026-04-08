@@ -27,7 +27,6 @@
 #include "cmConfigureLog.h"
 #include "cmDependencyProvider.h"
 #include "cmExecutionStatus.h"
-#include "cmExperimental.h"
 #include "cmFindPackageStack.h"
 #include "cmList.h"
 #include "cmListFileCache.h"
@@ -86,7 +85,7 @@ std::size_t collectPathsForDebug(std::string& buffer,
     return 0;
   }
   for (auto i = startIndex; i < paths.size(); i++) {
-    buffer += "  " + paths[i].Path + "\n";
+    buffer += cmStrCat("  ", paths[i].Path, '\n');
   }
   return paths.size();
 }
@@ -881,7 +880,7 @@ bool cmFindPackageCommand::InitialPass(std::vector<std::string> const& args)
       this->AddPathSuffix(args[i]);
     } else if (doing == DoingConfigs) {
       if (args[i].find_first_of(":/\\") != std::string::npos ||
-          cmSystemTools::GetFilenameLastExtension(args[i]) != ".cmake") {
+          !cmHasSuffix(args[i], ".cmake"_s)) {
         this->SetError(cmStrCat(
           "given CONFIGS option followed by invalid file name \"", args[i],
           "\".  The names given must be file names without "
@@ -926,9 +925,7 @@ bool cmFindPackageCommand::InitialPass(std::vector<std::string> const& args)
   // Check and eliminate search modes not allowed by the args provided
   this->UseFindModules = configArgs.empty();
   this->UseConfigFiles = moduleArgs.empty();
-  if (this->UseConfigFiles &&
-      cmExperimental::HasSupportEnabled(
-        *this->Makefile, cmExperimental::Feature::ImportPackageInfo)) {
+  if (this->UseConfigFiles) {
     this->UseCpsFiles = this->Configs.empty();
   } else {
     this->UseCpsFiles = false;
@@ -1671,6 +1668,12 @@ bool cmFindPackageCommand::HandlePackageMode(
         "fileFound is true but FileFound is empty!");
       fileFound = false;
     }
+
+    if (fileFound) {
+      this->CurrentPackageInfo->Directory =
+        cmSystemTools::GetFilenamePath(this->FileFound);
+      this->CurrentPackageInfo->Version = this->VersionFound;
+    }
   }
 
   std::string const foundVar = cmStrCat(this->Name, "_FOUND");
@@ -1975,8 +1978,6 @@ bool cmFindPackageCommand::FindConfig()
   std::string init;
   if (found) {
     init = cmSystemTools::GetFilenamePath(this->FileFound);
-    this->CurrentPackageInfo->Directory = init;
-    this->CurrentPackageInfo->Version = this->VersionFound;
   } else {
     init = this->Variable + "-NOTFOUND";
   }
@@ -2238,7 +2239,7 @@ bool cmFindPackageCommand::ImportPackageTargets(cmPackageState& packageState,
   }
 
   // Import base file.
-  if (!reader.ImportTargets(this->Makefile, this->Status)) {
+  if (!reader.ImportTargets(this->Makefile, this->Status, this->GlobalScope)) {
     return false;
   }
 

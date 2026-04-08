@@ -25,6 +25,7 @@
 #include KWSYS_HEADER(FStream.hxx)
 #include KWSYS_HEADER(Encoding.h)
 #include KWSYS_HEADER(Encoding.hxx)
+#include KWSYS_HEADER(String.h)
 
 #include <algorithm>
 #include <fstream>
@@ -43,9 +44,11 @@
 // duplicate the above list of headers.
 #if 0
 #  include "Directory.hxx.in"
+#  include "Encoding.h.in"
 #  include "Encoding.hxx.in"
 #  include "FStream.hxx.in"
 #  include "RegularExpression.hxx.in"
+#  include "String.h.in"
 #  include "SystemTools.hxx.in"
 #endif
 
@@ -57,7 +60,6 @@
 #  pragma set woff 1375 /* base class destructor not virtual */
 #endif
 
-#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -320,7 +322,7 @@ inline char const* Getcwd(char* buf, unsigned int len)
     if (nlen < len) {
       // make sure the drive letter is capital
       if (nlen > 1 && buf[1] == ':') {
-        buf[0] = toupper(buf[0]);
+        buf[0] = kwsysString_toupper(buf[0]);
       }
       return buf;
     }
@@ -552,7 +554,7 @@ std::string SystemToolsStatic::GetCasePathName(std::string const& pathIn)
   casePath = path_components[idx++];
   // make sure drive letter is always upper case
   if (casePath.size() > 1 && casePath[1] == ':') {
-    casePath[0] = toupper(casePath[0]);
+    casePath[0] = kwsysString_toupper(casePath[0]);
   }
   char const* sep = "";
 
@@ -1656,9 +1658,9 @@ std::string SystemTools::Capitalized(std::string const& s)
     return n;
   }
   n.resize(s.size());
-  n[0] = static_cast<std::string::value_type>(toupper(s[0]));
+  n[0] = static_cast<std::string::value_type>(kwsysString_toupper(s[0]));
   for (size_t i = 1; i < s.size(); i++) {
-    n[i] = static_cast<std::string::value_type>(tolower(s[i]));
+    n[i] = static_cast<std::string::value_type>(kwsysString_tolower(s[i]));
   }
   return n;
 }
@@ -1668,16 +1670,9 @@ std::string SystemTools::CapitalizedWords(std::string const& s)
 {
   std::string n(s);
   for (size_t i = 0; i < s.size(); i++) {
-#if defined(_MSC_VER) && defined(_MT) && defined(_DEBUG)
-    // MS has an assert that will fail if s[i] < 0; setting
-    // LC_CTYPE using setlocale() does *not* help. Painful.
-    if ((int)s[i] >= 0 && isalpha(s[i]) &&
-        (i == 0 || ((int)s[i - 1] >= 0 && isspace(s[i - 1]))))
-#else
-    if (isalpha(s[i]) && (i == 0 || isspace(s[i - 1])))
-#endif
-    {
-      n[i] = static_cast<std::string::value_type>(toupper(s[i]));
+    if (kwsysString_isalpha(s[i]) &&
+        (i == 0 || kwsysString_isspace(s[i - 1]))) {
+      n[i] = static_cast<std::string::value_type>(kwsysString_toupper(s[i]));
     }
   }
   return n;
@@ -1688,16 +1683,9 @@ std::string SystemTools::UnCapitalizedWords(std::string const& s)
 {
   std::string n(s);
   for (size_t i = 0; i < s.size(); i++) {
-#if defined(_MSC_VER) && defined(_MT) && defined(_DEBUG)
-    // MS has an assert that will fail if s[i] < 0; setting
-    // LC_CTYPE using setlocale() does *not* help. Painful.
-    if ((int)s[i] >= 0 && isalpha(s[i]) &&
-        (i == 0 || ((int)s[i - 1] >= 0 && isspace(s[i - 1]))))
-#else
-    if (isalpha(s[i]) && (i == 0 || isspace(s[i - 1])))
-#endif
-    {
-      n[i] = static_cast<std::string::value_type>(tolower(s[i]));
+    if (kwsysString_isalpha(s[i]) &&
+        (i == 0 || kwsysString_isspace(s[i - 1]))) {
+      n[i] = static_cast<std::string::value_type>(kwsysString_tolower(s[i]));
     }
   }
   return n;
@@ -1711,7 +1699,8 @@ std::string SystemTools::AddSpaceBetweenCapitalizedWords(std::string const& s)
     n.reserve(s.size());
     n += s[0];
     for (size_t i = 1; i < s.size(); i++) {
-      if (isupper(s[i]) && !isspace(s[i - 1]) && !isupper(s[i - 1])) {
+      if (kwsysString_isupper(s[i]) && !kwsysString_isspace(s[i - 1]) &&
+          !kwsysString_isupper(s[i - 1])) {
         n += ' ';
       }
       n += s[i];
@@ -1762,26 +1751,16 @@ char* SystemTools::AppendStrings(char const* str1, char const* str2,
   return newstr;
 }
 
-// Return a lower case string
-std::string SystemTools::LowerCase(std::string const& s)
+std::string SystemTools::LowerCase(std::string s)
 {
-  std::string n;
-  n.resize(s.size());
-  for (size_t i = 0; i < s.size(); i++) {
-    n[i] = static_cast<std::string::value_type>(tolower(s[i]));
-  }
-  return n;
+  std::transform(s.begin(), s.end(), s.begin(), kwsysString_tolower);
+  return s;
 }
 
-// Return a lower case string
-std::string SystemTools::UpperCase(std::string const& s)
+std::string SystemTools::UpperCase(std::string s)
 {
-  std::string n;
-  n.resize(s.size());
-  for (size_t i = 0; i < s.size(); i++) {
-    n[i] = static_cast<std::string::value_type>(toupper(s[i]));
-  }
-  return n;
+  std::transform(s.begin(), s.end(), s.begin(), kwsysString_toupper);
+  return s;
 }
 
 // Count char in string
@@ -2005,7 +1984,7 @@ int SystemTools::EstimateFormatLength(char const* format, va_list ap)
     if (*cur++ == '%') {
       // Skip "%%" since it doesn't correspond to a va_arg.
       if (*cur != '%') {
-        while (!int(isalpha(*cur))) {
+        while (!kwsysString_isalpha(*cur)) {
           ++cur;
         }
         switch (*cur) {
@@ -2273,7 +2252,7 @@ SystemTools::CopyStatus SystemTools::CopyFileIfNewer(
   // source and destination are files so do a copy if source is newer
   // Check if source file exists first
   if (!SystemTools::FileExists(source)) {
-    return CopyStatus{ Status::POSIX_errno(), CopyStatus::SourcePath };
+    return CopyStatus{ Status::POSIX(ENOENT), CopyStatus::SourcePath };
   }
   // If destination doesn't exist, always copy
   if (!SystemTools::FileExists(destination)) {
@@ -2743,8 +2722,8 @@ int SystemTools::Strucmp(char const* l, char const* r)
   int lc;
   int rc;
   do {
-    lc = tolower(*l++);
-    rc = tolower(*r++);
+    lc = kwsysString_tolower(*l++);
+    rc = kwsysString_tolower(*r++);
   } while (lc == rc && lc);
   return lc - rc;
 }
@@ -4115,12 +4094,33 @@ Status SystemTools::GetShortPath(std::string const& path,
 #endif
 }
 
+std::tm SystemTools::LocalTime(std::time_t timep)
+{
+  std::tm out;
+#if defined(_WIN32) && !defined(__CYGWIN__)
+  localtime_s(&out, &timep);
+#else
+  localtime_r(&timep, &out);
+#endif
+  return out;
+}
+
+std::tm SystemTools::GMTime(std::time_t timep)
+{
+  std::tm out;
+#if defined(_WIN32) && !defined(__CYGWIN__)
+  gmtime_s(&out, &timep);
+#else
+  gmtime_r(&timep, &out);
+#endif
+  return out;
+}
+
 std::string SystemTools::GetCurrentDateTime(char const* format)
 {
   char buf[1024];
-  time_t t;
-  time(&t);
-  strftime(buf, sizeof(buf), format, localtime(&t));
+  tm const t = LocalTime(std::time(nullptr));
+  strftime(buf, sizeof(buf), format, &t);
   return std::string(buf);
 }
 

@@ -3,11 +3,12 @@
 #include "cmCPackRPMGenerator.h"
 
 #include <algorithm>
-#include <cctype>
 #include <map>
 #include <ostream>
 #include <utility>
 #include <vector>
+
+#include "cmsys/String.h"
 
 #include "cmCPackComponentGroup.h"
 #include "cmCPackGenerator.h"
@@ -143,7 +144,7 @@ int cmCPackRPMGenerator::PackageComponents(bool ignoreGroup)
            ++compIt) {
         std::string component(compIt->first);
         std::transform(component.begin(), component.end(), component.begin(),
-                       ::toupper);
+                       cmsysString_toupper);
 
         if (this->IsOn("CPACK_RPM_" + compIt->first + "_DEBUGINFO_PACKAGE") ||
             this->IsOn("CPACK_RPM_" + component + "_DEBUGINFO_PACKAGE")) {
@@ -157,7 +158,7 @@ int cmCPackRPMGenerator::PackageComponents(bool ignoreGroup)
            compGIt != this->ComponentGroups.end(); ++compGIt) {
         std::string component(compGIt->first);
         std::transform(component.begin(), component.end(), component.begin(),
-                       ::toupper);
+                       cmsysString_toupper);
 
         if (this->IsOn("CPACK_RPM_" + compGIt->first + "_DEBUGINFO_PACKAGE") ||
             this->IsOn("CPACK_RPM_" + component + "_DEBUGINFO_PACKAGE")) {
@@ -174,7 +175,7 @@ int cmCPackRPMGenerator::PackageComponents(bool ignoreGroup)
           if (!compIt->second.Group) {
             std::string component(compIt->first);
             std::transform(component.begin(), component.end(),
-                           component.begin(), ::toupper);
+                           component.begin(), cmsysString_toupper);
 
             if (this->IsOn("CPACK_RPM_" + compIt->first +
                            "_DEBUGINFO_PACKAGE") ||
@@ -206,7 +207,7 @@ int cmCPackRPMGenerator::PackageComponents(bool ignoreGroup)
 
     std::string mainComponentUpper(mainComponent);
     std::transform(mainComponentUpper.begin(), mainComponentUpper.end(),
-                   mainComponentUpper.begin(), ::toupper);
+                   mainComponentUpper.begin(), cmsysString_toupper);
 
     // The default behavior is to have one package by component group
     // unless CPACK_COMPONENTS_IGNORE_GROUP is specified.
@@ -218,7 +219,7 @@ int cmCPackRPMGenerator::PackageComponents(bool ignoreGroup)
            compGIt != this->ComponentGroups.end(); ++compGIt) {
         std::string component(compGIt->first);
         std::transform(component.begin(), component.end(), component.begin(),
-                       ::toupper);
+                       cmsysString_toupper);
 
         if (mainComponentUpper == component) {
           // main component will be handled last
@@ -240,7 +241,7 @@ int cmCPackRPMGenerator::PackageComponents(bool ignoreGroup)
         if (!compIt->second.Group) {
           std::string component(compIt->first);
           std::transform(component.begin(), component.end(), component.begin(),
-                         ::toupper);
+                         cmsysString_toupper);
 
           if (mainComponentUpper == component) {
             // main component will be handled last
@@ -283,7 +284,7 @@ int cmCPackRPMGenerator::PackageComponents(bool ignoreGroup)
            ++compIt) {
         std::string component(compIt->first);
         std::transform(component.begin(), component.end(), component.begin(),
-                       ::toupper);
+                       cmsysString_toupper);
 
         if (mainComponentUpper == component) {
           // main component will be handled last

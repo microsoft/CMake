@@ -365,6 +365,8 @@ cmCTestRunTest::EndTestResult cmCTestRunTest::EndTest(size_t completed,
     if (!skipped) {
       this->TestResult.CompletionStatus = "Completed";
     }
+    this->TestResult.StartTestTime =
+      this->TestProcess->GetSystemStartTime().time_since_epoch();
     this->TestResult.ExecutionTime = this->TestProcess->GetTotalTime();
     this->MemCheckPostProcess();
     this->ComputeWeightedCost();

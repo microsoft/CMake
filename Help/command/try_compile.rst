@@ -71,10 +71,10 @@ Try Compiling Source Files
 
   try_compile(<compileResultVar>
               [SOURCES_TYPE <type>]
-              <SOURCES <srcfile...>                 |
+              {SOURCES <srcfile>...                 |
                SOURCE_FROM_CONTENT <name> <content> |
                SOURCE_FROM_VAR <name> <var>         |
-               SOURCE_FROM_FILE <name> <path>       >...
+               SOURCE_FROM_FILE <name> <path>       }...
               [LOG_DESCRIPTION <text>]
               [NO_CACHE]
               [NO_LOG]
@@ -130,7 +130,7 @@ The signature above is recommended for clarity.
 
 .. code-block:: cmake
 
-  try_compile(<compileResultVar> <bindir> <srcfile|SOURCES srcfile...>
+  try_compile(<compileResultVar> <bindir> {<srcfile>|SOURCES <srcfile>...}
               [CMAKE_FLAGS <flags>...]
               [COMPILE_DEFINITIONS <defs>...]
               [LINK_OPTIONS <options>...]
@@ -320,8 +320,12 @@ Other Behavior Settings
 
   * :variable:`CMAKE_CUDA_RUNTIME_LIBRARY`
   * :variable:`CMAKE_ENABLE_EXPORTS`
+  * :variable:`CMAKE_EXECUTABLE_ENABLE_EXPORTS`
+  * :variable:`CMAKE_SHARED_LIBRARY_ENABLE_EXPORTS`
   * :variable:`CMAKE_EXE_LINKER_FLAGS`, unless using CMake versions
     prior to 4.0 without policy :policy:`CMP0056` set to ``NEW``
+  * :variable:`CMAKE_<LANG>_LINK_FLAGS`, unless using CMake versions
+    prior to 4.3 without policy :policy:`CMP0210` set to ``NEW``
   * :variable:`CMAKE_LINK_SEARCH_START_STATIC`
   * :variable:`CMAKE_LINK_SEARCH_END_STATIC`
   * :variable:`CMAKE_MSVC_RUNTIME_LIBRARY`
@@ -350,10 +354,7 @@ as needed to honor the state of the calling project:
 * :policy:`CMP0157`
 * :policy:`CMP0181`
 * :policy:`CMP0184`
-
-.. versionadded:: 4.0
-  The current setting of :policy:`CMP0181` policy is propagated through to the
-  generated test project.
+* :policy:`CMP0210`
 
 Set variable :variable:`CMAKE_TRY_COMPILE_CONFIGURATION` to choose a build
 configuration:
@@ -422,6 +423,11 @@ configuration:
   If :policy:`CMP0184` is set to ``NEW``, one can use
   :variable:`CMAKE_MSVC_RUNTIME_CHECKS` to specify the enabled MSVC runtime
   checks.
+
+.. versionadded:: 4.3
+  If :policy:`CMP0210` is set to ``NEW``, :variable:`CMAKE_<LANG>_LINK_FLAGS`
+  and :variable:`CMAKE_<LANG>_LINK_FLAGS_<CONFIG>` are propagated into the
+  test project's build configuration.
 
 See Also
 ^^^^^^^^

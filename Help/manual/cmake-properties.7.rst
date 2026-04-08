@@ -257,6 +257,7 @@ Properties on Targets
    /prop_tgt/IMPORTED_CXX_MODULES_COMPILE_DEFINITIONS
    /prop_tgt/IMPORTED_CXX_MODULES_COMPILE_FEATURES
    /prop_tgt/IMPORTED_CXX_MODULES_COMPILE_OPTIONS
+   /prop_tgt/IMPORTED_CXX_MODULES_CONFIG
    /prop_tgt/IMPORTED_CXX_MODULES_INCLUDE_DIRECTORIES
    /prop_tgt/IMPORTED_CXX_MODULES_LINK_LIBRARIES
    /prop_tgt/IMPORTED_GLOBAL
@@ -326,6 +327,7 @@ Properties on Targets
    /prop_tgt/LANG_ICSTAT
    /prop_tgt/LANG_INCLUDE_WHAT_YOU_USE
    /prop_tgt/LANG_LINKER_LAUNCHER
+   /prop_tgt/LANG_PVS_STUDIO
    /prop_tgt/LANG_STANDARD
    /prop_tgt/LANG_STANDARD_REQUIRED
    /prop_tgt/LANG_VISIBILITY_PRESET
@@ -392,6 +394,7 @@ Properties on Targets
    /prop_tgt/PRECOMPILE_HEADERS_REUSE_FROM
    /prop_tgt/PREFIX
    /prop_tgt/PRIVATE_HEADER
+   /prop_tgt/PRIVATE_HEADER_SETS_TO_VERIFY
    /prop_tgt/PROJECT_LABEL
    /prop_tgt/PUBLIC_HEADER
    /prop_tgt/RESOURCE
@@ -432,6 +435,7 @@ Properties on Targets
    /prop_tgt/UNITY_BUILD_RELOCATABLE
    /prop_tgt/UNITY_BUILD_UNIQUE_ID
    /prop_tgt/VERIFY_INTERFACE_HEADER_SETS
+   /prop_tgt/VERIFY_PRIVATE_HEADER_SETS
    /prop_tgt/VERSION
    /prop_tgt/VISIBILITY_INLINES_HIDDEN
    /prop_tgt/VS_CONFIGURATION_TYPE

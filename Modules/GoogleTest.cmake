@@ -145,8 +145,8 @@ same as the Google Test name (i.e. ``suite.testcase``); see also
   ``exe``
     The path to the test executable or the name of a CMake target.
   ``args``
-    A ;-list of extra arguments to be passed to executable.  The entire
-    list must be passed as a single argument.  Enclose it in quotes,
+    A semicolon-separated list of extra arguments to be passed to executable.
+    The entire list must be passed as a single argument.  Enclose it in quotes,
     or pass ``""`` for no arguments.
   ``files...``
     A list of source files to search for tests and test fixtures.
@@ -332,7 +332,7 @@ same as the Google Test name (i.e. ``suite.testcase``); see also
 
 # Save project's policies
 block(SCOPE_FOR POLICIES)
-cmake_policy(VERSION 3.30)
+cmake_policy(VERSION 4.2)
 
 #------------------------------------------------------------------------------
 function(gtest_add_tests)

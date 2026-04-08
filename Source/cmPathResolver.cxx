@@ -13,9 +13,9 @@
 #include <cmext/string_view>
 
 #ifdef _WIN32
-#  include <cctype>
-
 #  include <windows.h>
+
+#  include <cmsys/String.h>
 #endif
 
 #define MAX_SYMBOLIC_LINKS 32
@@ -95,7 +95,7 @@ private:
 Root ClassifyRoot(cm::string_view p)
 {
 #ifdef _WIN32
-  if (p.size() >= 2 && std::isalpha(p[0]) && p[1] == ':') {
+  if (p.size() >= 2 && cmsysString_isalpha(p[0]) && p[1] == ':') {
     return Root::Drive;
   }
   if (p.size() >= 3 && p[0] == '/' && p[1] == '/' && p[2] != '/') {
@@ -170,7 +170,8 @@ std::string ImplBase::GetWorkingDirectoryOnDrive(char letter)
   // Use the drive's working directory, if any.
   std::string d = this->OS.GetWorkingDirectoryOnDrive(letter);
   std::replace(d.begin(), d.end(), '\\', '/');
-  if (d.size() >= 3 && std::toupper(d[0]) == std::toupper(letter) &&
+  if (d.size() >= 3 &&
+      cmsysString_toupper(d[0]) == cmsysString_toupper(letter) &&
       d[1] == ':' && d[2] == '/') {
     d[0] = letter;
     d.push_back('/');
@@ -179,7 +180,8 @@ std::string ImplBase::GetWorkingDirectoryOnDrive(char letter)
 
   // Use the current working directory if the drive matches.
   d = this->OS.GetWorkingDirectory();
-  if (d.size() >= 3 && std::toupper(d[0]) == std::toupper(letter) &&
+  if (d.size() >= 3 &&
+      cmsysString_toupper(d[0]) == cmsysString_toupper(letter) &&
       d[1] == ':' && d[2] == '/') {
     d[0] = letter;
     d.push_back('/');
@@ -280,7 +282,7 @@ Control Impl<Policy>::ResolveRoot(Root root)
 
     if (Policy::ActualCase == Options::ActualCase::Yes) {
       // Normalize the drive letter to upper-case.
-      P[0] = static_cast<char>(std::toupper(P[0]));
+      P[0] = static_cast<char>(cmsysString_toupper(P[0]));
     }
 
     // The root is a drive letter.  The root '/' immediately follows.

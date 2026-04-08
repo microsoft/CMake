@@ -25,6 +25,8 @@
 #include "cm_codecvt_Encoding.hxx"
 
 #include "cmAlgorithms.h"
+#include "cmArgumentParserTypes.h"
+#include "cmBuildArgs.h"
 #include "cmCMakePath.h"
 #include "cmCPackPropertiesGenerator.h"
 #include "cmComputeTargetDepends.h"
@@ -41,6 +43,7 @@
 #include "cmGeneratorTarget.h"
 #include "cmInstallGenerator.h"
 #include "cmInstallRuntimeDependencySet.h"
+#include "cmInstallSbomExportGenerator.h"
 #include "cmLinkLineComputer.h"
 #include "cmList.h"
 #include "cmListFileCache.h"
@@ -51,6 +54,7 @@
 #include "cmOutputConverter.h"
 #include "cmPolicies.h"
 #include "cmRange.h"
+#include "cmSbomArguments.h"
 #include "cmSourceFile.h"
 #include "cmState.h"
 #include "cmStateDirectory.h"
@@ -729,6 +733,16 @@ void cmGlobalGenerator::EnableLanguage(
 
   for (std::string const& lang : languages) {
     needSetLanguageEnabledMaps[lang] = false;
+
+    if (lang == "Rust" &&
+        !cmExperimental::HasSupportEnabled(*this->Makefiles[0].get(),
+                                           cmExperimental::Feature::Rust)) {
+      mf->IssueMessage(MessageType::FATAL_ERROR,
+                       "Experimental Rust support is not enabled.");
+      cmSystemTools::SetFatalErrorOccurred();
+      return;
+    }
+
     if (lang == "NONE") {
       this->SetLanguageEnabled("NONE", mf);
       continue;
@@ -1096,17 +1110,22 @@ std::string cmGlobalGenerator::GetLanguageOutputExtension(
   return "";
 }
 
-std::string cmGlobalGenerator::GetLanguageFromExtension(char const* ext) const
+cm::string_view cmGlobalGenerator::GetLanguageFromExtension(
+  cm::string_view ext) const
 {
   // if there is an extension and it starts with . then move past the
   // . because the extensions are not stored with a .  in the map
-  if (!ext) {
+  if (ext.empty()) {
     return "";
   }
-  if (*ext == '.') {
-    ++ext;
+  if (ext.front() == '.') {
+    ext = ext.substr(1);
   }
+#if __cplusplus >= 201402L || defined(_MSVC_LANG) && _MSVC_LANG >= 201402L
   auto const it = this->ExtensionToLanguage.find(ext);
+#else
+  auto const it = this->ExtensionToLanguage.find(std::string(ext));
+#endif
   if (it != this->ExtensionToLanguage.end()) {
     return it->second;
   }
@@ -1185,7 +1204,7 @@ void cmGlobalGenerator::SetLanguageEnabledMaps(std::string const& l,
     std::string outputExtension = *p;
     this->LanguageToOutputExtension[l] = outputExtension;
     this->OutputExtensions[outputExtension] = outputExtension;
-    if (cmHasPrefix(outputExtension, ".")) {
+    if (cmHasPrefix(outputExtension, '.')) {
       outputExtension = outputExtension.substr(1);
       this->OutputExtensions[outputExtension] = outputExtension;
     }
@@ -1235,12 +1254,12 @@ std::string cmGlobalGenerator::GetSafeGlobalSetting(
   return this->Makefiles[0]->GetDefinition(name);
 }
 
-bool cmGlobalGenerator::IgnoreFile(char const* ext) const
+bool cmGlobalGenerator::IgnoreFile(cm::string_view ext) const
 {
   if (!this->GetLanguageFromExtension(ext).empty()) {
     return false;
   }
-  return (this->IgnoreExtensions.count(ext) > 0);
+  return (this->IgnoreExtensions.count(std::string(ext)) > 0);
 }
 
 bool cmGlobalGenerator::GetLanguageEnabled(std::string const& l) const
@@ -1365,6 +1384,11 @@ cmExportBuildFileGenerator* cmGlobalGenerator::GetExportedTargetsFile(
 void cmGlobalGenerator::AddCMP0068WarnTarget(std::string const& target)
 {
   this->CMP0068WarnTargets.insert(target);
+}
+
+bool cmGlobalGenerator::ShouldWarnCMP0210(std::string const& lang)
+{
+  return this->WarnedCMP0210Languages.insert(lang).second;
 }
 
 bool cmGlobalGenerator::CheckALLOW_DUPLICATE_CUSTOM_TARGETS() const
@@ -1568,6 +1592,37 @@ bool cmGlobalGenerator::Compute()
     return false;
   }
 
+#ifndef CMAKE_BOOTSTRAP
+  bool isTryCompile = this->GetGlobalSetting("IN_TRY_COMPILE").IsOn();
+  bool sbomEnabled = cmExperimental::HasSupportEnabled(
+    *this->Makefiles[0], cmExperimental::Feature::GenerateSbom);
+
+  // Automatically generate SBOM files if enabled.
+  cmValue sbomFormat = this->GetGlobalSetting("CMAKE_INSTALL_SBOM_FORMATS");
+  if (sbomFormat.IsSet() && !this->Makefiles[0]->ExplicitlyGeneratesSbom() &&
+      sbomEnabled && !isTryCompile) {
+    std::string location =
+      this->Makefiles[0]->GetSafeDefinition("CMAKE_INSTALL_LIBDIR");
+    if (location.empty()) {
+      location = "lib";
+    }
+
+    std::string projectName = this->LocalGenerators[0]->GetProjectName();
+    cmSbomArguments sbomDefaultArgs;
+    sbomDefaultArgs.ProjectName = projectName;
+    for (auto& exportSet : this->ExportSets) {
+      sbomDefaultArgs.PackageName = exportSet.first;
+      std::string dest = cmStrCat(location, "/sbom/", projectName);
+      this->Makefiles[0]->AddInstallGenerator(
+        cm::make_unique<cmInstallSbomExportGenerator>(
+          &exportSet.second, dest, "", std::vector<std::string>(), "",
+          cmInstallGenerator::SelectMessageLevel(this->Makefiles[0].get()),
+          false, std::move(sbomDefaultArgs), "",
+          this->Makefiles[0]->GetBacktrace()));
+    }
+  }
+#endif
+
   for (auto const& localGen : this->LocalGenerators) {
     cmMakefile* mf = localGen->GetMakefile();
     for (auto const& g : mf->GetInstallGenerators()) {
@@ -1578,6 +1633,12 @@ bool cmGlobalGenerator::Compute()
   }
 
   this->AddExtraIDETargets();
+
+#ifndef CMAKE_BOOTSTRAP
+  for (auto const& localGen : this->LocalGenerators) {
+    localGen->ResolveSourceGroupGenex();
+  }
+#endif
 
   // Trace the dependencies, after that no custom commands should be added
   // because their dependencies might not be handled correctly
@@ -1609,6 +1670,7 @@ bool cmGlobalGenerator::Compute()
 
   for (auto const& localGen : this->LocalGenerators) {
     localGen->ComputeHomeRelativeOutputPath();
+    localGen->ComputeSourceGroupSearchIndex();
   }
 
   return true;
@@ -1787,7 +1849,17 @@ void cmGlobalGenerator::ComputeTargetOrder(cmGeneratorTarget const* gt,
 bool cmGlobalGenerator::ApplyCXXStdTargets()
 {
   for (auto const& gen : this->LocalGenerators) {
-    for (auto const& tgt : gen->GetGeneratorTargets()) {
+
+    // tgt->ApplyCXXStd can create targets itself, so we need iterators which
+    // won't be invalidated by that target creation
+    auto const& genTgts = gen->GetGeneratorTargets();
+    std::vector<cmGeneratorTarget*> existingTgts;
+    existingTgts.reserve(genTgts.size());
+    for (auto const& tgt : genTgts) {
+      existingTgts.push_back(tgt.get());
+    }
+
+    for (auto const& tgt : existingTgts) {
       if (!tgt->ApplyCXXStdTargets()) {
         return false;
       }
@@ -1843,13 +1915,36 @@ bool cmGlobalGenerator::AddHeaderSetVerification()
     }
   }
 
-  cmTarget* allVerifyTarget = this->Makefiles.front()->FindTargetToUse(
-    "all_verify_interface_header_sets",
-    { cmStateEnums::TargetDomain::NATIVE });
-  if (allVerifyTarget) {
+  cmTarget* allVerifyInterfaceTarget =
+    this->Makefiles.front()->FindTargetToUse(
+      "all_verify_interface_header_sets",
+      { cmStateEnums::TargetDomain::NATIVE });
+  if (allVerifyInterfaceTarget) {
+    this->LocalGenerators.front()->AddGeneratorTarget(
+      cm::make_unique<cmGeneratorTarget>(allVerifyInterfaceTarget,
+                                         this->LocalGenerators.front().get()));
+  }
+  cmTarget* allVerifyPrivateTarget = this->Makefiles.front()->FindTargetToUse(
+    "all_verify_private_header_sets", { cmStateEnums::TargetDomain::NATIVE });
+  if (allVerifyPrivateTarget) {
+    this->LocalGenerators.front()->AddGeneratorTarget(
+      cm::make_unique<cmGeneratorTarget>(allVerifyPrivateTarget,
+                                         this->LocalGenerators.front().get()));
+  }
+
+  if (allVerifyInterfaceTarget || allVerifyPrivateTarget) {
+    cmTarget* allVerifyTarget =
+      this->GetMakefiles().front()->AddNewUtilityTarget(
+        "all_verify_header_sets", true);
     this->LocalGenerators.front()->AddGeneratorTarget(
       cm::make_unique<cmGeneratorTarget>(allVerifyTarget,
                                          this->LocalGenerators.front().get()));
+    if (allVerifyInterfaceTarget) {
+      allVerifyTarget->AddUtility(allVerifyInterfaceTarget->GetName(), false);
+    }
+    if (allVerifyPrivateTarget) {
+      allVerifyTarget->AddUtility(allVerifyPrivateTarget->GetName(), false);
+    }
   }
 
   return true;
@@ -2011,6 +2106,7 @@ void cmGlobalGenerator::ClearGeneratorMembers()
   this->RuntimeDependencySets.clear();
   this->RuntimeDependencySetsByName.clear();
   this->WarnedExperimental.clear();
+  this->WarnedCMP0210Languages.clear();
 }
 
 bool cmGlobalGenerator::SupportsShortObjectNames() const
@@ -2052,6 +2148,35 @@ std::string cmGlobalGenerator::ComputeTargetShortName(
   auto dirHash = hasher.HashString(rcwbd).substr(0, HASH_TRUNCATION);
   auto tgtHash = hasher.HashString(targetName).substr(0, HASH_TRUNCATION);
   return cmStrCat(tgtHash, dirHash);
+}
+
+cmGlobalGenerator::TargetDirectoryRegistration&
+cmGlobalGenerator::RegisterTargetDirectory(cmGeneratorTarget const* tgt,
+                                           std::string const& targetDir) const
+{
+  if (!tgt->IsNormal() || tgt->GetType() == cmStateEnums::GLOBAL_TARGET ||
+      tgt->Target->IsForTryCompile()) {
+    static TargetDirectoryRegistration utilityRegistration(nullptr, true);
+    return utilityRegistration;
+  }
+
+  // Get the registration instance for the target.
+#if __cplusplus >= 201703L
+  auto registration = this->TargetDirectoryRegistrations.try_emplace(tgt);
+#else
+  auto registration = this->TargetDirectoryRegistrations.insert(
+    std::make_pair(tgt, TargetDirectoryRegistration()));
+#endif
+  // If it was just inserted, search for a `CollidesWith` possibility.
+  if (registration.second) {
+    auto& otherTargets = this->TargetDirectories[targetDir];
+    if (!otherTargets.empty()) {
+      registration.first->second.CollidesWith = *otherTargets.begin();
+    }
+    otherTargets.insert(tgt);
+  }
+
+  return registration.first->second;
 }
 
 void cmGlobalGenerator::ComputeTargetObjectDirectory(
@@ -2126,12 +2251,17 @@ void cmGlobalGenerator::CheckTargetProperties()
   }
 }
 
-int cmGlobalGenerator::TryCompile(int jobs, std::string const& srcdir,
-                                  std::string const& bindir,
+int cmGlobalGenerator::TryCompile(int jobs, std::string const& bindir,
                                   std::string const& projectName,
                                   std::string const& target, bool fast,
                                   std::string& output, cmMakefile* mf)
 {
+  cmBuildArgs buildArgs;
+  buildArgs.jobs = jobs;
+  buildArgs.binaryDir = bindir;
+  buildArgs.projectName = projectName;
+  buildArgs.verbose = true;
+
   // if this is not set, then this is a first time configure
   // and there is a good chance that the try compile stuff will
   // take the bulk of the time, so try and guess some progress
@@ -2159,10 +2289,9 @@ int cmGlobalGenerator::TryCompile(int jobs, std::string const& srcdir,
   cmBuildOptions defaultBuildOptions(false, fast, PackageResolveMode::Disable);
 
   std::stringstream ostr;
-  auto ret =
-    this->Build(jobs, srcdir, bindir, projectName, newTarget, ostr, "", config,
-                defaultBuildOptions, true, this->TryCompileTimeout,
-                cmSystemTools::OUTPUT_NONE, {}, BuildTryCompile::Yes);
+  auto ret = this->Build(buildArgs, newTarget, ostr, "", config,
+                         defaultBuildOptions, this->TryCompileTimeout,
+                         cmSystemTools::OUTPUT_NONE, {}, BuildTryCompile::Yes);
   output = ostr.str();
   return ret;
 }
@@ -2187,22 +2316,23 @@ void cmGlobalGenerator::PrintBuildCommandAdvice(std::ostream& /*os*/,
   // they do not support certain build command line options
 }
 
-int cmGlobalGenerator::Build(
-  int jobs, std::string const& /*unused*/, std::string const& bindir,
-  std::string const& projectName, std::vector<std::string> const& targets,
-  std::ostream& ostr, std::string const& makeCommandCSTR,
-  std::string const& config, cmBuildOptions buildOptions, bool verbose,
-  cmDuration timeout, cmSystemTools::OutputOption outputMode,
-  std::vector<std::string> const& nativeOptions,
-  BuildTryCompile isInTryCompile)
+int cmGlobalGenerator::Build(cmBuildArgs const& buildArgs,
+                             std::vector<std::string> const& targets,
+                             std::ostream& ostr,
+                             std::string const& makeCommandCSTR,
+                             std::string const& config,
+                             cmBuildOptions buildOptions, cmDuration timeout,
+                             cmSystemTools::OutputOption outputMode,
+                             std::vector<std::string> const& nativeOptions,
+                             BuildTryCompile isInTryCompile)
 {
   bool hideconsole = cmSystemTools::GetRunCommandHideConsole();
 
   /**
    * Run an executable command and put the stdout in output.
    */
-  cmWorkingDirectory workdir(bindir);
-  ostr << "Change Dir: '" << bindir << '\'' << std::endl;
+  cmWorkingDirectory workdir(buildArgs.binaryDir);
+  ostr << "Change Dir: '" << buildArgs.binaryDir << '\'' << std::endl;
   if (workdir.Failed()) {
     cmSystemTools::SetRunCommandHideConsole(hideconsole);
     std::string const& err = workdir.GetError();
@@ -2222,8 +2352,9 @@ int cmGlobalGenerator::Build(
   std::string outputBuf;
 
   std::vector<GeneratedMakeCommand> makeCommand = this->GenerateBuildCommand(
-    makeCommandCSTR, projectName, bindir, targets, realConfig, jobs, verbose,
-    buildOptions, nativeOptions, isInTryCompile);
+    makeCommandCSTR, buildArgs.projectName, buildArgs.binaryDir, targets,
+    realConfig, buildArgs.jobs, buildArgs.verbose, buildOptions, nativeOptions,
+    isInTryCompile);
 
   // Workaround to convince some commands to produce output.
   if (outputMode == cmSystemTools::OUTPUT_PASSTHROUGH &&
@@ -2234,8 +2365,9 @@ int cmGlobalGenerator::Build(
   // should we do a clean first?
   if (buildOptions.Clean) {
     std::vector<GeneratedMakeCommand> cleanCommand =
-      this->GenerateBuildCommand(makeCommandCSTR, projectName, bindir,
-                                 { "clean" }, realConfig, jobs, verbose,
+      this->GenerateBuildCommand(makeCommandCSTR, buildArgs.projectName,
+                                 buildArgs.binaryDir, { "clean" }, realConfig,
+                                 buildArgs.jobs, buildArgs.verbose,
                                  buildOptions);
     ostr << "\nRun Clean Command: " << cleanCommand.front().QuotedPrintable()
          << std::endl;
@@ -2710,7 +2842,7 @@ cmGlobalGenerator::SplitFrameworkPath(std::string const& path,
   static cmsys::RegularExpression frameworkPath(
     "((.+)/)?([^/]+)\\.framework(/Versions/([^/]+))?(/(.+))?$");
 
-  auto ext = cmSystemTools::GetFilenameLastExtension(path);
+  auto ext = cmSystemTools::GetFilenameLastExtensionView(path);
   if ((ext.empty() || ext == ".tbd" || ext == ".framework") &&
       frameworkPath.find(path)) {
     auto name = frameworkPath.match(3);
@@ -2735,7 +2867,7 @@ cmGlobalGenerator::SplitFrameworkPath(std::string const& path,
   if (format == FrameworkFormat::Extended) {
     // path format can be more flexible: (/path/to/)?fwName(.framework)?
     auto fwDir = cmSystemTools::GetParentDirectory(path);
-    auto name = cmSystemTools::GetFilenameLastExtension(path) == ".framework"
+    auto name = ext == ".framework"
       ? cmSystemTools::GetFilenameWithoutExtension(path)
       : cmSystemTools::GetFilenameName(path);
 

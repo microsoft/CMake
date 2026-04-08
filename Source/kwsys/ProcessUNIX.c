@@ -54,7 +54,6 @@ do.
 #endif
 
 #include <assert.h>    /* assert */
-#include <ctype.h>     /* isspace */
 #include <dirent.h>    /* DIR, dirent */
 #include <errno.h>     /* errno */
 #include <fcntl.h>     /* fcntl */
@@ -2502,7 +2501,8 @@ static pid_t kwsysProcessFork(kwsysProcess* cp,
    corresponding parsing format string.  The parsing format should
    have two integers to store: the pid and then the ppid.  */
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) ||       \
-  defined(__OpenBSD__) || defined(__GLIBC__) || defined(__GNU__)
+  defined(__NetBSD__) || defined(__OpenBSD__) || defined(__GLIBC__) ||        \
+  defined(__GNU__)
 #  define KWSYSPE_PS_COMMAND "ps axo pid,ppid"
 #  define KWSYSPE_PS_FORMAT "%d %d\n"
 #elif defined(__sun) && (defined(__SVR4) || defined(__svr4__)) /* Solaris */
@@ -2565,24 +2565,34 @@ static void kwsysProcessKill(pid_t process_id)
     for (d = readdir(procdir); d; d = readdir(procdir)) {
       int pid;
       if (sscanf(d->d_name, "%d", &pid) == 1 && pid != 0) {
-        struct stat finfo;
+        int fd;
         snprintf(fname, sizeof(fname), "/proc/%d/stat", pid);
-        if (stat(fname, &finfo) == 0) {
-          FILE* f = fopen(fname, "r");
-          if (f) {
-            size_t nread = fread(buffer, 1, KWSYSPE_PIPE_BUFFER_SIZE, f);
-            fclose(f);
-            buffer[nread] = '\0';
-            if (nread > 0) {
-              char const* rparen = strrchr(buffer, ')');
-              int ppid;
-              if (rparen && (sscanf(rparen + 1, "%*s %d", &ppid) == 1)) {
-                if (ppid == process_id) {
-                  /* Recursively kill this child and its children.  */
-                  kwsysProcessKill(pid);
+        /* Open the file first, then use fstat() on the descriptor to
+           avoid a TOCTOU race condition.  */
+        fd = open(fname, O_RDONLY);
+        if (fd >= 0) {
+          struct stat finfo;
+          if (fstat(fd, &finfo) == 0) {
+            FILE* f = fdopen(fd, "r");
+            if (f) {
+              size_t nread = fread(buffer, 1, KWSYSPE_PIPE_BUFFER_SIZE, f);
+              fclose(f);
+              buffer[nread] = '\0';
+              if (nread > 0) {
+                char const* rparen = strrchr(buffer, ')');
+                int ppid;
+                if (rparen && (sscanf(rparen + 1, "%*s %d", &ppid) == 1)) {
+                  if (ppid == process_id) {
+                    /* Recursively kill this child and its children.  */
+                    kwsysProcessKill(pid);
+                  }
                 }
               }
+            } else {
+              close(fd);
             }
+          } else {
+            close(fd);
           }
         }
       }

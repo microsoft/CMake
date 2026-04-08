@@ -39,6 +39,7 @@
 #include "cmInstallPackageInfoExportGenerator.h"
 #include "cmInstallRuntimeDependencySet.h"
 #include "cmInstallRuntimeDependencySetGenerator.h"
+#include "cmInstallSbomExportGenerator.h"
 #include "cmInstallScriptGenerator.h"
 #include "cmInstallTargetGenerator.h"
 #include "cmList.h"
@@ -48,6 +49,7 @@
 #include "cmPolicies.h"
 #include "cmRange.h"
 #include "cmRuntimeDependencyArchive.h"
+#include "cmSbomArguments.h"
 #include "cmStateTypes.h"
 #include "cmStringAlgorithms.h"
 #include "cmSubcommandTable.h"
@@ -247,7 +249,8 @@ void AddInstallRuntimeDependenciesGenerator(
       cmInstallGenerator::SelectMessageLevel(helper.Makefile),
       runtimeDependenciesArgsRef.GetExcludeFromAll() &&
         (apple ? frameworkArgs.GetExcludeFromAll() : true),
-      helper.Makefile->GetBacktrace());
+      helper.Makefile->GetBacktrace(),
+      helper.Makefile->GetPolicyStatus(cmPolicies::CMP0207));
   helper.Makefile->AddInstallGenerator(
     std::move(getRuntimeDependenciesGenerator));
 
@@ -1788,10 +1791,11 @@ bool HandleDirectoryMode(std::vector<std::string> const& args,
       exclude_from_all = true;
       doing = DoingNone;
     } else if (doing == DoingDirs) {
-      // Convert this directory to a full path.
+      // If the given directory is not a full path, convert it to one by
+      // assuming it's relative to the current source directory.
       std::string dir = args[i];
       std::string::size_type gpos = cmGeneratorExpression::Find(dir);
-      if (gpos != 0 && !cmSystemTools::FileIsFullPath(dir)) {
+      if (!dir.empty() && gpos != 0 && !cmSystemTools::FileIsFullPath(dir)) {
         dir =
           cmStrCat(helper.Makefile->GetCurrentSourceDirectory(), '/', args[i]);
       }
@@ -1987,8 +1991,7 @@ bool HandleExportAndroidMKMode(std::vector<std::string> const& args,
   }
 
   // Check the file extension.
-  if (!fname.empty() &&
-      cmSystemTools::GetFilenameLastExtension(fname) != ".mk") {
+  if (!fname.empty() && !cmHasSuffix(fname, ".mk"_s)) {
     status.SetError(cmStrCat(
       args[0], " given invalid export file name \"", fname,
       R"(".  The FILE argument must specify a name ending in ".mk".)"));
@@ -2034,6 +2037,152 @@ bool HandleExportAndroidMKMode(std::vector<std::string> const& args,
   return false;
 #endif
 }
+
+#ifndef CMAKE_BOOTSTRAP
+cm::optional<cm::string_view> MatchExport(cm::string_view directive,
+                                          std::string const& exportName)
+{
+  std::string::size_type const l = exportName.size();
+  if (directive.substr(0, l) == exportName) {
+    if (directive.size() > l && directive[l] == ':') {
+      return directive.substr(l + 1);
+    }
+  }
+  return cm::nullopt;
+}
+
+void AssignValue(std::string& dest, std::string const& value)
+{
+  dest = value;
+}
+
+void AssignValue(std::vector<std::string>& dest, std::string const& value)
+{
+  dest = cmList{ value }.data();
+}
+
+template <typename T>
+void GetExportArgumentFromVariable(cmMakefile const* makefile,
+                                   cmExportSet const& exportSet,
+                                   cm::string_view suffix, T& variable)
+{
+  std::string const& name =
+    cmStrCat(exportSet.GetName(), "_EXPORT_PACKAGE_INFO_"_s, suffix);
+  if (cmValue const& value = makefile->GetDefinition(name)) {
+    std::string realValue;
+    makefile->ConfigureString(value, realValue, true, false);
+    AssignValue(variable, realValue);
+  }
+}
+
+bool HandleMappedPackageInfo(
+  cmExportSet& exportSet, cm::string_view directive, Helper& helper,
+  cmInstallCommandArguments const& installCommandArgs,
+  cmExecutionStatus& status, cmInstallGenerator::MessageLevel message,
+  std::string const& cxxModulesDirectory)
+{
+  cmPackageInfoArguments arguments;
+
+  // Extract information from the directive.
+  std::string::size_type const n = directive.find('/');
+  if (n != std::string::npos) {
+    arguments.PackageName = std::string{ directive.substr(0, n) };
+    directive = directive.substr(n + 1);
+
+    if (!directive.empty() && directive[0] == 'l') {
+      arguments.LowerCase = true;
+      directive = directive.substr(1);
+    }
+
+    if (!directive.empty() && directive[0] == 'a') {
+      std::string::size_type const d = directive.find('/');
+      if (d != std::string::npos) {
+        arguments.Appendix = std::string{ directive.substr(1, d - 1) };
+        directive = directive.substr(d);
+      } else {
+        arguments.Appendix = std::string{ directive.substr(1) };
+        directive = {};
+      }
+
+      if (arguments.Appendix.empty()) {
+        status.SetError(cmStrCat(
+          "CMAKE_INSTALL_EXPORTS_AS_PACKAGE_INFO given APPENDIX "
+          R"(directive for export ")"_s,
+          exportSet.GetName(), R"(", but no appendix name was provided.)"_s));
+        return false;
+      }
+    }
+
+    if (!directive.empty()) {
+      if (directive[0] != '/') {
+        status.SetError(
+          cmStrCat("CMAKE_INSTALL_EXPORTS_AS_PACKAGE_INFO given unrecognized "
+                   R"(directive  ")"_s,
+                   directive, R"(".)"_s));
+        return false;
+      }
+
+      directive = directive.substr(1);
+    }
+  } else {
+    arguments.PackageName = std::string{ directive };
+    directive = {};
+  }
+
+  if (arguments.PackageName.empty()) {
+    status.SetError(
+      cmStrCat("CMAKE_INSTALL_EXPORTS_AS_PACKAGE_INFO missing package name "
+               R"(for export ")"_s,
+               exportSet.GetName(), R"(".)"_s));
+    return false;
+  }
+
+  // Build destination.
+  std::string dest = std::string{ directive };
+  if (dest.empty()) {
+    if (helper.Makefile->GetSafeDefinition("CMAKE_SYSTEM_NAME") == "Windows") {
+      dest = std::string{ "cps"_s };
+    } else {
+      dest = cmStrCat(helper.GetLibraryDestination(nullptr), "/cps/",
+                      arguments.GetPackageDirName());
+    }
+  }
+
+  if (arguments.Appendix.empty()) {
+    // Get additional export information from variables.
+    GetExportArgumentFromVariable( // BR
+      helper.Makefile, exportSet, "VERSION"_s, arguments.Version);
+    GetExportArgumentFromVariable( // BR
+      helper.Makefile, exportSet, "COMPAT_VERSION"_s, arguments.VersionCompat);
+    GetExportArgumentFromVariable( // BR
+      helper.Makefile, exportSet, "VERSION_SCHEMA"_s, arguments.VersionSchema);
+    GetExportArgumentFromVariable( // BR
+      helper.Makefile, exportSet, "LICENSE"_s, arguments.License);
+    GetExportArgumentFromVariable( // BR
+      helper.Makefile, exportSet, "DEFAULT_LICENSE"_s,
+      arguments.DefaultLicense);
+    GetExportArgumentFromVariable( // BR
+      helper.Makefile, exportSet, "DEFAULT_CONFIGURATIONS"_s,
+      arguments.DefaultConfigs);
+  }
+
+  // Sanity-check export information.
+  if (!arguments.Check(status)) {
+    return false;
+  }
+
+  // Create the package info generator.
+  helper.Makefile->AddInstallGenerator(
+    cm::make_unique<cmInstallPackageInfoExportGenerator>(
+      &exportSet, dest, installCommandArgs.GetPermissions(),
+      installCommandArgs.GetConfigurations(),
+      installCommandArgs.GetComponent(), message,
+      installCommandArgs.GetExcludeFromAll(), std::move(arguments),
+      cxxModulesDirectory, helper.Makefile->GetBacktrace()));
+
+  return true;
+}
+#endif
 
 bool HandleExportMode(std::vector<std::string> const& args,
                       cmExecutionStatus& status)
@@ -2100,8 +2249,7 @@ bool HandleExportMode(std::vector<std::string> const& args,
   }
 
   // Check the file extension.
-  if (!fname.empty() &&
-      cmSystemTools::GetFilenameLastExtension(fname) != ".cmake") {
+  if (!fname.empty() && !cmHasSuffix(fname, ".cmake"_s)) {
     status.SetError(
       cmStrCat(args[0], " given invalid export file name \"", fname,
                "\".  "
@@ -2135,6 +2283,26 @@ bool HandleExportMode(std::vector<std::string> const& args,
   helper.Makefile->GetGlobalGenerator()->AddInstallComponent(
     ica.GetComponent());
 
+#ifndef CMAKE_BOOTSTRAP
+  // Check if PACKAGE_INFO export has been requested for this export set.
+  if (cmExperimental::HasSupportEnabled(
+        status.GetMakefile(), cmExperimental::Feature::MappedPackageInfo)) {
+    if (cmValue const& piExports = helper.Makefile->GetDefinition(
+          "CMAKE_INSTALL_EXPORTS_AS_PACKAGE_INFO")) {
+      for (auto const& pie : cmList{ piExports }) {
+        cm::optional<cm::string_view> const directive = MatchExport(pie, exp);
+        if (directive) {
+          if (!HandleMappedPackageInfo(exportSet, *directive, helper, ica,
+                                       status, message,
+                                       cxx_modules_directory)) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+#endif
+
   // Create the export install generator.
   helper.Makefile->AddInstallGenerator(
     cm::make_unique<cmInstallCMakeConfigExportGenerator>(
@@ -2151,12 +2319,6 @@ bool HandlePackageInfoMode(std::vector<std::string> const& args,
                            cmExecutionStatus& status)
 {
 #ifndef CMAKE_BOOTSTRAP
-  if (!cmExperimental::HasSupportEnabled(
-        status.GetMakefile(), cmExperimental::Feature::ExportPackageInfo)) {
-    status.SetError("does not recognize sub-command PACKAGE_INFO");
-    return false;
-  }
-
   Helper helper(status);
 
   // This is the PACKAGE_INFO mode.
@@ -2168,25 +2330,16 @@ bool HandlePackageInfoMode(std::vector<std::string> const& args,
 
   arguments.Bind(ica);
   ica.Bind("EXPORT"_s, exportName);
-  // ica.Bind("CXX_MODULES_DIRECTORY"_s, cxxModulesDirectory); TODO?
+  ica.Bind("CXX_MODULES_DIRECTORY"_s, cxxModulesDirectory);
 
   std::vector<std::string> unknownArgs;
-  ica.Parse(args, &unknownArgs);
+  ArgumentParser::ParseResult result = ica.Parse(args, &unknownArgs);
 
-  if (!unknownArgs.empty()) {
-    // Unknown argument.
-    status.SetError(
-      cmStrCat(args[0], " given unknown argument \"", unknownArgs[0], "\"."));
+  if (!result.Check(args[0], &unknownArgs, status)) {
     return false;
   }
 
   if (!ica.Finalize()) {
-    return false;
-  }
-
-  if (arguments.PackageName.empty()) {
-    // TODO: Fix our use of the parser to enforce this.
-    status.SetError(cmStrCat(args[0], " missing package name."));
     return false;
   }
 
@@ -2351,6 +2504,93 @@ bool HandleRuntimeDependencySetMode(std::vector<std::string> const& args,
   }
 
   return true;
+}
+
+bool HandleSbomMode(std::vector<std::string> const& args,
+                    cmExecutionStatus& status)
+{
+#ifndef CMAKE_BOOTSTRAP
+  if (!cmExperimental::HasSupportEnabled(
+        status.GetMakefile(), cmExperimental::Feature::GenerateSbom)) {
+    status.SetError("does not recognize sub-command SBOM");
+    return false;
+  }
+
+  Helper helper(status);
+  cmInstallCommandArguments ica(helper.DefaultComponentName, *helper.Makefile);
+
+  cmSbomArguments arguments;
+  ArgumentParser::NonEmpty<std::string> exportName;
+  ArgumentParser::NonEmpty<std::string> cxxModulesDirectory;
+
+  arguments.Bind(ica);
+  ica.Bind("EXPORT"_s, exportName);
+  // ica.Bind("CXX_MODULES_DIRECTORY"_s, cxxModulesDirectory); TODO?
+
+  std::vector<std::string> unknownArgs;
+  ica.Parse(args, &unknownArgs);
+
+  ArgumentParser::ParseResult result = ica.Parse(args, &unknownArgs);
+  if (!result.Check(args[0], &unknownArgs, status)) {
+    return false;
+  }
+
+  if (!ica.Finalize()) {
+    return false;
+  }
+
+  if (arguments.PackageName.empty()) {
+    // TODO: Fix our use of the parser to enforce this.
+    status.SetError(cmStrCat(args[0], " missing SBOM name."));
+    return false;
+  }
+
+  if (exportName.empty()) {
+    status.SetError(cmStrCat(args[0], " missing EXPORT."));
+    return false;
+  }
+
+  if (!arguments.Check(status) || !arguments.SetMetadataFromProject(status)) {
+    return false;
+  }
+
+  // Get or construct the destination path.
+  std::string dest = ica.GetDestination();
+  if (dest.empty()) {
+    if (helper.Makefile->GetSafeDefinition("CMAKE_SYSTEM_NAME") == "Windows") {
+      dest = std::string{ "/sbom/"_s };
+    } else {
+      dest = cmStrCat(helper.GetLibraryDestination(nullptr), "/sbom/",
+                      arguments.GetPackageDirName());
+    }
+  }
+
+  cmExportSet& exportSet =
+    helper.Makefile->GetGlobalGenerator()->GetExportSets()[exportName];
+
+  cmInstallGenerator::MessageLevel message =
+    cmInstallGenerator::SelectMessageLevel(helper.Makefile);
+
+  // Tell the global generator about any installation component names
+  // specified
+  helper.Makefile->GetGlobalGenerator()->AddInstallComponent(
+    ica.GetComponent());
+  helper.Makefile->SetExplicitlyGeneratesSbom(true);
+
+  // Create the export install generator.
+  helper.Makefile->AddInstallGenerator(
+    cm::make_unique<cmInstallSbomExportGenerator>(
+      &exportSet, dest, ica.GetPermissions(), ica.GetConfigurations(),
+      ica.GetComponent(), message, ica.GetExcludeFromAll(),
+      std::move(arguments), std::move(cxxModulesDirectory),
+      helper.Makefile->GetBacktrace()));
+
+  return true;
+#else
+  static_cast<void>(args);
+  status.SetError("SBOM not supported in bootstrap cmake");
+  return false;
+#endif
 }
 
 bool Helper::MakeFilesFullPath(char const* modeName,
@@ -2590,6 +2830,7 @@ bool cmInstallCommand(std::vector<std::string> const& args,
     { "EXPORT_ANDROID_MK"_s, HandleExportAndroidMKMode },
     { "PACKAGE_INFO"_s, HandlePackageInfoMode },
     { "RUNTIME_DEPENDENCY_SET"_s, HandleRuntimeDependencySetMode },
+    { "SBOM"_s, HandleSbomMode }
   };
 
   return subcommand(args[0], args, status);
