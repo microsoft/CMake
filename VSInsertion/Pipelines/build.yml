@@ -96,6 +96,7 @@ extends:
             targetPath: $(ArchiveDir)
             artifactName: CMakeX64
             codeSignValidationEnabled: false
+            sbomBuildDropPath: $(ArchiveDir)
         steps:
         - checkout: self
           clean: true
@@ -216,6 +217,7 @@ extends:
             targetPath: $(ArchiveDir)
             artifactName: CMakeArm64
             codeSignValidationEnabled: false
+            sbomBuildDropPath: $(ArchiveDir)
         steps:
         - checkout: self
           clean: true
@@ -281,6 +283,7 @@ extends:
             targetPath: $(ArchiveDir)
             artifactName: CMakeX86
             codeSignValidationEnabled: false
+            sbomBuildDropPath: $(ArchiveDir)
         steps:
         - checkout: self
           clean: true
