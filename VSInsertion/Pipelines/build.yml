@@ -271,6 +271,77 @@ extends:
             publishXML: true
             userProvideBuildInfo: auto
             setupCommandlinePicker: vs2022
+        - task: PowerShell@2
+          displayName: 'DIAG: Inspect ManifestGenerator binaries for CppSdk env-var names'
+          continueOnError: true
+          inputs:
+            targetType: inline
+            pwsh: true
+            script: |
+              $ErrorActionPreference = 'Continue'
+              $tasksDir = Join-Path "$env:AGENT_WORKFOLDER" '_tasks'
+              if (-not (Test-Path $tasksDir)) {
+                Write-Host "##[warning]_tasks dir not found at $tasksDir"
+                return
+              }
+              Write-Host "Searching $tasksDir for ManifestGenerator tasks..."
+              $mgDirs = Get-ChildItem -Path $tasksDir -Directory -ErrorAction SilentlyContinue |
+                Where-Object Name -match 'ManifestGenerator'
+              Write-Host "Found $($mgDirs.Count) ManifestGenerator task dirs"
+              $markers = @('VCTools','VCINSTALL','VSINSTALL','VisualStudio','VsInstall','MSVCToolset','MsvcToolset','VC_TOOLS','MSVC_TOOLS','VCTOOL','VSTOOL','TOOLSET','VCVARS','VCCMD','VS_VERSION','VCIDE','VC_IDE')
+              foreach ($d in $mgDirs) {
+                Write-Host ""
+                Write-Host "==== Task: $($d.Name) ===="
+                $dlls = Get-ChildItem -Path $d.FullName -Recurse -Filter *.dll -ErrorAction SilentlyContinue
+                Write-Host "  Total DLLs: $($dlls.Count)"
+                $cppDlls = @()
+                foreach ($dll in $dlls) {
+                  try {
+                    $bytes = [IO.File]::ReadAllBytes($dll.FullName)
+                    $a = [Text.Encoding]::ASCII.GetString($bytes)
+                    $u = [Text.Encoding]::Unicode.GetString($bytes)
+                    if ($a -match 'CppSdk' -or $u -match 'CppSdk' -or
+                        $a -match 'Scanning MSVC toolsets' -or $u -match 'Scanning MSVC toolsets' -or
+                        $a -match 'Found MSVC toolset' -or $u -match 'Found MSVC toolset') {
+                      $cppDlls += $dll
+                    }
+                  } catch { }
+                }
+                Write-Host "  DLLs containing CppSdk/MSVC-toolset references: $($cppDlls.Count)"
+                foreach ($dll in $cppDlls) {
+                  Write-Host ""
+                  Write-Host "  ---- $($dll.FullName) ----"
+                  $bytes = [IO.File]::ReadAllBytes($dll.FullName)
+                  $u = [Text.Encoding]::Unicode.GetString($bytes)
+                  $a = [Text.Encoding]::ASCII.GetString($bytes)
+                  $combined = $u + "`n----ASCII----`n" + $a
+                  $allMatches = [regex]::Matches($combined, '[A-Za-z_][A-Za-z0-9_]{5,80}')
+                  $seen = @{}
+                  foreach ($m in $allMatches) {
+                    $s = $m.Value
+                    if ($seen.ContainsKey($s)) { continue }
+                    $isCand = $false
+                    foreach ($mk in $markers) { if ($s -match $mk) { $isCand = $true; break } }
+                    if ($isCand) {
+                      $seen[$s] = $true
+                      Write-Host "    Cand: $s"
+                    }
+                  }
+                  Write-Host "  -- Log-string siblings (likely diagnostic strings near env reads) --"
+                  $logMatches = [regex]::Matches($combined, '[^\x00-\x1F\x7F-\xFF]{15,160}')
+                  $seenLog = @{}
+                  foreach ($m in $logMatches) {
+                    $s = $m.Value
+                    if ($seenLog.ContainsKey($s)) { continue }
+                    if ($s -match 'environment variable|env var|GetEnvironmentVariable|MSVC|VC tool|VS install|toolset' -and $s -notmatch '^\s*$') {
+                      $seenLog[$s] = $true
+                      Write-Host "    LogStr: $s"
+                    }
+                  }
+                }
+              }
+              Write-Host ""
+              Write-Host "DIAG complete."
       - job: Job_x86
         displayName: CMake x86 Build
         timeoutInMinutes: 360
