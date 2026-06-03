@@ -50,6 +50,8 @@ variables:
   value: true
 - name: Codeql.Language
   value: cpp,csharp,javascript,powershell,python,ruby
+- name: ComponentDetection.SourcePath
+  value: $(Build.SourcesDirectory)/VSInsertion
 - name: DisableDockerDetector
   value: true
 - name: PackagingSolutionRoot
@@ -76,8 +78,6 @@ extends:
         suppressionFile: $(Build.SourcesDirectory)\VSInsertion\credscan.gdnsuppress # for third party cmake public source files
       spotBugs:
         enabled: false
-      componentgovernance:
-        ignoreDirectories: '$(Build.SourcesDirectory)/Source,$(Build.SourcesDirectory)/Tests,$(Build.SourcesDirectory)/Utilities,$(Build.SourcesDirectory)/Modules,$(Build.SourcesDirectory)/Help'
     pool:
       name: VSEngSS-MicroBuild2022-1ES
     customBuildTags:
