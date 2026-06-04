@@ -50,6 +50,8 @@ variables:
   value: true
 - name: Codeql.Language
   value: cpp,csharp,javascript,powershell,python,ruby
+- name: ComponentDetection.SourcePath
+  value: $(Build.SourcesDirectory)/VSInsertion
 - name: DisableDockerDetector
   value: true
 - name: PackagingSolutionRoot
@@ -90,12 +92,16 @@ extends:
         pool:
           name: VSEngSS-MicroBuild2022-1ES
         templateContext:
+          sdl:
+            sbom:
+              BuildComponentPath: '$(ArchiveDir)'
           outputs:
           - output: pipelineArtifact
             displayName: 'Publish CMake x64 Artifact'
             targetPath: $(ArchiveDir)
             artifactName: CMakeX64
             codeSignValidationEnabled: false
+            sbomBuildDropPath: $(ArchiveDir)
         steps:
         - checkout: self
           clean: true
@@ -210,12 +216,16 @@ extends:
         pool:
           name: VSEngSS-MicroBuild2022-1ES
         templateContext:
+          sdl:
+            sbom:
+              BuildComponentPath: '$(ArchiveDir)'
           outputs:
           - output: pipelineArtifact
             displayName: 'Publish CMake ARM64 Artifact'
             targetPath: $(ArchiveDir)
             artifactName: CMakeArm64
             codeSignValidationEnabled: false
+            sbomBuildDropPath: $(ArchiveDir)
         steps:
         - checkout: self
           clean: true
@@ -275,12 +285,16 @@ extends:
         pool:
           name: VSEngSS-MicroBuild2022-1ES
         templateContext:
+          sdl:
+            sbom:
+              BuildComponentPath: '$(ArchiveDir)'
           outputs:
           - output: pipelineArtifact
             displayName: 'Publish CMake x86 Artifact'
             targetPath: $(ArchiveDir)
             artifactName: CMakeX86
             codeSignValidationEnabled: false
+            sbomBuildDropPath: $(ArchiveDir)
         steps:
         - checkout: self
           clean: true
