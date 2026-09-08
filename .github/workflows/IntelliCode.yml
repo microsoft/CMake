@@ -9,16 +9,16 @@ jobs:
 
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2.8.0
       with:
         fetch-depth: 0
     
     - name: setup-msbuild
-      uses: microsoft/setup-msbuild@v1.0.1
+      uses: microsoft/setup-msbuild@8dc49dbd173d2e84b142c0b65eef06ad36ccc82c # v1.0.1
 
     # Runs CMake generation for VS2019 to generate .vcxproj files (Optional, currently recommended if CMake uses any complex configurations)
     - name: run-cmake
-      uses: lukka/run-cmake@v2.5
+      uses: lukka/run-cmake@2bbebf98f3f92c113ee300dd1969829a23724f3e # v2.5
       with:
         cmakeGenerator: VS16Win64
         buildDirectory: ${{ github.workspace }}\build
