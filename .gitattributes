@@ -1,4 +1,5 @@
 .git*            export-ignore
+.github/workflows/*.lock.yml linguist-generated=true
 .hooks*          export-ignore
 .clang-format    export-ignore
 .clang-tidy      export-ignore
