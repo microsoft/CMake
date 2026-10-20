@@ -12,7 +12,7 @@ New-Item -ItemType Directory -Path $results -Force | Out-Null
 $nuget = (Get-Command nuget.exe -ErrorAction Stop).Source
 & $nuget install Microsoft.Cpp.vcperf -Version $version -Source $feed `
   -OutputDirectory $install -NonInteractive -NoCache -DirectDownload -PackageSaveMode nupkg `
-  2>&1 | Tee-Object -FilePath (Join-Path $results 'install.log') | Out-Host
+  2>&1 | Out-Host
 if ($LASTEXITCODE -ne 0) {
   throw "Installing Microsoft.Cpp.vcperf $version failed with exit code $LASTEXITCODE"
 }
@@ -57,64 +57,32 @@ if (Test-Path -LiteralPath $build) {
 
 & $cmake -S $env:GITHUB_WORKSPACE -B $build -G Ninja `
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl `
-  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DBUILD_TESTING=OFF `
+  -DBUILD_TESTING=OFF `
   -DBUILD_QtDialog=OFF -DBUILD_CursesDialog=OFF `
-  2>&1 | Tee-Object -FilePath (Join-Path $results 'configure.log') | Out-Host
+  2>&1 | Out-Host
 if ($LASTEXITCODE -ne 0) {
   throw "CMake configuration failed with exit code $LASTEXITCODE"
 }
-Copy-Item -LiteralPath (Join-Path $build 'CMakeCache.txt') -Destination $results
-Copy-Item -LiteralPath (Join-Path $build 'compile_commands.json') -Destination $results
-
 $session = "CMakeBuild_$($env:GITHUB_RUN_ID)_$($env:GITHUB_RUN_ATTEMPT)"
 $etl = Join-Path $results 'build.etl'
-$analyzedEtl = Join-Path $results 'build.analyzed.etl'
-$json = Join-Path $results 'analysis.json'
-$traceLog = Join-Path $results 'vcperf.log'
 $buildExit = $null
 $timer = [System.Diagnostics.Stopwatch]::new()
 try {
-  & $vcperf /start /level3 $session 2>&1 | Tee-Object -FilePath $traceLog | Out-Host
+  & $vcperf /start /level3 $session 2>&1 | Out-Host
   $timer.Start()
   & $cmake --build $build --parallel $parallel `
-    2>&1 | Tee-Object -FilePath (Join-Path $results 'build.log') | Out-Host
+    2>&1 | Out-Host
   $buildExit = $LASTEXITCODE
 } finally {
   $timer.Stop()
-  & $vcperf /stopnoanalyze $session $etl `
-    2>&1 | Tee-Object -FilePath $traceLog -Append | Out-Host
+  & $vcperf /stop $session $etl 2>&1 | Out-Host
 }
-
-[ordered]@{
-  source_sha = $env:GITHUB_SHA
-  source_root = $env:GITHUB_WORKSPACE
-  run_id = $env:GITHUB_RUN_ID
-  run_attempt = $env:GITHUB_RUN_ATTEMPT
-  vcperf_version = $version
-  vcperf_package_sha256 = $packageHash
-  vcperf_executable = $vcperf
-  generator = 'Ninja'
-  configuration = 'Release'
-  architecture = 'x64'
-  msvc_tools_version = $env:VCToolsVersion
-  parallelism = $parallel
-  build_command = "cmake --build `"$build`" --parallel $parallel"
-  build_exit_code = $buildExit
-  instrumented_build_seconds = $timer.Elapsed.TotalSeconds
-  tests_enabled = $false
-  optional_guis_enabled = $false
-  analysis_file = 'analysis.json'
-  trace_file = 'build.etl'
-  analyzed_trace_file = 'build.analyzed.etl'
-} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $results 'metadata.json') -Encoding utf8
 
 if ($buildExit -ne 0) {
   throw "The instrumented CMake build failed with exit code $buildExit"
 }
-& $vcperf /analyze /templates $etl $analyzedEtl /jsonAnalysis $json `
-  2>&1 | Tee-Object -FilePath $traceLog -Append | Out-Host
-if (-not (Test-Path -LiteralPath $json -PathType Leaf)) {
-  throw "vcperf did not produce $json. See vcperf.log."
+if (-not (Test-Path -LiteralPath $etl -PathType Leaf)) {
+  throw "vcperf did not produce $etl. See the workflow logs."
 }
 # vcperf can return an HRESULT on success; do not pass it to the Actions pwsh wrapper.
 $global:LASTEXITCODE = 0
@@ -126,5 +94,5 @@ $global:LASTEXITCODE = 0
 - Build: MSVC x64, Ninja, Release, $parallel parallel jobs.
 - Tests and optional GUIs: disabled.
 - Instrumented build: $([Math]::Round($timer.Elapsed.TotalSeconds, 2)) seconds (not an uninstrumented baseline).
-- Trace, JSON, configuration, and logs: the build-performance artifact.
+- ETL trace: the build-performance artifact. Command diagnostics are in the workflow logs.
 "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
