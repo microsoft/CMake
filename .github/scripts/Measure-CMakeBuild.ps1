@@ -68,6 +68,7 @@ Copy-Item -LiteralPath (Join-Path $build 'compile_commands.json') -Destination $
 
 $session = "CMakeBuild_$($env:GITHUB_RUN_ID)_$($env:GITHUB_RUN_ATTEMPT)"
 $etl = Join-Path $results 'build.etl'
+$analyzedEtl = Join-Path $results 'build.analyzed.etl'
 $json = Join-Path $results 'analysis.json'
 $traceLog = Join-Path $results 'vcperf.log'
 $buildExit = $null
@@ -80,7 +81,7 @@ try {
   $buildExit = $LASTEXITCODE
 } finally {
   $timer.Stop()
-  & $vcperf /stop /templates $session $etl /jsonAnalysis $json `
+  & $vcperf /stopnoanalyze $session $etl `
     2>&1 | Tee-Object -FilePath $traceLog -Append | Out-Host
 }
 
@@ -104,13 +105,19 @@ try {
   optional_guis_enabled = $false
   analysis_file = 'analysis.json'
   trace_file = 'build.etl'
+  analyzed_trace_file = 'build.analyzed.etl'
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $results 'metadata.json') -Encoding utf8
 
 if ($buildExit -ne 0) {
   throw "The instrumented CMake build failed with exit code $buildExit"
 }
 # vcperf may return an HRESULT even on success; validate its output artifacts.
-foreach ($file in @($etl, $json)) {
+if (-not (Test-Path -LiteralPath $etl -PathType Leaf) -or (Get-Item -LiteralPath $etl).Length -eq 0) {
+  throw "vcperf did not produce a non-empty raw trace: $etl. See vcperf.log."
+}
+& $vcperf /analyze /templates $etl $analyzedEtl /jsonAnalysis $json `
+  2>&1 | Tee-Object -FilePath $traceLog -Append | Out-Host
+foreach ($file in @($analyzedEtl, $json)) {
   if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or (Get-Item -LiteralPath $file).Length -eq 0) {
     throw "vcperf did not produce a non-empty output: $file. See vcperf.log."
   }
