@@ -9,6 +9,15 @@ project(CMake)
 unset(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX)
 unset(CMAKE_USER_MAKE_RULES_OVERRIDE_C)
 
+find_package(Python COMPONENTS Interpreter)
+cmake_instrumentation(
+  API_VERSION 1
+  DATA_VERSION 1
+  OPTIONS dynamicSystemInformation staticSystemInformation trace cdashVerbose cdashSubmit captureOutput compileTrace processMetrics
+  HOOKS postGenerate preBuild postBuild preCMakeBuild postCMakeBuild postCMakeInstall postCMakeWorkflow postCTest
+  CALLBACK ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/instrument.py
+)
+
 # FIXME: This block should go away after a transition period.
 if(MSVC AND NOT CMAKE_VERSION VERSION_LESS 3.15)
   # Filter out MSVC runtime library flags that may have come from

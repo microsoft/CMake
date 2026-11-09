@@ -1,0 +1,7 @@
+{
+  "name": "cmake-build-doctor",
+  "description": "Investigate CMake configure and build performance using instrumentation, configure logs, and optional File API context.",
+  "version": "0.1.0",
+  "skills": "skills/",
+  "agents": "agents/"
+}
